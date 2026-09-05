@@ -19,13 +19,20 @@ function iconFor(state) {
 
 function escapeHtml(value) { const div=document.createElement('div'); div.textContent=String(value??''); return div.innerHTML; }
 
+function setStatus(state, title, meta = '', detail = '') {
+  ui.icon.className = `status-icon ${state}`;
+  ui.icon.innerHTML = iconFor(state);
+  ui.title.textContent = title;
+  ui.meta.textContent = meta;
+  if (ui.detail) {
+    ui.detail.hidden = !detail;
+    ui.detail.textContent = detail || '';
+  }
+}
+
 function setError(error) {
   const message = error?.message || String(error);
-  ui.icon.className = 'status-icon bad';
-  ui.icon.innerHTML = iconFor('bad');
-  ui.title.textContent = i.t('actionFailed');
-  ui.meta.textContent = message;
-  if (ui.detail) { ui.detail.hidden = false; ui.detail.textContent = message; }
+  setStatus('bad', i.t('actionFailed'), message, message);
 }
 
 function setSuccessDetail(message) {
@@ -38,10 +45,9 @@ async function refresh() {
   try {
     const r = await request('status');
     const state = r.gistConfigured ? 'ok' : r.authenticated ? 'warn' : 'bad';
-    ui.icon.className = `status-icon ${state}`;
-    ui.icon.innerHTML = iconFor(state);
-    ui.title.textContent = !r.authenticated ? i.t('needsToken') : !r.gistConfigured ? i.t('githubConnectedNoGist') : i.t('ready');
-    ui.meta.textContent = [r.gistId ? i.t('gistStatus', { gist: r.gistId }) : '', r.lastSyncAt ? `${i.t('lastSync')} ${new Date(r.lastSyncAt).toLocaleString()}` : '', `${i.t('autoSyncStatus')}: ${r.autoSyncEnabled ? i.t('enabled') : i.t('disabled')}`].filter(Boolean).join(' · ');
+    const title = !r.authenticated ? i.t('needsToken') : !r.gistConfigured ? i.t('githubConnectedNoGist') : i.t('ready');
+    const meta = [r.gistId ? i.t('gistStatus', { gist: r.gistId }) : '', r.lastSyncAt ? `${i.t('lastSync')} ${new Date(r.lastSyncAt).toLocaleString()}` : '', `${i.t('autoSyncStatus')}: ${r.autoSyncEnabled ? i.t('enabled') : i.t('disabled')}`].filter(Boolean).join(' · ');
+    setStatus(state, title, meta, '');
     ui.rev.textContent = `${i.t('revision')} ${r.syncRevision ?? 0} · ${i.t('conflictsLabel')} ${(r.conflictCount ?? 0)}`;
   } catch (error) {
     setError(error);
@@ -68,26 +74,20 @@ bindAction('sync', async (_event, button) => withButton(button, async () => {
   button.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3.8L3 10"/><path d="M3 5v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.8L21 14"/></svg><span>${i.t('syncing')}</span>`;
   const r = await request('sync');
   if (!r || r.ok === false) throw new Error(r?.error || 'Sync returned no result');
-  ui.title.textContent = `${i.t('syncDone')} · ${i.t('revision')} ${r.revision}`;
-  ui.meta.textContent = i.t('syncedSummary', { tabs: r.tabCount, groups: r.groupCount, bookmarks: r.bookmarkCount, extensions: r.extensionCount });
-  setSuccessDetail(i.t('syncCompletedDetail', { revision: r.revision, conflicts: r.conflicts ?? 0 }));
+  setStatus('ok', `${i.t('syncDone')} · ${i.t('revision')} ${r.revision}`, i.t('syncedSummary', { tabs: r.tabCount, groups: r.groupCount, bookmarks: r.bookmarkCount, extensions: r.extensionCount }), i.t('syncCompletedDetail', { revision: r.revision, conflicts: r.conflicts ?? 0 }));
   await refresh();
 }));
 
 bindAction('restore', async (_event, button) => withButton(button, async () => {
   const s = await request('pull');
   const r = await request('restoreTabs', { windows: s.windows || [] });
-  ui.title.textContent = i.t('tabsRestoreDone');
-  ui.meta.textContent = i.t('restoreSummary', { tabs: r.tabs, groups: r.groups });
-  setSuccessDetail(i.t('restoreCompletedDetail'));
+  setStatus('ok', i.t('tabsRestoreDone'), i.t('restoreSummary', { tabs: r.tabs, groups: r.groups }), i.t('restoreCompletedDetail'));
 }));
 
 bindAction('restoreBookmarks', async (_event, button) => withButton(button, async () => {
   const s = await request('pull');
   const r = await request('restoreBookmarks', { bookmarks: s.bookmarks || [] });
-  ui.title.textContent = i.t('bookmarksRestoreDone');
-  ui.meta.textContent = i.t('bookmarkSummary', { added: r.added, moved: r.moved, updated: r.updated });
-  setSuccessDetail(i.t('bookmarkCompletedDetail'));
+  setStatus('ok', i.t('bookmarksRestoreDone'), i.t('bookmarkSummary', { added: r.added, moved: r.moved, updated: r.updated }), i.t('bookmarkCompletedDetail'));
 }));
 
 bindAction('checkExtensions', async (_event, button) => withButton(button, async () => {
@@ -96,16 +96,12 @@ bindAction('checkExtensions', async (_event, button) => withButton(button, async
   if (r.remoteUnavailable) {
     const message = r.errorCode === 'GIST_NOT_BOUND' ? i.t('remoteExtNeedGist') : `${i.t('remoteExtUnavailable')} ${r.errorMessage || ''}`;
     ui.missing.innerHTML = `<div class="empty error-copy">${escapeHtml(message)}</div>`;
-    ui.title.textContent = i.t('checkFailed');
-    ui.meta.textContent = message;
-    setSuccessDetail('');
+    setStatus('bad', i.t('checkFailed'), message, '');
     return;
   }
   if (!r.missing.length) {
     ui.missing.innerHTML = `<div class="empty success-copy"><strong>${i.t('noMissing')}</strong><br><span>${i.t('checkedCloudExtensions', { count: r.remote.length })}</span></div>`;
-    ui.title.textContent = i.t('extensionsReady');
-    ui.meta.textContent = i.t('checkedCloudExtensions', { count: r.remote.length });
-    setSuccessDetail(i.t('allExtensionsInstalled'));
+    setStatus('ok', i.t('extensionsReady'), i.t('checkedCloudExtensions', { count: r.remote.length }), i.t('allExtensionsInstalled'));
     return;
   }
   const wrap = document.createElement('div');
@@ -123,9 +119,7 @@ bindAction('checkExtensions', async (_event, button) => withButton(button, async
     row.append(main, a); wrap.append(row);
   }
   ui.missing.replaceChildren(wrap);
-  ui.title.textContent = i.t('missingFound', { count: r.missing.length });
-  ui.meta.textContent = i.t('checkedCloudExtensions', { count: r.remote.length });
-  setSuccessDetail(i.t('installMissingHint'));
+  setStatus('warn', i.t('missingFound', { count: r.missing.length }), i.t('checkedCloudExtensions', { count: r.remote.length }), i.t('installMissingHint'));
 }));
 
 bindAction('history', () => chrome.tabs.create({ url: chrome.runtime.getURL('history.html') }));
