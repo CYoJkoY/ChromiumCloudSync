@@ -37,26 +37,30 @@ function text(key) {
       latestState: 'Latest version',
       current: 'Current version',
       latest: 'Latest version',
-      download: 'Download update',
+      download: 'Download CRX',
       upToDate: 'Already up to date',
       release: 'View release',
       check: 'Check for updates',
       checking: 'Checking for updates…',
       failed: 'Update check failed',
-      downloadFailed: 'Update download failed',
+      downloadFailed: 'CRX download failed',
+      downloadReady: 'CRX downloaded. Drag the file into chrome://extensions/ to install the update.',
+      downloadStarted: 'Downloading CRX…',
     },
     'zh-CN': {
       available: '发现新版本',
       latestState: '当前已是最新版本',
       current: '当前版本',
       latest: '最新版本',
-      download: '下载更新',
+      download: '下载 CRX',
       upToDate: '已为最新版本',
       release: '查看发布页',
       check: '检查更新',
       checking: '正在检查更新…',
       failed: '检查更新失败',
-      downloadFailed: '更新下载失败',
+      downloadFailed: 'CRX 下载失败',
+      downloadReady: 'CRX 已下载。请将文件拖入 chrome://extensions/ 以安装更新。',
+      downloadStarted: '正在下载 CRX…',
     },
   };
   return dict[language()]?.[key] || dict.en[key] || key;
@@ -74,6 +78,13 @@ function setCheckButtonState({ checking = false } = {}) {
   button.setAttribute('aria-label', button.textContent);
 }
 
+function setUpdateHelp(message = '', visible = Boolean(message)) {
+  const help = $u('updateHelp');
+  if (!help) return;
+  help.textContent = message;
+  help.hidden = !visible;
+}
+
 function setUpdateState({ visible = false, version = '', url = '', releaseUrl = '', fileName = '', error = false } = {}) {
   const card = $u('updateCard');
   const title = $u('updateTitle');
@@ -84,6 +95,7 @@ function setUpdateState({ visible = false, version = '', url = '', releaseUrl = 
   if (!card || !title || !currentVersion || !latestVersion || !download || !release) return;
 
   setHidden(card, !visible && !error);
+  setUpdateHelp('', false);
   if (error) {
     card.hidden = false;
     card.classList.add('update-error');
@@ -205,20 +217,24 @@ async function downloadUpdate(button) {
   const url = button?.dataset?.url || '';
   if (!url || button?.disabled) return;
 
+  setUpdateHelp(text('downloadStarted'), true);
   try {
-    await chrome.downloads.download({
+    const downloadId = await chrome.downloads.download({
       url,
       filename: button.dataset.filename || undefined,
       saveAs: true,
       conflictAction: 'uniquify',
     });
+
+    if (typeof downloadId === 'number') {
+      setUpdateHelp(text('downloadReady'), true);
+      return downloadId;
+    }
   } catch (error) {
     console.debug('Chromium Cloud Sync CRX download failed:', error);
-    // Never open the CRX URL as a normal tab. Chromium may interpret a direct
-    // CRX navigation as an installation request and reject it with
-    // CRX_REQUIRED_PROOF_MISSING when the package lacks Google's publisher proof.
     setDownloadError(error);
   }
+  return null;
 }
 
 function setDownloadError(error) {
@@ -229,6 +245,7 @@ function setDownloadError(error) {
   card.classList.add('update-error');
   title.textContent = text('downloadFailed');
   detail.textContent = error?.message ? String(error.message) : '';
+  setUpdateHelp('', false);
 }
 
 function openExternalUrl(url) {
