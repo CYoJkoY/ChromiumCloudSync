@@ -8,7 +8,7 @@ for (const f of fs.readdirSync(root).filter(x=>x.endsWith('.js'))) {
   const { execFileSync } = await import('node:child_process');
   execFileSync(process.execPath,['--check',path.join(root,f)],{stdio:'inherit'});
 }
-for (const f of ['background.js','sync-core.js','legacy-crypto.js','options.js','popup.js','popup-i18n.js','extension-storage.js','history.js','guide.js','i18n.js','runtime.js','theme.js']) {
+for (const f of ['background.js','sync-core.js','legacy-crypto.js','options.js','popup.js','popup-i18n.js','extension-storage.js','extension-storage-layout.js','history.js','guide.js','i18n.js','runtime.js','theme.js']) {
   if (!fs.existsSync(path.join(root,f))) throw new Error(`Missing ${f}`);
 }
 const bg = fs.readFileSync(path.join(root,'background.js'),'utf8');
