@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -25,16 +25,25 @@ jobs:
 
     steps:
       - name: Checkout tagged source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: npm
+          node-version: 24
+          # This repository intentionally has no package-lock.json.
+          # setup-node caching requires a lockfile, so keep package-manager caching disabled.
+          package-manager-cache: false
+
+      - name: Verify Node.js and npm
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
 
       - name: Read and validate version
         id: version
@@ -88,11 +97,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unzip -t "${{ steps.zip.outputs.path }}"
+          ZIP="${{ steps.zip.outputs.path }}"
 
-          unzip -l "${{ steps.zip.outputs.path }}" | grep -E '(^|/)manifest\.json$'
-          unzip -l "${{ steps.zip.outputs.path }}" | grep -E '(^|/)background\.js$'
-          unzip -l "${{ steps.zip.outputs.path }}" | grep -E '(^|/)options\.html$'
+          unzip -t "$ZIP"
+          unzip -l "$ZIP" | grep -E '(^|/)manifest\.json$'
+          unzip -l "$ZIP" | grep -E '(^|/)background\.js$'
+          unzip -l "$ZIP" | grep -E '(^|/)options\.html$'
 
       - name: Install CRX3 packer
         run: npm install --global crx3@2.0.0
@@ -106,7 +116,7 @@ jobs:
 
           if [[ -z "${CRX_PRIVATE_KEY_B64:-}" ]]; then
             echo "Missing required repository secret: CRX_PRIVATE_KEY_B64"
-            echo "Generate one stable CRX signing key and store its base64 contents in GitHub Secrets."
+            echo "Create a stable CRX signing key and store its base64 contents in GitHub Secrets."
             exit 1
           fi
 
@@ -123,7 +133,7 @@ jobs:
           CRX="dist/chromium-cloud-sync-v${VERSION}.crx"
           KEY="$RUNNER_TEMP/chromium-cloud-sync.pem"
 
-          cat "$ZIP" | crx3 -p "$KEY" -o "$CRX"
+          crx3 -p "$KEY" -o "$CRX" "$ZIP"
           test -s "$CRX"
 
           MAGIC="$(head -c 4 "$CRX")"
@@ -138,7 +148,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum dist/*.zip dist/*.crx > dist/SHA256SUMS.txt
+          VERSION="${{ steps.version.outputs.version }}"
+          sha256sum \
+            "dist/chromium-cloud-sync-v${VERSION}.zip" \
+            "dist/chromium-cloud-sync-v${VERSION}.crx" \
+            > dist/SHA256SUMS.txt
           cat dist/SHA256SUMS.txt
 
       - name: Create GitHub Release
