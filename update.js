@@ -33,14 +33,30 @@ function language() {
 function text(key) {
   const dict = {
     en: {
-      available: 'Update available', latestState: 'Latest version', current: 'Current version', latest: 'Latest version',
-      download: 'Download update', upToDate: 'Already up to date', release: 'View release', check: 'Check for updates',
-      checking: 'Checking for updates…', failed: 'Update check failed',
+      available: 'Update available',
+      latestState: 'Latest version',
+      current: 'Current version',
+      latest: 'Latest version',
+      download: 'Download update',
+      upToDate: 'Already up to date',
+      release: 'View release',
+      check: 'Check for updates',
+      checking: 'Checking for updates…',
+      failed: 'Update check failed',
+      downloadFailed: 'Update download failed',
     },
     'zh-CN': {
-      available: '发现新版本', latestState: '当前已是最新版本', current: '当前版本', latest: '最新版本',
-      download: '下载更新', upToDate: '已为最新版本', release: '查看发布页', check: '检查更新',
-      checking: '正在检查更新…', failed: '检查更新失败',
+      available: '发现新版本',
+      latestState: '当前已是最新版本',
+      current: '当前版本',
+      latest: '最新版本',
+      download: '下载更新',
+      upToDate: '已为最新版本',
+      release: '查看发布页',
+      check: '检查更新',
+      checking: '正在检查更新…',
+      failed: '检查更新失败',
+      downloadFailed: '更新下载失败',
     },
   };
   return dict[language()]?.[key] || dict.en[key] || key;
@@ -120,7 +136,10 @@ async function fetchLatestRelease() {
 
 async function cacheRelease(info) {
   try {
-    await chrome.storage.local.set({ [UPDATE_CACHE_KEY]: info, [UPDATE_CHECK_KEY]: Date.now() });
+    await chrome.storage.local.set({
+      [UPDATE_CACHE_KEY]: info,
+      [UPDATE_CHECK_KEY]: Date.now(),
+    });
   } catch {}
 }
 
@@ -128,16 +147,16 @@ async function readCachedRelease() {
   try {
     const result = await chrome.storage.local.get([UPDATE_CACHE_KEY]);
     return result[UPDATE_CACHE_KEY] || null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function normalizeRelease(release) {
   const tag = String(release.tag_name || '').trim();
   const version = tag.replace(/^v/i, '');
   const assets = Array.isArray(release.assets) ? release.assets : [];
-  const asset = assets.find(item => /^chromium-cloud-sync-v\d+\.\d+\.\d+\.crx$/i.test(String(item.name || '')))
-    || assets.find(item => /\.crx$/i.test(String(item.name || '')))
-    || null;
+  const asset = assets.find(item => /\.crx$/i.test(String(item.name || ''))) || null;
 
   return {
     version,
@@ -190,13 +209,26 @@ async function downloadUpdate(button) {
     await chrome.downloads.download({
       url,
       filename: button.dataset.filename || undefined,
-      saveAs: false,
+      saveAs: true,
       conflictAction: 'uniquify',
     });
   } catch (error) {
     console.debug('Chromium Cloud Sync CRX download failed:', error);
-    void chrome.tabs.create({ url });
+    // Never open the CRX URL as a normal tab. Chromium may interpret a direct
+    // CRX navigation as an installation request and reject it with
+    // CRX_REQUIRED_PROOF_MISSING when the package lacks Google's publisher proof.
+    setDownloadError(error);
   }
+}
+
+function setDownloadError(error) {
+  const card = $u('updateCard');
+  const title = $u('updateTitle');
+  const detail = $u('updateLatestVersion');
+  if (!card || !title || !detail) return;
+  card.classList.add('update-error');
+  title.textContent = text('downloadFailed');
+  detail.textContent = error?.message ? String(error.message) : '';
 }
 
 function openExternalUrl(url) {
@@ -208,8 +240,11 @@ async function handleManualCheck() {
   const button = $u('checkUpdates');
   if (!button || button.disabled) return;
   setCheckButtonState({ checking: true });
-  try { await checkReleaseUpdate({ force: true }); }
-  finally { setCheckButtonState(); }
+  try {
+    await checkReleaseUpdate({ force: true });
+  } finally {
+    setCheckButtonState();
+  }
 }
 
 function initReleaseUpdate() {
@@ -218,6 +253,7 @@ function initReleaseUpdate() {
   if (!card) return;
 
   setCheckButtonState();
+
   $u('updateDownload')?.addEventListener('click', event => {
     event.preventDefault();
     void downloadUpdate($u('updateDownload'));
