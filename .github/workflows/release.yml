@@ -119,6 +119,7 @@ jobs:
             "theme.js"
             "runtime.js"
             "update.js"
+            "ui-overrides.css"
             "popup.html"
             "popup.js"
             "options.html"
