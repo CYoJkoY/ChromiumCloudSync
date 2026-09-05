@@ -133,9 +133,24 @@ async function getCloudBackups() {
   }));
 }
 
+async function extensionBackupEnabled() {
+  const s = await storageGet(['extensionBackupBackend']);
+  return s.extensionBackupBackend === 'github' || s.extensionBackupBackend === 'webdav';
+}
+
 async function renderExtensionBackups() {
+  const card=$('extensionBackupCard');
   const title=$('extensionBackupTitle'), desc=$('extensionBackupDescription'), list=$('extensionBackupList');
-  if(!title || !desc || !list) return;
+  if(!card || !title || !desc || !list) return;
+
+  // Do not render any backup UI when package backup is disabled.
+  if(!(await extensionBackupEnabled())){
+    card.hidden=true;
+    list.replaceChildren();
+    return;
+  }
+
+  card.hidden=false;
   title.textContent=backupText('title'); desc.textContent=backupText('description');
   list.replaceChildren();
   let local=[];
@@ -166,6 +181,7 @@ async function renderExtensionBackups() {
 }
 
 async function backupPackage(file, extensionId, extensionName) {
+  if(!(await extensionBackupEnabled())) return;
   if(!file || !/\.(crx|zip)$/i.test(file.name)) throw new Error(backupText('invalid'));
   if(file.size>BACKUP_MAX_BYTES) throw new Error(`${backupText('tooLarge')} (${formatBytes(file.size)})`);
   const bytes=new Uint8Array(await file.arrayBuffer());
@@ -177,6 +193,7 @@ async function backupPackage(file, extensionId, extensionName) {
 }
 
 async function downloadCloudBackup(item) {
+  if(!(await extensionBackupEnabled())) return;
   if(!item?.rawUrl) throw new Error(backupText('failed'));
   const s=await storageGet(['githubToken']); const response=await fetch(item.rawUrl,{headers:{Authorization:`Bearer ${s.githubToken}`,Accept:'application/vnd.github+json'}});
   if(!response.ok) throw new Error(`Download failed: HTTP ${response.status}`);
