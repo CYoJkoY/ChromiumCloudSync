@@ -25,6 +25,8 @@ function setStatus(state, title, meta = '', detail = '') {
   ui.icon.innerHTML = iconFor(state);
   ui.title.textContent = title;
   ui.meta.textContent = meta;
+  // Force real line breaks for the compact popup status metadata.
+  ui.meta.style.setProperty('white-space', 'pre-line', 'important');
   if (ui.detail) { ui.detail.hidden = !detail; ui.detail.textContent = detail || ''; }
 }
 
@@ -35,7 +37,11 @@ async function refresh() {
     const r = await request('status');
     const state = r.gistConfigured ? 'ok' : r.authenticated ? 'warn' : 'bad';
     const title = !r.authenticated ? i.t('needsToken') : !r.gistConfigured ? i.t('githubConnectedNoGist') : i.t('ready');
-    const meta = [r.gistId ? i.t('gistStatus', { gist: r.gistId }) : '', r.lastSyncAt ? `${i.t('lastSync')} ${new Date(r.lastSyncAt).toLocaleString()}` : '', `${i.t('autoSyncStatus')}: ${r.autoSyncEnabled ? i.t('enabled') : i.t('disabled')}`].filter(Boolean).join(' · ');
+    const meta = [
+      r.gistId ? i.t('gistStatus', { gist: r.gistId }) : '',
+      r.lastSyncAt ? `${i.t('lastSync')} ${new Date(r.lastSyncAt).toLocaleString()}` : '',
+      `${i.t('autoSyncStatus')}: ${r.autoSyncEnabled ? i.t('enabled') : i.t('disabled')}`
+    ].filter(Boolean).join('\n');
     setStatus(state, title, meta, '');
     ui.rev.textContent = `${i.t('revision')} ${r.syncRevision ?? 0} · ${i.t('conflictsLabel')} ${(r.conflictCount ?? 0)}`;
   } catch (error) { setError(error); }
