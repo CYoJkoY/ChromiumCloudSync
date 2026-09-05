@@ -141,15 +141,24 @@ body {
   margin-top: 12px;
 }
 
+/* Keep form controls and the action beneath them visually separated. */
+.sync-section .sync-field-group .btn-row {
+  margin-top: 10px;
+}
+
+.sync-section .sync-field-group .field + .btn-row {
+  margin-top: 10px;
+}
+
 .btn-row.primary-actions {
-  margin-top: 12px;
+  margin-top: 16px;
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
 }
 
 .block-action {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .action-feedback {
