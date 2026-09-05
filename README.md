@@ -10,7 +10,7 @@
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/actions"><img src="https://img.shields.io/badge/CI-GitHub_Actions-8A9E8B?style=flat-square&logo=github" alt="GitHub Actions"></a>
     <a href="manifest.json"><img src="https://img.shields.io/badge/Manifest-V3-7A8E8E?style=flat-square" alt="Manifest V3"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-9E8F7E?style=flat-square" alt="GPL-3.0-only"></a>
-    <img src="https://img.shields.io/badge/Platform-Chromium-8A9E8B?style=flat-square" alt="Chromium"></a>
+    <img src="https://img.shields.io/badge/Platform-Chromium-8A9E8B?style=flat-square" alt="Chromium">
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/releases"><img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?style=flat-square&color=7A8E8E" alt="Latest release"></a>
   </p>
 
@@ -18,21 +18,17 @@
     <a href="#-overview" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Overview</a> &nbsp;•&nbsp;
     <a href="#-core-features" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Features</a> &nbsp;•&nbsp;
     <a href="#-installation--setup" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Installation</a> &nbsp;•&nbsp;
-    <a href="#️-configuration--parameters" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Configuration</a> &nbsp;•&nbsp;
+    <a href="#-configuration--parameters" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Configuration</a> &nbsp;•&nbsp;
     <a href="#-implementation-highlights" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Implementation</a> &nbsp;•&nbsp;
     <a href="#-contributing--feedback" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Contributing</a>
   </p>
-</div>
-
-<div align="center">
-  <img src="assets/readme/hero.svg" alt="Chromium Cloud Sync" width="1" height="1">
 </div>
 
 ## 📖 Overview
 
 **Chromium Cloud Sync** is a Manifest V3 browser extension designed around a simple storage model: Chromium holds the local state, while a **private GitHub Gist** acts as the shared synchronization boundary.
 
-The extension synchronizes the browser state that is useful across machines without requiring a third-party hosted sync service. It can collect and restore tabs, windows, tab groups, bookmarks, installed extensions, and extension-local settings. A separate backup backend can also store third-party extension **CRX / ZIP** packages in a private GitHub repository or through WebDAV.
+The extension synchronizes useful browser state across machines without requiring a project-operated sync server. It can collect and restore tabs, windows, tab groups, bookmarks, installed extensions, and extension-local settings. A separate backup backend can also store third-party extension **CRX / ZIP** packages in a private GitHub repository or through WebDAV.
 
 The synchronization engine keeps a local base snapshot and uses that snapshot to distinguish unchanged data, remote-only changes, local-only changes, and real conflicts. It also maintains revisions, rollback history, deletion tombstones, and checksums so the sync process remains inspectable rather than behaving like a blind overwrite.
 
@@ -111,7 +107,7 @@ For development or when using the ZIP package:
 3. Choose **Load unpacked** and select the project directory.
 4. Open **Chromium Cloud Sync** from the extensions toolbar.
 
-The manifest currently targets **Manifest V3** and exposes the extension popup through `popup.html` and the configuration page through `options.html`.
+The manifest targets **Manifest V3** and exposes the extension popup through `popup.html` and the configuration page through `options.html`.
 
 ### 3. Configure GitHub Gist sync
 
@@ -291,7 +287,7 @@ A recent Node.js installation is used for validation and release packaging.
 npm run validate
 ```
 
-The validation script checks the manifest version, runs Node syntax checks across JavaScript files, verifies required source files, and protects a specific legacy-Gist cleanup invariant.
+The validation script checks the manifest version, JavaScript syntax, required source files, and several release-safety invariants.
 
 ### Build the release ZIP
 
@@ -299,23 +295,17 @@ The validation script checks the manifest version, runs Node syntax checks acros
 npm run build:zip
 ```
 
-This creates:
+The build script creates `dist/chromium-cloud-sync-v<version>.zip` from the extension source files.
 
-```text
-dist/chromium-cloud-sync-v<version>.zip
-```
+### Build and publish a release
 
-The release workflow additionally verifies ZIP integrity, checks required files, creates a signed CRX3 artifact, and generates SHA-256 checksums.
-
-### Release automation
-
-A GitHub Actions workflow is triggered by tags matching:
+The repository includes a GitHub Actions workflow that runs on tags matching:
 
 ```text
 vMAJOR.MINOR.PATCH
 ```
 
-The workflow validates that the tag version matches `manifest.json`, runs project validation, builds the ZIP, signs the CRX3 package, generates `SHA256SUMS.txt`, and publishes the GitHub Release.
+The release workflow validates the version, runs the project validator, builds the ZIP, verifies its contents, signs a CRX3 package with the `CRX_PRIVATE_KEY_B64` repository secret, generates SHA-256 checksums, and publishes a GitHub Release.
 
 > **Note**  
 > Signed CRX builds require the repository secret `CRX_PRIVATE_KEY_B64` to contain the base64-encoded CRX signing key.
@@ -354,11 +344,11 @@ See [`LICENSE`](LICENSE) for the complete license text.
 
 ## 💰 Support the Author
 
-如果这个项目提升了你的工作效率，不妨请作者喝杯咖啡 ☕
+If this project improves your workflow, consider buying the author a coffee.
 
 <div align="center">
   <a href="https://cyojkoy.github.io/Payment/">
-    <img src="https://img.shields.io/badge/👉_请我喝咖啡-9E8F7E?style=for-the-badge&logo=buy-me-a-coffee&logoColor=BEB8AE" alt="Support Me">
+    <img src="https://img.shields.io/badge/Support_the_Author-9E8F7E?style=for-the-badge&logo=buy-me-a-coffee&logoColor=BEB8AE" alt="Support the Author">
   </a>
 </div>
 
