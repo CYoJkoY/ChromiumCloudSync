@@ -1,4 +1,4 @@
-function setupChoiceSwitch(root,initialValue,onChange){if(!root)return;const bs=[...root.querySelectorAll('.choice-switch-option')];const set=v=>{root.dataset.active=(v==='en'||v==='dark')?'right':'left';bs.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.value===v)));};set(initialValue);bs.forEach(b=>b.addEventListener('click',async()=>{const v=b.dataset.value;try{await onChange(v);set(v);}catch(e){console.error(e);}}));}
+function setupChoiceSwitch(root,initialValue,onChange){if(!root)return;const bs=[...root.querySelectorAll('.choice-switch-option')];const set=v=>{root.dataset.active=(v==='en'||v==='dark')?'right':'left';bs.forEach(b=>{const active=b.dataset.value===v;b.setAttribute('aria-pressed',String(active));b.setAttribute('aria-checked',String(active));});};set(initialValue);bs.forEach(b=>b.addEventListener('click',async()=>{const v=b.dataset.value;try{await onChange(v);set(v);}catch(e){console.error(e);}}));}
 const i = CCSyncI18n;
 const { request } = CCSyncRuntime;
 const historyEl = document.getElementById('history');
@@ -7,8 +7,6 @@ const statusEl = document.getElementById('status');
 const langEl = document.getElementById('language');
 const themeEl = document.getElementById('theme');
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-
 function fmt(s) { try { return new Date(s).toLocaleString(); } catch { return s || ''; } }
 async function load() {
   try {
@@ -38,7 +36,7 @@ async function load() {
     if (!unresolved.length) conflictsEl.innerHTML = `<div class="empty">${i.t('noConflicts')}</div>`;
     for (const c of unresolved.slice(-50).reverse()) {
       const div = document.createElement('div'); div.className = 'note danger';
-      div.innerHTML = `<div><b>${esc(c.collection || c.type || 'conflict')}</b> · ${esc(c.field || '')}</div><div class="mono">${esc(c.syncId || '')} · ${esc(c.at || '')}</div><pre style="white-space:pre-wrap;overflow:auto;margin:8px 0 0;color:inherit">${esc(JSON.stringify({base:c.base,local:c.local,remote:c.remote}, null, 2))}</pre>`;
+      div.innerHTML = `<div><b>${esc(c.collection || c.type || 'conflict')}</b> · ${esc(c.field || '')}</div><div class="mono">${esc(c.syncId || '')} · ${esc(c.at || '')}</div><pre class="conflict-json">${esc(JSON.stringify({base:c.base,local:c.local,remote:c.remote}, null, 2))}</pre>`;
       conflictsEl.append(div);
     }
     statusEl.textContent = [i.t('gistStatus',{gist:r.gistId||i.t('notConfigured')}), i.t('revisionStatus',{revision:r.revision??0}), i.t('historyCount',{count:list.length}), i.t('unresolvedCount',{count:unresolved.length})].join('\n');
