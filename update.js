@@ -1,9 +1,9 @@
 const REPO_API = 'https://api.github.com/repos/CYoJkoY/ChromiumCloudSync/releases/latest';
 const REPO_URL = 'https://github.com/CYoJkoY/ChromiumCloudSync';
 const UPDATE_CHECK_TIMEOUT_MS = 8000;
-const UPDATE_CACHE_KEY = 'releaseUpdateInfo';
-const UPDATE_CHECK_KEY = 'releaseUpdateLastCheckedAt';
-const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const UPDATE_CACHE_KEY = 'releaseUpdateInfoV2';
+const UPDATE_CHECK_KEY = 'releaseUpdateLastCheckedAtV2';
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 const $u = id => document.getElementById(id);
 
@@ -40,6 +40,8 @@ function text(key) {
       download: 'Download update',
       upToDate: 'Already up to date',
       release: 'View release',
+      check: 'Check for updates',
+      checking: 'Checking for updates…',
       failed: 'Update check failed',
     },
     'zh-CN': {
@@ -50,6 +52,8 @@ function text(key) {
       download: '下载更新',
       upToDate: '已为最新版本',
       release: '查看发布页',
+      check: '检查更新',
+      checking: '正在检查更新…',
       failed: '检查更新失败',
     },
   };
@@ -58,6 +62,14 @@ function text(key) {
 
 function setHidden(element, hidden) {
   if (element) element.hidden = hidden;
+}
+
+function setCheckButtonState({ checking = false } = {}) {
+  const button = $u('checkUpdates');
+  if (!button) return;
+  button.disabled = checking;
+  button.textContent = text(checking ? 'checking' : 'check');
+  button.setAttribute('aria-label', button.textContent);
 }
 
 function setUpdateState({ visible = false, version = '', url = '', releaseUrl = '', fileName = '', error = false } = {}) {
@@ -107,7 +119,7 @@ async function fetchLatestRelease() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
   try {
-    const response = await fetch(`${REPO_API}?_=${Date.now()}`, {
+    const response = await fetch(REPO_API, {
       method: 'GET',
       cache: 'no-store',
       headers: { Accept: 'application/vnd.github+json' },
@@ -159,19 +171,13 @@ function normalizeRelease(release) {
   };
 }
 
-function shouldUseCache(cached, lastCheckedAt, currentVersion) {
+function shouldUseCache(cached, lastCheckedAt) {
   if (!cached || !parseVersion(cached.version)) return false;
-  const age = Date.now() - lastCheckedAt;
-  if (age >= UPDATE_CHECK_INTERVAL_MS) return false;
-
-  // A cached version older than the installed version is definitely stale.
-  // Do not let an old cache such as v1.5.15 mask a current v1.5.21 install.
-  if (compareVersions(cached.version, currentVersion) < 0) return false;
-  return true;
+  if (!lastCheckedAt) return false;
+  return Date.now() - lastCheckedAt < UPDATE_CHECK_INTERVAL_MS;
 }
 
 async function checkReleaseUpdate({ force = false } = {}) {
-  const currentVersion = chrome.runtime.getManifest().version;
   const cached = await readCachedRelease();
   let lastCheckedAt = 0;
   try {
@@ -179,8 +185,7 @@ async function checkReleaseUpdate({ force = false } = {}) {
     lastCheckedAt = Number(result[UPDATE_CHECK_KEY] || 0);
   } catch {}
 
-  const useCache = !force && shouldUseCache(cached, lastCheckedAt, currentVersion);
-  if (useCache) {
+  if (!force && shouldUseCache(cached, lastCheckedAt)) {
     setUpdateState({ visible: true, ...cached });
     return cached;
   }
@@ -221,9 +226,23 @@ function openExternalUrl(url) {
   void chrome.tabs.create({ url });
 }
 
+async function handleManualCheck() {
+  const button = $u('checkUpdates');
+  if (!button || button.disabled) return;
+  setCheckButtonState({ checking: true });
+  try {
+    await checkReleaseUpdate({ force: true });
+  } finally {
+    setCheckButtonState();
+  }
+}
+
 function initReleaseUpdate() {
   const card = $u('updateCard');
+  const checkButton = $u('checkUpdates');
   if (!card) return;
+
+  setCheckButtonState();
 
   $u('updateDownload')?.addEventListener('click', event => {
     event.preventDefault();
@@ -233,12 +252,14 @@ function initReleaseUpdate() {
     event.preventDefault();
     if (!$u('updateRelease')?.disabled) openExternalUrl($u('updateRelease')?.dataset?.url);
   });
+  checkButton?.addEventListener('click', () => { void handleManualCheck(); });
 
   let lastLanguage = language();
   const observer = new MutationObserver(() => {
     const nextLanguage = language();
     if (nextLanguage === lastLanguage) return;
     lastLanguage = nextLanguage;
+    setCheckButtonState({ checking: Boolean($u('checkUpdates')?.disabled) });
     const cached = window.CCSyncUpdate?.getCachedState?.();
     if (cached) setUpdateState({ visible: true, ...cached });
   });
