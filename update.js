@@ -33,28 +33,14 @@ function language() {
 function text(key) {
   const dict = {
     en: {
-      available: 'Update available',
-      latestState: 'Latest version',
-      current: 'Current version',
-      latest: 'Latest version',
-      download: 'Download update',
-      upToDate: 'Already up to date',
-      release: 'View release',
-      check: 'Check for updates',
-      checking: 'Checking for updates…',
-      failed: 'Update check failed',
+      available: 'Update available', latestState: 'Latest version', current: 'Current version', latest: 'Latest version',
+      download: 'Download update', upToDate: 'Already up to date', release: 'View release', check: 'Check for updates',
+      checking: 'Checking for updates…', failed: 'Update check failed',
     },
     'zh-CN': {
-      available: '发现新版本',
-      latestState: '当前已是最新版本',
-      current: '当前版本',
-      latest: '最新版本',
-      download: '下载更新',
-      upToDate: '已为最新版本',
-      release: '查看发布页',
-      check: '检查更新',
-      checking: '正在检查更新…',
-      failed: '检查更新失败',
+      available: '发现新版本', latestState: '当前已是最新版本', current: '当前版本', latest: '最新版本',
+      download: '下载更新', upToDate: '已为最新版本', release: '查看发布页', check: '检查更新',
+      checking: '正在检查更新…', failed: '检查更新失败',
     },
   };
   return dict[language()]?.[key] || dict.en[key] || key;
@@ -134,10 +120,7 @@ async function fetchLatestRelease() {
 
 async function cacheRelease(info) {
   try {
-    await chrome.storage.local.set({
-      [UPDATE_CACHE_KEY]: info,
-      [UPDATE_CHECK_KEY]: Date.now(),
-    });
+    await chrome.storage.local.set({ [UPDATE_CACHE_KEY]: info, [UPDATE_CHECK_KEY]: Date.now() });
   } catch {}
 }
 
@@ -145,27 +128,22 @@ async function readCachedRelease() {
   try {
     const result = await chrome.storage.local.get([UPDATE_CACHE_KEY]);
     return result[UPDATE_CACHE_KEY] || null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function normalizeRelease(release) {
   const tag = String(release.tag_name || '').trim();
-  const tagVersion = tag.replace(/^v/i, '');
+  const version = tag.replace(/^v/i, '');
   const assets = Array.isArray(release.assets) ? release.assets : [];
   const asset = assets.find(item => /^chromium-cloud-sync-v\d+\.\d+\.\d+\.crx$/i.test(String(item.name || '')))
     || assets.find(item => /\.crx$/i.test(String(item.name || '')))
     || null;
-  const assetName = String(asset?.name || '');
-  const fileMatch = assetName.match(/(?:^|-)v?(\d+\.\d+\.\d+)\.crx$/i);
-  const version = fileMatch?.[1] || tagVersion;
 
   return {
     version,
     url: asset?.browser_download_url || '',
     releaseUrl: release.html_url || REPO_URL,
-    fileName: assetName,
+    fileName: String(asset?.name || ''),
     name: release.name || tag,
     publishedAt: release.published_at || '',
   };
@@ -230,11 +208,8 @@ async function handleManualCheck() {
   const button = $u('checkUpdates');
   if (!button || button.disabled) return;
   setCheckButtonState({ checking: true });
-  try {
-    await checkReleaseUpdate({ force: true });
-  } finally {
-    setCheckButtonState();
-  }
+  try { await checkReleaseUpdate({ force: true }); }
+  finally { setCheckButtonState(); }
 }
 
 function initReleaseUpdate() {
@@ -243,7 +218,6 @@ function initReleaseUpdate() {
   if (!card) return;
 
   setCheckButtonState();
-
   $u('updateDownload')?.addEventListener('click', event => {
     event.preventDefault();
     void downloadUpdate($u('updateDownload'));
