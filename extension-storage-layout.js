@@ -58,6 +58,23 @@
     if(status&&!activeStorage)status.hidden=true;
   }
 
+  async function persistDisabledBackend(){
+    const backend=$('extensionStorageBackend');
+    if(!backend||backend.value!=='disabled')return;
+    // "Disabled" intentionally has no Save button. Persist this selection
+    // immediately so the popup and background code stop exposing file backup UI.
+    await CCSyncRuntime.storageSet({
+      extensionBackupBackend:'disabled',
+      extensionBackupGithubRepo:'',
+      extensionBackupGithubBranch:'',
+      extensionBackupGithubFolder:'',
+      extensionBackupWebdavUrl:'',
+      extensionBackupWebdavFolder:'',
+      extensionBackupWebdavUsername:'',
+      extensionBackupWebdavPassword:''
+    });
+  }
+
   function move(){
     const host=$('extensionStorageHost'),card=$('extensionStorageSettings');
     if(host&&card&&card.parentElement!==host){
@@ -74,8 +91,12 @@
     const backend=$('extensionStorageBackend');
     if(!backend||backend.dataset.layoutBound==='true')return;
     backend.dataset.layoutBound='true';
-    backend.addEventListener('change',syncVisibility);
+    backend.addEventListener('change',()=>{
+      syncVisibility();
+      if(backend.value==='disabled')void persistDisabledBackend().catch(error=>console.error(error));
+    });
     syncVisibility();
+    if(backend.value==='disabled')void persistDisabledBackend().catch(error=>console.error(error));
   }
 
   function init(){
