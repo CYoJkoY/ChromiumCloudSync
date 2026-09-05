@@ -30,34 +30,18 @@ function language() {
   }
 }
 
-function text(key, values = {}) {
+function text(key) {
   const dict = {
     en: {
-      available: 'Update available',
-      current: 'Current version',
-      latest: 'Latest version',
-      download: 'Download update',
-      release: 'View release',
-      checking: 'Checking for updates…',
-      failed: 'Update check failed',
-      upToDate: 'You are up to date',
-      releaseNotes: 'Release notes',
+      available: 'Update available', current: 'Current version', latest: 'Latest version',
+      download: 'Download update', release: 'View release', failed: 'Update check failed',
     },
     'zh-CN': {
-      available: '发现新版本',
-      current: '当前版本',
-      latest: '最新版本',
-      download: '下载更新',
-      release: '查看发布页',
-      checking: '正在检查更新…',
-      failed: '检查更新失败',
-      upToDate: '当前已是最新版本',
-      releaseNotes: '更新说明',
+      available: '发现新版本', current: '当前版本', latest: '最新版本',
+      download: '下载更新', release: '查看发布页', failed: '检查更新失败',
     },
   };
-  let value = dict[language()]?.[key] || dict.en[key] || key;
-  for (const [name, replacement] of Object.entries(values)) value = value.replaceAll(`{${name}}`, String(replacement));
-  return value;
+  return dict[language()]?.[key] || dict.en[key] || key;
 }
 
 function setHidden(element, hidden) {
@@ -87,10 +71,12 @@ function setUpdateState({ visible = false, version = '', url = '', releaseUrl = 
   if (!visible) return;
   title.textContent = `${text('available')} · v${version}`;
   meta.textContent = `${text('current')}: v${chrome.runtime.getManifest().version} · ${text('latest')}: v${version}`;
-  download.href = url || releaseUrl || REPO_URL;
+  download.href = url || '#';
   release.href = releaseUrl || REPO_URL;
   download.hidden = !url;
   release.hidden = false;
+  download.setAttribute('aria-label', `${text('download')} v${version}`);
+  release.setAttribute('aria-label', `${text('release')} v${version}`);
 }
 
 async function fetchLatestRelease() {
@@ -98,10 +84,8 @@ async function fetchLatestRelease() {
   const timer = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
   try {
     const response = await fetch(REPO_API, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: { Accept: 'application/vnd.github+json' },
-      signal: controller.signal,
+      method: 'GET', cache: 'no-store',
+      headers: { Accept: 'application/vnd.github+json' }, signal: controller.signal,
     });
     if (!response.ok) throw new Error(`GitHub release API returned HTTP ${response.status}`);
     return await response.json();
@@ -111,18 +95,14 @@ async function fetchLatestRelease() {
 }
 
 async function cacheRelease(info) {
-  try {
-    await chrome.storage.local.set({ [UPDATE_CACHE_KEY]: info, [UPDATE_CHECK_KEY]: Date.now() });
-  } catch {}
+  try { await chrome.storage.local.set({ [UPDATE_CACHE_KEY]: info, [UPDATE_CHECK_KEY]: Date.now() }); } catch {}
 }
 
 async function readCachedRelease() {
   try {
     const result = await chrome.storage.local.get([UPDATE_CACHE_KEY]);
     return result[UPDATE_CACHE_KEY] || null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function checkReleaseUpdate({ force = false } = {}) {
@@ -134,10 +114,10 @@ async function checkReleaseUpdate({ force = false } = {}) {
     lastCheckedAt = Number(result[UPDATE_CHECK_KEY] || 0);
   } catch {}
 
-  const shouldFetch = force || !cached || (Date.now() - lastCheckedAt >= UPDATE_CHECK_INTERVAL_MS);
+  const shouldFetch = force || !cached || Date.now() - lastCheckedAt >= UPDATE_CHECK_INTERVAL_MS;
   if (!shouldFetch) {
-    const available = compareVersions(cached.version, currentVersion) > 0;
-    setUpdateState(available ? { visible: true, ...cached } : {});
+    if (compareVersions(cached.version, currentVersion) > 0) setUpdateState({ visible: true, ...cached });
+    else setUpdateState({});
     return cached;
   }
 
@@ -146,7 +126,8 @@ async function checkReleaseUpdate({ force = false } = {}) {
     const tag = String(release.tag_name || '').trim();
     const version = tag.replace(/^v/i, '');
     const asset = Array.isArray(release.assets)
-      ? release.assets.find(item => /\.crx$/i.test(String(item.name || '')))
+      ? release.assets.find(item => /^chromium-cloud-sync-v\d+\.\d+\.\d+\.crx$/i.test(String(item.name || '')))
+        || release.assets.find(item => /\.crx$/i.test(String(item.name || '')))
       : null;
     const info = {
       version,
@@ -161,15 +142,13 @@ async function checkReleaseUpdate({ force = false } = {}) {
     return info;
   } catch (error) {
     console.debug('Chromium Cloud Sync update check failed:', error);
-    if (cached && compareVersions(cached.version, currentVersion) > 0) {
-      setUpdateState({ visible: true, ...cached });
-    }
+    if (cached && compareVersions(cached.version, currentVersion) > 0) setUpdateState({ visible: true, ...cached });
     return cached;
   }
 }
 
 function openExternalUrl(url) {
-  if (!url) return;
+  if (!url || url === '#') return;
   void chrome.tabs.create({ url });
 }
 
@@ -178,13 +157,11 @@ function initReleaseUpdate() {
   if (!card) return;
   $u('updateDownload')?.addEventListener('click', event => {
     event.preventDefault();
-    const target = $u('updateDownload')?.href;
-    if (target && target !== '#') openExternalUrl(target);
+    openExternalUrl($u('updateDownload')?.href);
   });
   $u('updateRelease')?.addEventListener('click', event => {
     event.preventDefault();
-    const target = $u('updateRelease')?.href;
-    if (target && target !== '#') openExternalUrl(target);
+    openExternalUrl($u('updateRelease')?.href);
   });
   void checkReleaseUpdate();
 }
