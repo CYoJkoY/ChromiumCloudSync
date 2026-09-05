@@ -9,7 +9,7 @@ fs.rmSync(out,{recursive:true,force:true});
 fs.mkdirSync(out,{recursive:true});
 const zip = path.join(out,`chromium-cloud-sync-v${version}.zip`);
 const entries = [
-  'manifest.json','background.js','legacy-crypto.js','sync-core.js','i18n.js','theme.js','runtime.js','update.js','ui-overrides.css',
+  'manifest.json','background.js','legacy-crypto.js','sync-core.js','i18n.js','theme.js','runtime.js','update.js','extension-storage.js','ui-overrides.css',
   'popup.html','popup.js','options.html','options.js','history.html','history.js','guide.html','guide.js','ui.css',
   '_locales','icons'
 ];
