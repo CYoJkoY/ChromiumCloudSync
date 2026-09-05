@@ -118,6 +118,7 @@ jobs:
             "i18n.js"
             "theme.js"
             "runtime.js"
+            "update.js"
             "popup.html"
             "popup.js"
             "options.html"
@@ -171,7 +172,6 @@ jobs:
             | base64 --decode > "$RUNNER_TEMP/chromium-cloud-sync.pem"
 
           chmod 600 "$RUNNER_TEMP/chromium-cloud-sync.pem"
-
           test -s "$RUNNER_TEMP/chromium-cloud-sync.pem"
 
       - name: Build signed CRX3
@@ -184,8 +184,6 @@ jobs:
           CRX="dist/chromium-cloud-sync-v${VERSION}.crx"
           KEY="$RUNNER_TEMP/chromium-cloud-sync.pem"
 
-          # crx3 v2.x accepts an existing extension ZIP through stdin.
-          # The ZIP must contain manifest.json at its root.
           cat "$ZIP" | crx3 -p "$KEY" -o "$CRX"
 
           test -s "$CRX"
