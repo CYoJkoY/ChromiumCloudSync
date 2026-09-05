@@ -1,11 +1,10 @@
 <div align="center" style="background-color: #1E1E1E; padding: 40px 20px; border-radius: 28px;">
   <div style="background: #2A2A2A; border-radius: 36px; padding: 28px 18px; margin-bottom: 28px;">
-    <img src="assets/readme/hero.svg" alt="Chromium Cloud Sync architecture" width="960">
+    <img src="assets/readme/hero.svg?v=2" alt="Chromium Cloud Sync architecture" width="960">
     <h1 style="color: #E6DED6; font-weight: 350; letter-spacing: 2px; margin: 18px 0 8px;">Chromium Cloud Sync</h1>
     <p style="color: #BEB8AE; font-size: 1.2em; max-width: 720px; margin: 0 auto;">A Chromium extension for keeping tabs, tab groups, bookmarks, installed extensions, and extension settings synchronized through your own GitHub Gist.</p>
     <p style="color: #8A9E8B; font-size: 0.95em; margin-top: 12px;">Manifest V3 · JavaScript · GitHub Gist · WebDAV · Local-first merge &amp; history</p>
   </div>
-
   <p>
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/actions"><img src="https://img.shields.io/badge/CI-GitHub_Actions-8A9E8B?style=flat-square&logo=github" alt="GitHub Actions"></a>
     <a href="manifest.json"><img src="https://img.shields.io/badge/Manifest-V3-7A8E8E?style=flat-square" alt="Manifest V3"></a>
@@ -13,7 +12,6 @@
     <img src="https://img.shields.io/badge/Platform-Chromium-8A9E8B?style=flat-square" alt="Chromium">
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/releases"><img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?style=flat-square&color=7A8E8E" alt="Latest release"></a>
   </p>
-
   <p style="word-spacing: 6px; margin-top: 20px;">
     <a href="#-overview" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Overview</a> &nbsp;•&nbsp;
     <a href="#-core-features" style="color: #8A9E8B; text-decoration: none; border-bottom: 1px dotted #5A6B6B;">Features</a> &nbsp;•&nbsp;
@@ -39,56 +37,36 @@ The synchronization engine keeps a local base snapshot and uses that snapshot to
 
 ## ✨ Core Features
 
-<div style="background: #2A2A2A; border-radius: 20px; padding: 16px; margin: 16px 0;">
-  <h3 style="margin-top: 0; color: #D6D2CC;">🗂️ Browser State Sync</h3>
-  <ul style="color: #BEB8AE;">
-    <li>Synchronize open <code>tabs</code>, <code>windows</code>, and <code>tab groups</code>.</li>
-    <li>Synchronize <code>bookmarks</code> using stable local sync IDs so browser-generated IDs do not become the cloud identity.</li>
-    <li>Synchronize installed third-party extensions and their metadata.</li>
-    <li>Synchronize extension-local settings while excluding Chromium Cloud Sync's own control state.</li>
-  </ul>
-</div>
+### 🗂️ Browser State Sync
+- Synchronize open `tabs`, `windows`, and `tab groups`.
+- Synchronize `bookmarks` using stable local sync IDs.
+- Synchronize installed third-party extensions and their metadata.
+- Synchronize extension-local settings while excluding Chromium Cloud Sync's own control state.
 
-<div style="background: #2A2A2A; border-radius: 20px; padding: 16px; margin: 16px 0;">
-  <h3 style="margin-top: 0; color: #D6D2CC;">🔄 Deterministic Merge &amp; Conflict Handling</h3>
-  <ul style="color: #BEB8AE;">
-    <li>Three-way merge against a stored base snapshot instead of blindly replacing local data.</li>
-    <li>Field-level policies distinguish <code>latest</code>, <code>maxVersion</code>, and manual conflict cases.</li>
-    <li>Deletion tombstones prevent removed entities from silently reappearing during multi-device synchronization.</li>
-    <li>Unresolved conflicts remain visible in the history interface instead of being hidden.</li>
-  </ul>
-</div>
+### 🔄 Deterministic Merge &amp; Conflict Handling
+- Three-way merge against a stored base snapshot.
+- Field-level `latest`, `maxVersion`, and manual conflict policies.
+- Deletion tombstones prevent removed entities from silently reappearing.
+- Unresolved conflicts remain visible in the history interface.
 
-<div style="background: #2A2A2A; border-radius: 20px; padding: 16px; margin: 16px 0;">
-  <h3 style="margin-top: 0; color: #D6D2CC;">🕘 Revision History &amp; Rollback</h3>
-  <ul style="color: #BEB8AE;">
-    <li>Keep a local index of recent synchronization revisions.</li>
-    <li>Inspect synchronization history from a dedicated history page.</li>
-    <li>Rollback to a previous GitHub revision when a synchronization result is undesirable.</li>
-    <li>Keep the latest 30 history entries in the local history index.</li>
-  </ul>
-</div>
+### 🕘 Revision History &amp; Rollback
+- Keep a local index of recent synchronization revisions.
+- Inspect synchronization history from a dedicated history page.
+- Roll back to a previous GitHub revision.
+- Keep the latest 30 history entries in the local history index.
 
-<div style="background: #2A2A2A; border-radius: 20px; padding: 16px; margin: 16px 0;">
-  <h3 style="margin-top: 0; color: #D6D2CC;">📦 Third-party Extension Package Storage</h3>
-  <ul style="color: #BEB8AE;">
-    <li>Store extension <code>.crx</code> and <code>.zip</code> packages outside the synchronization Gist.</li>
-    <li>Use a <strong>private GitHub repository</strong> or <strong>WebDAV</strong> as the package backend.</li>
-    <li>Track package hashes, versions, metadata, and storage paths.</li>
-    <li>Browser-side GitHub uploads are rejected above <code>95 MB</code>; larger artifacts are better suited to Git LFS or another storage strategy.</li>
-    <li>Package installation is intentionally a manual user action.</li>
-  </ul>
-</div>
+### 📦 Third-party Extension Package Storage
+- Store extension `.crx` and `.zip` packages outside the synchronization Gist.
+- Use a **private GitHub repository** or **WebDAV** as the package backend.
+- Track package hashes, versions, metadata, and storage paths.
+- Browser-side GitHub uploads are rejected above `95 MB`.
+- Package installation remains a manual user action.
 
-<div style="background: #2A2A2A; border-radius: 20px; padding: 16px; margin: 16px 0;">
-  <h3 style="margin-top: 0; color: #D6D2CC;">🌐 Localized &amp; Theme-aware UI</h3>
-  <ul style="color: #BEB8AE;">
-    <li>Ships with Simplified Chinese and English locale files.</li>
-    <li>Supports explicit light and dark themes.</li>
-    <li>Provides dedicated popup, settings, user guide, and synchronization history pages.</li>
-    <li>Theme controls respect <code>prefers-reduced-motion</code> for users who disable animation.</li>
-  </ul>
-</div>
+### 🌐 Localized &amp; Theme-aware UI
+- Simplified Chinese and English locale files.
+- Explicit light and dark themes.
+- Dedicated popup, settings, user guide, and synchronization history pages.
+- Reduced-motion support for theme transitions.
 
 ---
 
@@ -112,8 +90,6 @@ The manifest targets **Manifest V3** and exposes the extension popup through `po
 ### 3. Configure GitHub Gist sync
 
 Create a GitHub access token suitable for the Gist operations you intend to use, then configure it in **Settings**.
-
-The extension supports:
 
 ```text
 GitHub Token → Validate token
@@ -180,40 +156,24 @@ GitHub package storage uses the Contents API and rejects packages larger than `9
 
 The core merge engine in `sync-core.js` compares **base**, **local**, and **remote** snapshots. If one side is unchanged from the base, the other side wins without producing an artificial conflict. When both sides changed the same field, the merge policy determines whether the value is resolved automatically or exposed as a manual conflict.
 
-The current policies include:
-
-```text
-Tabs        → title/latest, pinned/latest, active/latest, index/latest, group/latest
-Bookmarks   → title/latest, parentSyncId/latest, index/latest
-Extensions  → enabled/latest, version/maxVersion, updateUrl/latest
-Groups      → title/latest, color/latest, collapsed/latest
-Windows     → live device state, never blindly merged across device identities
-```
-
 ### Stable synchronization identities
 
 Browser-local tab, window, group, and bookmark IDs are not treated as global identities. The extension keeps local ID maps in `chrome.storage.local` and assigns stable synchronization IDs such as `tab-*`, `window-*`, `group-*`, and `bookmark-*`.
 
-This allows the synchronization layer to reason about the same logical entity across browser sessions without relying on Chromium's ephemeral numeric IDs.
-
 ### Tombstones &amp; deletion tracking
 
-Deleted entities are represented by tombstones containing the collection, sync ID, deletion timestamp, and revision. Tombstones are merged across sources and applied after state aggregation so a deletion can survive a later merge instead of being recreated accidentally.
+Deleted entities are represented by tombstones containing the collection, sync ID, deletion timestamp, and revision. Tombstones are merged across sources and applied after state aggregation.
 
 ### Backward compatibility
 
-The background worker can read several historical Gist layouts, including the older encrypted `current.enc.json` format. Legacy state is normalized into the current schema before the synchronization engine processes it.
+The background worker can read several historical Gist layouts, including the older encrypted `current.enc.json` format. Legacy state is normalized into the current schema before synchronization processing.
 
 ### GitHub Gist as the synchronization boundary
-
-The current Gist format consists primarily of:
 
 ```text
 manifest.json   → schema / format / current file / revision metadata
 current.json    → current normalized synchronization state
 ```
-
-Older files such as `current.enc.json`, legacy history files, and the previous `chromium-cloud-sync.json` layout are cleaned up when the extension updates an existing Gist.
 
 ---
 
@@ -270,9 +230,6 @@ ChromiumCloudSync/
 └── 📄 README.md
 ```
 
-> **Note**  
-> The structure above intentionally focuses on source, UI, localization, build, and release files rather than generated distribution contents.
-
 ---
 
 ## 🛠️ Development
@@ -287,25 +244,13 @@ A recent Node.js installation is used for validation and release packaging.
 npm run validate
 ```
 
-The validation script checks the manifest version, JavaScript syntax, required source files, and several release-safety invariants.
-
 ### Build the release ZIP
 
 ```bash
 npm run build:zip
 ```
 
-The build script creates `dist/chromium-cloud-sync-v<version>.zip` from the extension source files.
-
-### Build and publish a release
-
-The repository includes a GitHub Actions workflow that runs on tags matching:
-
-```text
-vMAJOR.MINOR.PATCH
-```
-
-The release workflow validates the version, runs the project validator, builds the ZIP, verifies its contents, signs a CRX3 package with the `CRX_PRIVATE_KEY_B64` repository secret, generates SHA-256 checksums, and publishes a GitHub Release.
+The release workflow validates the project, builds the ZIP package, verifies its contents, creates a signed CRX3 package, generates SHA-256 checksums, and publishes the release assets.
 
 > **Note**  
 > Signed CRX builds require the repository secret `CRX_PRIVATE_KEY_B64` to contain the base64-encoded CRX signing key.
@@ -314,7 +259,7 @@ The release workflow validates the version, runs the project validator, builds t
 
 ## 🔐 Security Notes
 
-Chromium Cloud Sync deliberately keeps the synchronization backend under the user's own GitHub account rather than introducing a project-operated sync server.
+Chromium Cloud Sync keeps the synchronization backend under the user's own GitHub account rather than introducing a project-operated sync server.
 
 However, this does **not** make all synchronized data end-to-end encrypted. In the current format, the sync payload is written to a private Gist as JSON. Access to the Gist and the configured GitHub token therefore matters directly to confidentiality.
 
