@@ -1,7 +1,7 @@
 <div align="center">
   <img src="icons/icon128.png" width="96" height="96" alt="Chromium Cloud Sync icon">
   <h1>Chromium Cloud Sync</h1>
-  <p>A lightweight Chromium browser sync extension powered by your own GitHub Gist.</p>
+  <p>Browser synchronization built around GitHub Gist, without a dedicated sync server.</p>
 
   <a href="https://github.com/CYoJkoY/ChromiumCloudSync/actions/workflows/release.yml"><img src="https://github.com/CYoJkoY/ChromiumCloudSync/actions/workflows/release.yml/badge.svg?branch=main" alt="Release workflow"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/CYoJkoY/ChromiumCloudSync" alt="License"></a>
@@ -9,141 +9,127 @@
   <a href="https://github.com/CYoJkoY/ChromiumCloudSync"><img src="https://img.shields.io/github/stars/CYoJkoY/ChromiumCloudSync?style=flat" alt="GitHub stars"></a>
 </div>
 
-Chromium Cloud Sync is a lightweight, transparent Chromium browser synchronization extension built around user-controlled storage.
+I built Chromium Cloud Sync because I wanted browser synchronization without introducing another account, another backend, or another opaque service into the stack.
 
-Instead of operating its own synchronization server, the extension uses a **GitHub Gist selected by you** as the cloud synchronization store. Different Chromium browsers read the same Gist state, merge it with their local base snapshot, and write a new Gist revision. GitHub Gist's native revision history provides synchronization history and rollback.
+The idea is deliberately straightforward: **GitHub Gist is the storage layer, Chromium is the client, and the extension is responsible for collecting, merging, and restoring state.** There is no synchronization server operated by this project.
 
-## Why Chromium Cloud Sync
+This is not an attempt to reproduce every feature of a vendor browser account. It is a focused synchronization tool for people who want control over where their browser state is stored and who are comfortable managing their own GitHub access.
 
-Traditional browser synchronization often requires a vendor account or a dedicated third-party synchronization service. Chromium Cloud Sync takes a different approach: **you control the storage, the synchronization path stays short, and the project does not operate a service that stores your synchronization data.**
+## What I Am Building
 
-The design follows a few principles:
+The project is centered around one shared synchronization state.
 
-- **Your Gist, your storage:** the extension communicates directly with your selected GitHub Gist.
-- **No custom sync backend:** synchronized browser data is not routed through a project-owned server.
-- **One shared synchronization state:** the current model does not maintain a device registry or device identity system.
-- **GitHub revisions as history:** the extension does not create a separate history database or history file tree.
-- **User-controlled automation:** automatic synchronization is disabled by default and uses a 5-minute default interval when enabled.
-- **Transparent cloud data:** the current synchronization payload is stored as regular JSON without application-layer encryption.
-
-## Features
-
-| Feature | Description |
-| --- | --- |
-| Tab synchronization | Synchronize URLs, titles, pinned state, window state, and related tab information |
-| Tab group synchronization | Synchronize group title, color, and collapsed state |
-| Bookmark synchronization | Synchronize bookmark structure, titles, URLs, and ordering, with local bookmark tree merging |
-| Extension inventory synchronization | Record installed extensions to identify extensions missing on another browser |
-| Extension settings synchronization | Synchronize selected extension-local settings that the browser allows the extension to read |
-| Conflict handling | Merge cloud and local state using a stored local base snapshot and record conflicts when necessary |
-| Revision history | Use native GitHub Gist revisions instead of a separate history system |
-| Rollback | Restore a previous Gist revision by writing it back as a new current revision |
-| Automatic synchronization | Optional, disabled by default, 5-minute default interval |
-| Internationalization | English and Simplified Chinese UI |
-| Themes | Light and dark themes |
-
-## Synchronization Model
-
-The synchronization model is intentionally simple:
+Each browser reads the current Gist, compares it with its locally stored base snapshot, merges the changes, and writes the resulting state back as a new Gist revision.
 
 ```text
-                 GitHub Gist
-                      │
-             current.json + manifest.json
-                      │
-          ┌───────────┴───────────┐
-          │                       │
-      Browser A               Browser B
-          │                       │
-     local snapshot         local snapshot
-          │                       │
-          └─────── merge ─────────┘
-                    │
-              new revision
-                    │
-                    ▼
-                 GitHub Gist
+Browser A ──┐
+            ├── read ──> GitHub Gist ──> merge ──> new revision
+Browser B ──┘                  ▲
+                               │
+                         current.json
+                         manifest.json
 ```
 
-Each synchronization reads the current Gist state and combines it with the locally stored base snapshot before producing a new revision. This avoids the additional complexity of device registration, device naming, and device-specific cloud state.
+I intentionally do not maintain a device registry, device-specific cloud state, or an extension-owned history database. Those systems add a lot of state and failure modes for comparatively little value in this project. GitHub's native Gist revisions already provide the history layer I need.
 
-## Gist Data Model
+## What Gets Synchronized
 
-The current format uses two primary files:
+Chromium Cloud Sync currently focuses on the browser state that is useful when moving between installations:
+
+| Area | What is synchronized |
+| --- | --- |
+| Tabs | URLs, titles, pinned state, active state, window state, and tab group metadata |
+| Tab groups | Titles, colors, and collapsed state |
+| Bookmarks | Bookmark trees, titles, URLs, ordering, and local-tree merging |
+| Extensions | Installed extension inventory for cross-browser comparison |
+| Extension settings | Selected extension-local storage that Chromium allows the extension to read |
+| Sync metadata | Revision information, timestamps, tombstones, and conflict records |
+
+The extension does not silently install missing extensions. It can identify missing extensions and open their installation pages, but the final installation decision stays with the browser and the user.
+
+## Why GitHub Gist?
+
+I chose Gist for a practical reason: it gives the project a simple remote persistence layer without forcing me to operate infrastructure.
+
+That gives me a very small architecture:
+
+```text
+Chromium Cloud Sync
+        │
+        ├── Chromium APIs
+        │
+        ├── Local base snapshot
+        │
+        └── GitHub API
+                 │
+                 ▼
+              GitHub Gist
+                 │
+                 └── native revisions
+```
+
+There is no project-owned API endpoint sitting between the browser and GitHub. That makes the synchronization path easier to understand, easier to debug, and easier for users to inspect.
+
+## Data Model
+
+The current Gist format is intentionally small:
 
 ```text
 manifest.json
 current.json
 ```
 
-`manifest.json` stores synchronization format and revision metadata. `current.json` contains the actual synchronized browser state.
+`manifest.json` describes the synchronization format and revision metadata.
 
-Historical versions are provided by GitHub Gist's native revision system rather than by additional extension-managed history files.
+`current.json` contains the current shared synchronization state.
 
-### Synchronized State
+I do not create separate `history/*` files. Historical versions come from GitHub Gist revisions, and rollback means writing a selected historical state back as a new revision instead of deleting or rewriting the existing history.
 
-The current synchronization state can contain:
+## Conflict Handling
 
-- Tabs and window state
-- Tab group metadata
-- Bookmark trees
-- Installed extension inventory
-- Selected readable extension settings
-- Tombstones for deleted objects
-- Conflict records
-- Synchronization version and timestamp metadata
+Synchronization is not a blind overwrite operation.
+
+The extension keeps a local base snapshot so it can reason about what changed locally and what changed remotely. During synchronization, those states are merged and unresolved conflicts are recorded instead of being silently discarded.
+
+The design goal is not to pretend conflicts do not exist. The goal is to make them visible and keep the synchronization state recoverable.
+
+That is also why the history page is part of the core UI rather than a debugging-only screen.
 
 ## Privacy and Security
 
-### No Project-Owned Sync Server
+I deliberately keep the trust model simple.
 
-The extension communicates directly with GitHub's API and Gist services. The project does not operate a relay or synchronization server that receives your browser synchronization data.
+### No project-owned sync service
 
-### Private Gists by Default
+Your synchronized browser data is sent directly to GitHub through the GitHub API/Gist service. This repository does not operate a synchronization backend that receives or stores your browser state.
 
-When the extension creates a new Gist, it requests a private Gist. When you connect an existing Gist, its visibility and permissions remain governed by the settings of that Gist.
+### Private Gists by default
 
-### Synchronization Data Is Not Application-Layer Encrypted
+When the extension creates a new synchronization Gist, it requests a private Gist. Existing Gists keep their own visibility and access configuration.
 
-The current synchronization state is stored as regular JSON in the Gist. This keeps the data structure transparent and avoids an additional encryption key-management system.
+### Plain JSON storage
 
-Treat **access to the Gist as access to the synchronized data**.
+The current synchronization format is stored as normal JSON. I removed application-layer encryption from the current synchronization path because I preferred a transparent data model and fewer recovery/key-management failure modes.
 
-The project retains compatibility code for reading and migrating legacy encrypted Gists from older versions, but normal synchronization, creation, and rollback in the current version use regular JSON.
+That means the security boundary is explicit:
+
+> **Anyone who can access the synchronization Gist can access the synchronized browser state.**
+
+Older encrypted Gists remain readable through compatibility-only migration code so that users can move forward without abandoning their existing synchronization data.
 
 ### GitHub Token
 
-The GitHub Token is used to authenticate GitHub API and Gist requests and is stored in the browser extension's local storage. Never commit a Token, private key, PEM file, or other credentials to the repository.
-
-## Permissions
-
-The Manifest V3 extension currently declares the following primary permissions:
-
-| Permission | Purpose |
-| --- | --- |
-| `tabs` | Read and restore tab state |
-| `management` | Read the installed extension inventory |
-| `storage` | Store local synchronization configuration and base snapshots |
-| `alarms` | Schedule synchronization when automatic sync is enabled |
-| `bookmarks` | Read, merge, and restore bookmarks |
-| `tabGroups` | Read and restore tab group information |
-
-Host permissions:
-
-- `https://api.github.com/*` — GitHub API and Gist operations
-- `https://gist.githubusercontent.com/*` — Compatibility access to Gist raw content
-
-These permissions reflect the current `manifest.json`. Always verify the final manifest when publishing a release.
+The GitHub Token is stored locally in the extension and is used to authenticate GitHub API requests. Do not commit tokens, private keys, PEM files, or personal Gist data to this repository.
 
 ## Installation
 
 ### GitHub Releases
 
-Download the latest release from:
+Releases are published here:
 
 <https://github.com/CYoJkoY/ChromiumCloudSync/releases>
 
-A release provides:
+A normal release contains:
 
 ```text
 chromium-cloud-sync-vX.Y.Z.zip
@@ -151,66 +137,102 @@ chromium-cloud-sync-vX.Y.Z.crx
 SHA256SUMS.txt
 ```
 
-The **ZIP** package can be loaded through Chromium's developer mode and can also be used as a package for Chrome Web Store submission.
+The ZIP is the primary package for development and manual unpacked installation.
 
-The **CRX** package is intended for direct distribution or third-party platforms that support CRX files. Browser installation behavior may vary by Chromium distribution, enterprise policy, and browser version.
+The CRX is provided for environments and distribution channels that accept CRX packages.
 
-### Load as an Unpacked Extension
+### Load the extension manually
 
-1. Open `chrome://extensions/` or the equivalent extension management page in your Chromium-based browser.
+1. Open `chrome://extensions/` or the equivalent extensions page in your Chromium-based browser.
 2. Enable **Developer mode**.
-3. Select **Load unpacked**.
+3. Choose **Load unpacked**.
 4. Select the project directory.
 
-## Configure GitHub Gist
+## First-Time Setup
 
-1. Create a GitHub Token with appropriate permissions for your intended Gist operations.
-2. Enter the Token in the extension settings.
-3. Verify the Token.
-4. Create a new synchronization Gist or bind an existing Chromium Cloud Sync Gist.
-5. Use **Sync Now** to verify that read and write operations work correctly.
-6. Enable automatic synchronization only when you need background synchronization.
+The intended setup is deliberately short:
 
-Use a GitHub Token with the narrowest practical permissions and rotate it periodically.
+1. Open the extension settings.
+2. Enter a GitHub Token that can access Gists.
+3. Validate the Token.
+4. Create a new synchronization Gist or bind an existing one.
+5. Run **Sync now** once to verify the connection.
+6. Enable automatic synchronization only if background synchronization is actually needed.
+
+New Gists created by the extension are private by default.
 
 ## Automatic Synchronization
 
 Automatic synchronization is optional and disabled by default.
 
-Default settings:
+The default interval is five minutes. The interval can be changed independently of the enabled/disabled state.
 
 ```text
 Automatic sync: Off
-Sync interval:   5 minutes
+Default interval: 5 minutes
 ```
 
-When automatic synchronization is disabled, no background synchronization is triggered. The configured interval is retained and can be used when automatic synchronization is enabled again.
+The purpose of keeping automatic synchronization disabled by default is simple: synchronization should happen because the user wants it to, not because the extension assumes it should run in the background.
+
+## Updates from GitHub Releases
+
+I intentionally chose GitHub Releases as the primary distribution channel instead of making Chrome Web Store a project requirement.
+
+The extension checks the repository's latest GitHub Release and can notify the user when a newer version is available. The release workflow also produces a CRX using a stable signing key so consecutive releases keep the same extension identity.
+
+The expected release flow is:
+
+```text
+git tag v1.5.15
+        ↓
+GitHub Actions
+        ↓
+validate
+        ↓
+build ZIP
+        ↓
+build signed CRX3
+        ↓
+create GitHub Release
+        ↓
+extension detects newer Release
+```
+
+For normal users, this is a **download-and-update workflow**, not an attempt to bypass Chromium's installation policies. Chromium can restrict automatic installation of self-hosted extensions depending on the browser and installation context.
 
 ## History and Rollback
 
-GitHub Gist provides native revision history, so the extension does not create `history/*` or other extension-managed history files.
+GitHub Gist's native revision history is part of the design.
 
-The synchronization history page can be used to:
+The history page lets me expose:
 
-- View Gist revisions
-- Identify the current revision
-- Inspect timestamps and revision authors
-- Check unresolved synchronization conflicts
-- Restore a previous revision as a new current revision
+- previous Gist revisions
+- the current revision
+- revision timestamps and authors
+- unresolved synchronization conflicts
+- rollback to a previous state
 
-Rollback does not delete GitHub's existing revision history. Instead, the selected historical state is written back as a new revision.
+A rollback creates a new revision from the selected historical state. Existing GitHub history is not erased.
+
+## Supported Browser Model
+
+The project targets Chromium-based browsers that support Manifest V3 and the APIs used by the extension.
+
+The actual behavior of extension management, restricted URLs, tab groups, and installation policies can vary between Chrome, Chromium, Edge, and other Chromium distributions. The extension therefore avoids pretending that every Chromium browser behaves identically.
 
 ## Known Limitations
 
-- Restricted browser pages such as some `chrome://` pages cannot be read or restored.
-- Different Chromium distributions may differ in extension management, restricted URLs, and tab group capabilities.
-- Extension settings synchronization only covers local extension storage that the browser allows this extension to read. Full settings synchronization is not guaranteed for every extension.
-- Installing extensions is still controlled by the user and the browser. The project provides missing-extension detection and installation entry points rather than silently installing extensions.
-- GitHub Gist is a third-party service, so availability, permissions, and retention are subject to GitHub's service policies.
+There are several limitations I consider intentional rather than bugs:
+
+- Restricted pages such as some `chrome://` URLs cannot be synchronized.
+- Extension-local settings are limited to storage that Chromium allows this extension to inspect.
+- Extension installation remains a user/browser-controlled operation.
+- GitHub availability and Gist behavior are external dependencies.
+- GitHub access is the trust boundary for the plain-JSON synchronization state.
 
 ## Development
 
-The project uses native JavaScript and Manifest V3 without a large frontend framework.
+The project is intentionally small and uses native JavaScript with Manifest V3 rather than a large frontend framework.
 
 Requirements:
 
@@ -229,28 +251,18 @@ Build the release ZIP:
 npm run build:zip
 ```
 
-## Automated Releases
+## Release Engineering
 
-Releases can be created automatically from semantic version tags using GitHub Actions.
-
-For example:
+Releases are built by GitHub Actions from semantic version tags.
 
 ```bash
 git tag v1.5.15
 git push origin v1.5.15
 ```
 
-The release workflow can:
+The workflow validates the version, builds the ZIP, verifies its contents, creates a CRX3 package, calculates SHA-256 checksums, and publishes the GitHub Release artifacts.
 
-1. Verify that the tag version matches `manifest.json`.
-2. Run project validation.
-3. Build the ZIP package.
-4. Verify the ZIP contents.
-5. Generate a CRX3 package using a fixed signing key stored in a repository secret.
-6. Generate SHA-256 checksums.
-7. Create a GitHub Release containing the ZIP, CRX, and checksum file.
-
-The CRX signing private key must **never** be committed to the repository. Store it in a GitHub Actions secret such as:
+The CRX signing key must remain stable across releases and must never be committed to the repository. The workflow expects it through the repository secret:
 
 ```text
 CRX_PRIVATE_KEY_B64
@@ -263,34 +275,53 @@ ChromiumCloudSync/
 ├── .github/workflows/release.yml
 ├── _locales/
 ├── icons/
-├── background.js       # GitHub Gist, synchronization, and restore logic
+├── background.js       # GitHub/Gist integration and synchronization lifecycle
 ├── sync-core.js        # State merging, tombstones, and conflict handling
-├── popup.html/js       # Popup UI
-├── options.html/js     # Settings UI
-├── history.html/js     # Gist revision history
+├── update.js           # GitHub Release update detection
+├── popup.html/js       # Popup interface
+├── options.html/js     # Settings interface
+├── history.html/js     # Revision history and rollback interface
 ├── guide.html/js       # Built-in user guide
-├── i18n.js             # Internationalization
+├── i18n.js             # Localization
 ├── theme.js            # Theme management
-├── runtime.js          # Runtime request wrapper
-├── ui.css              # UI styling
-├── manifest.json       # Manifest V3
+├── runtime.js          # Runtime messaging helpers
+├── ui.css              # Base UI styles
+├── ui-overrides.css    # Layout and responsive refinements
+├── manifest.json       # Manifest V3 definition
 └── scripts/
     ├── build.mjs
     └── validate.mjs
 ```
 
+## Design Principles
+
+I would rather keep this project understandable than turn it into a general-purpose synchronization platform.
+
+That means I intentionally favor:
+
+1. A single shared synchronization state over per-device cloud state.
+2. GitHub's own revision history over a custom history database.
+3. Plain, inspectable JSON over an additional application-layer cryptographic protocol.
+4. Explicit conflict records over silent last-write-wins behavior.
+5. Small native browser code over a heavy application framework.
+6. User-controlled installation and automation over hidden background behavior.
+
+These choices are part of the project's architecture, not temporary shortcuts.
+
 ## Contributing
 
 Issues and pull requests are welcome.
 
-When contributing, please:
+When changing the project, please keep the core model intact unless the change has a clear reason to make the synchronization system more complex.
 
-- Keep the synchronization model simple and explainable.
-- Avoid reintroducing device registration or device-level cloud state unless there is a strong design reason.
-- Never submit Tokens, private keys, PEM files, or personal Gist data.
-- Update the README and privacy documentation when permissions change.
-- Consider compatibility and migration behavior when modifying the synchronization data format.
+In particular:
+
+- Do not commit credentials or signing keys.
+- Do not upload personal Gist data.
+- Keep permissions synchronized with the actual feature set.
+- Preserve migration paths when changing the Gist schema.
+- Update the README when a user-visible architectural decision changes.
 
 ## License
 
-This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
+Chromium Cloud Sync is released under the **MIT License**. See [LICENSE](LICENSE).
