@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout tagged source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
@@ -34,8 +34,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          # This repository intentionally has no package-lock.json.
-          # setup-node caching requires a lockfile, so keep package-manager caching disabled.
           package-manager-cache: false
 
       - name: Verify Node.js and npm
@@ -52,8 +50,8 @@ jobs:
           set -euo pipefail
 
           VERSION="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")"
-          TAG="${GITHUB_REF_NAME}"
 
+          TAG="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG="${{ inputs.tag }}"
           fi
@@ -65,6 +63,7 @@ jobs:
           fi
 
           TAG_VERSION="${TAG#v}"
+
           if [[ "$VERSION" != "$TAG_VERSION" ]]; then
             echo "Tag version ($TAG_VERSION) does not match manifest version ($VERSION)."
             exit 1
@@ -72,6 +71,7 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
           echo "Release version: $VERSION"
           echo "Release tag: $TAG"
 
@@ -86,26 +86,73 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           VERSION="${{ steps.version.outputs.version }}"
           ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
 
           test -f "$ZIP"
+
           echo "path=$ZIP" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
+
+          echo "Release ZIP: $ZIP"
 
       - name: Verify release ZIP
         shell: bash
         run: |
           set -euo pipefail
+
           ZIP="${{ steps.zip.outputs.path }}"
 
+          echo "Verifying ZIP integrity: $ZIP"
           unzip -t "$ZIP"
-          unzip -l "$ZIP" | grep -E '(^|/)manifest\.json$'
-          unzip -l "$ZIP" | grep -E '(^|/)background\.js$'
-          unzip -l "$ZIP" | grep -E '(^|/)options\.html$'
+
+          echo "Reading ZIP file list..."
+          FILES="$(unzip -Z1 "$ZIP")"
+
+          REQUIRED_FILES=(
+            "manifest.json"
+            "background.js"
+            "legacy-crypto.js"
+            "sync-core.js"
+            "i18n.js"
+            "theme.js"
+            "runtime.js"
+            "popup.html"
+            "popup.js"
+            "options.html"
+            "options.js"
+            "history.html"
+            "history.js"
+            "guide.html"
+            "guide.js"
+            "ui.css"
+            "_locales/en/messages.json"
+            "_locales/zh_CN/messages.json"
+            "icons/icon.svg"
+            "icons/icon16.png"
+            "icons/icon32.png"
+            "icons/icon48.png"
+            "icons/icon128.png"
+            "icons/icon256.png"
+            "icons/icon512.png"
+          )
+
+          for REQUIRED in "${REQUIRED_FILES[@]}"; do
+            if ! grep -Fxq "$REQUIRED" <<< "$FILES"; then
+              echo "Missing required file in ZIP: $REQUIRED"
+              exit 1
+            fi
+          done
+
+          echo "All required extension files are present."
 
       - name: Install CRX3 packer
-        run: npm install --global crx3@2.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global crx3@2.0.0
+          crx3 --version || true
 
       - name: Prepare CRX signing key
         shell: bash
@@ -120,8 +167,12 @@ jobs:
             exit 1
           fi
 
-          printf '%s' "$CRX_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/chromium-cloud-sync.pem"
+          printf '%s' "$CRX_PRIVATE_KEY_B64" \
+            | base64 --decode > "$RUNNER_TEMP/chromium-cloud-sync.pem"
+
           chmod 600 "$RUNNER_TEMP/chromium-cloud-sync.pem"
+
+          test -s "$RUNNER_TEMP/chromium-cloud-sync.pem"
 
       - name: Build signed CRX3
         shell: bash
@@ -133,7 +184,10 @@ jobs:
           CRX="dist/chromium-cloud-sync-v${VERSION}.crx"
           KEY="$RUNNER_TEMP/chromium-cloud-sync.pem"
 
-          crx3 -p "$KEY" -o "$CRX" "$ZIP"
+          # crx3 v2.x accepts an existing extension ZIP through stdin.
+          # The ZIP must contain manifest.json at its root.
+          cat "$ZIP" | crx3 -p "$KEY" -o "$CRX"
+
           test -s "$CRX"
 
           MAGIC="$(head -c 4 "$CRX")"
@@ -148,16 +202,40 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           VERSION="${{ steps.version.outputs.version }}"
+
           sha256sum \
             "dist/chromium-cloud-sync-v${VERSION}.zip" \
             "dist/chromium-cloud-sync-v${VERSION}.crx" \
             > dist/SHA256SUMS.txt
+
           cat dist/SHA256SUMS.txt
+
+      - name: Verify release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.version.outputs.version }}"
+
+          ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
+          CRX="dist/chromium-cloud-sync-v${VERSION}.crx"
+          SUMS="dist/SHA256SUMS.txt"
+
+          test -s "$ZIP"
+          test -s "$CRX"
+          test -s "$SUMS"
+
+          grep -F "chromium-cloud-sync-v${VERSION}.zip" "$SUMS"
+          grep -F "chromium-cloud-sync-v${VERSION}.crx" "$SUMS"
+
+          echo "All release artifacts are ready."
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
 
