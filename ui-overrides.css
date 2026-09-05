@@ -1,0 +1,247 @@
+/* UI refinement layer: layout, spacing, responsive behavior, and interaction polish. */
+
+:root{
+  --shell-max:1080px;
+  --content-gap:18px;
+  --sidebar-w:184px;
+}
+
+.shell{
+  width:min(var(--shell-max),calc(100% - 40px));
+  padding:24px 24px 48px;
+}
+
+.page-header{
+  min-height:48px;
+  margin-left:calc(var(--sidebar-w) + var(--content-gap));
+  margin-bottom:16px;
+}
+
+.page-header .toolbar{
+  justify-self:end;
+}
+
+.brand-mark{
+  width:40px;
+  height:40px;
+  border-radius:11px;
+}
+
+.brand-mark img{width:32px;height:32px}
+.brand-title{font-size:17px}
+.brand-sub{font-size:11px}
+
+.settings-layout{
+  grid-template-columns:var(--sidebar-w) minmax(0,1fr);
+  gap:var(--content-gap);
+}
+
+.settings-sidebar{
+  position:sticky;
+  top:18px;
+  padding:12px;
+  border-radius:13px;
+}
+
+.settings-sidebar-help{
+  padding-bottom:9px;
+}
+
+.nav-tab,.nav-action{min-height:38px;padding:8px 9px}
+.nav-tab-icon{width:27px;height:27px}
+
+.settings-content{min-width:0}
+.settings-content main{min-width:0}
+
+.card{
+  padding:15px;
+  border-radius:13px;
+}
+
+.card-title{margin-bottom:5px}
+.card-desc{line-height:1.5}
+
+.sync-section .sync-field-group + .sync-field-group{margin-top:10px}
+
+.btn-row.primary-actions{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);
+}
+
+.subcard.auto-sync-card{
+  margin-top:12px;
+}
+
+.block-action{width:100%;margin-top:12px}
+
+.action-feedback{
+  margin-bottom:12px;
+  border-radius:12px;
+}
+
+.status-box{
+  max-height:320px;
+  overflow:auto;
+}
+
+/* Release update card */
+.update-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:14px;
+  padding:12px 13px;
+  background:var(--surface);
+  border-color:var(--line);
+  box-shadow:var(--shadow-1);
+}
+
+.update-card-main{
+  min-width:0;
+}
+
+.update-title{
+  font-size:12px;
+}
+
+.update-meta{
+  white-space:normal;
+}
+
+.update-actions{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.update-button{
+  width:auto;
+  min-width:108px;
+}
+
+.update-actions .primary{min-width:126px}
+.update-actions .secondary{min-width:104px}
+
+.update-error{
+  border-color:var(--danger);
+}
+
+/* Auxiliary pages should read like focused documents, not full-width admin panes. */
+.aux-shell{
+  width:min(980px,calc(100% - 40px));
+}
+
+.aux-shell .page-header{
+  margin-left:0;
+}
+
+.aux-shell main,
+.aux-shell > .card{
+  width:100%;
+}
+
+.aux-shell .card + .card{margin-top:12px}
+
+.history-header .toolbar{
+  align-self:center;
+}
+
+.history-row{
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+}
+
+.history-row .secondary{
+  flex:none;
+  min-width:104px;
+}
+
+.conflict-json{
+  margin:8px 0 0;
+  padding:9px 10px;
+  border:1px solid color-mix(in srgb,var(--danger) 24%,var(--line));
+  border-radius:9px;
+  background:color-mix(in srgb,var(--danger-soft) 70%,var(--surface));
+  color:inherit;
+  white-space:pre-wrap;
+  overflow:auto;
+  max-height:280px;
+  font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+
+.guide-section h2{
+  margin:0;
+  font-size:14px;
+  line-height:1.35;
+}
+
+.guide-section p{
+  margin:7px 0 0;
+  color:var(--text-2);
+  line-height:1.65;
+}
+
+/* Popup */
+.popup-shell{
+  width:400px;
+  max-width:100vw;
+  padding:12px;
+}
+
+.popup-shell .page-header{
+  margin-left:0;
+  margin-bottom:12px;
+}
+
+.popup-header .toolbar{gap:6px}
+.popup-shell .card{padding:13px}
+.popup-shell .card + .card{margin-top:10px}
+
+.popup-shell .sync-card{padding:11px}
+
+.popup-shell .grid-2{gap:8px}
+.popup-shell .action-tile{min-height:72px;padding:10px}
+
+.popup-footer{
+  padding-inline:2px;
+}
+
+@media (max-width:900px){
+  .shell,.aux-shell{width:calc(100% - 24px);padding:18px 14px 40px}
+  .page-header,.aux-shell .page-header{margin-left:0}
+  .settings-layout{grid-template-columns:168px minmax(0,1fr);gap:14px}
+}
+
+@media (max-width:720px){
+  .page-header{grid-template-columns:1fr;gap:10px}
+  .page-header .toolbar{justify-self:start}
+  .settings-layout{grid-template-columns:1fr}
+  .settings-sidebar{position:static}
+  .settings-nav-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .btn-row.primary-actions{grid-template-columns:1fr}
+  .update-card{grid-template-columns:1fr}
+  .update-actions{justify-content:stretch}
+  .update-actions .update-button{flex:1 1 0;min-width:0}
+}
+
+@media (max-width:520px){
+  .shell,.aux-shell{width:100%;padding-inline:12px}
+  .brand{gap:10px}
+  .brand-mark{width:38px;height:38px}
+  .brand-mark img{width:30px;height:30px}
+  .brand-title{font-size:16px}
+  .toolbar{gap:6px}
+  .settings-nav-list{grid-template-columns:1fr}
+  .history-row{grid-template-columns:1fr;gap:8px;align-items:stretch}
+  .history-row .secondary{width:100%}
+  .history-meta{white-space:normal}
+  .update-actions{display:grid;grid-template-columns:1fr}
+  .update-actions .update-button{width:100%}
+  .popup-shell{padding:10px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
