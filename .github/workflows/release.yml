@@ -95,6 +95,7 @@ jobs:
             "runtime.js"
             "update.js"
             "extension-storage.js"
+            "extension-storage-watch.js"
             "ui-overrides.css"
             "popup.html"
             "popup.js"
