@@ -3,7 +3,7 @@ const REPO_URL = 'https://github.com/CYoJkoY/ChromiumCloudSync';
 const UPDATE_CHECK_TIMEOUT_MS = 8000;
 const UPDATE_CACHE_KEY = 'releaseUpdateInfo';
 const UPDATE_CHECK_KEY = 'releaseUpdateLastCheckedAt';
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 const $u = id => document.getElementById(id);
 
@@ -63,17 +63,19 @@ function setHidden(element, hidden) {
 function setUpdateState({ visible = false, version = '', url = '', releaseUrl = '', fileName = '', error = false } = {}) {
   const card = $u('updateCard');
   const title = $u('updateTitle');
-  const meta = $u('updateMeta');
+  const currentVersion = $u('updateCurrentVersion');
+  const latestVersion = $u('updateLatestVersion');
   const download = $u('updateDownload');
   const release = $u('updateRelease');
-  if (!card || !title || !meta || !download || !release) return;
+  if (!card || !title || !currentVersion || !latestVersion || !download || !release) return;
 
   setHidden(card, !visible && !error);
   if (error) {
     card.hidden = false;
     card.classList.add('update-error');
     title.textContent = text('failed');
-    meta.textContent = '';
+    currentVersion.textContent = '';
+    latestVersion.textContent = '';
     download.disabled = true;
     release.disabled = true;
     return;
@@ -82,12 +84,13 @@ function setUpdateState({ visible = false, version = '', url = '', releaseUrl = 
   card.classList.remove('update-error');
   if (!visible) return;
 
-  const currentVersion = chrome.runtime.getManifest().version;
-  const isNewer = compareVersions(version, currentVersion) > 0;
+  const installedVersion = chrome.runtime.getManifest().version;
+  const isNewer = compareVersions(version, installedVersion) > 0;
   const hasDownload = Boolean(url) && isNewer;
 
   title.textContent = `${isNewer ? text('available') : text('latestState')} · v${version}`;
-  meta.textContent = `${text('current')}: v${currentVersion} · ${text('latest')}: v${version}`;
+  currentVersion.textContent = `${text('current')}: v${installedVersion}`;
+  latestVersion.textContent = `${text('latest')}: v${version}`;
 
   download.disabled = !hasDownload;
   download.textContent = hasDownload ? text('download') : text('upToDate');
@@ -104,9 +107,11 @@ async function fetchLatestRelease() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
   try {
-    const response = await fetch(REPO_API, {
-      method: 'GET', cache: 'no-store',
-      headers: { Accept: 'application/vnd.github+json' }, signal: controller.signal,
+    const response = await fetch(`${REPO_API}?_=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'application/vnd.github+json' },
+      signal: controller.signal,
     });
     if (!response.ok) throw new Error(`GitHub release API returned HTTP ${response.status}`);
     return await response.json();
@@ -116,26 +121,34 @@ async function fetchLatestRelease() {
 }
 
 async function cacheRelease(info) {
-  try { await chrome.storage.local.set({ [UPDATE_CACHE_KEY]: info, [UPDATE_CHECK_KEY]: Date.now() }); } catch {}
+  try {
+    await chrome.storage.local.set({
+      [UPDATE_CACHE_KEY]: info,
+      [UPDATE_CHECK_KEY]: Date.now(),
+    });
+  } catch {}
 }
 
 async function readCachedRelease() {
   try {
     const result = await chrome.storage.local.get([UPDATE_CACHE_KEY]);
     return result[UPDATE_CACHE_KEY] || null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function normalizeRelease(release) {
   const tag = String(release.tag_name || '').trim();
   const tagVersion = tag.replace(/^v/i, '');
-  const asset = Array.isArray(release.assets)
-    ? release.assets.find(item => /^chromium-cloud-sync-v\d+\.\d+\.\d+\.crx$/i.test(String(item.name || '')))
-      || release.assets.find(item => /\.crx$/i.test(String(item.name || '')))
-    : null;
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const asset = assets.find(item => /^chromium-cloud-sync-v\d+\.\d+\.\d+\.crx$/i.test(String(item.name || '')))
+    || assets.find(item => /\.crx$/i.test(String(item.name || '')))
+    || null;
   const assetName = String(asset?.name || '');
   const fileMatch = assetName.match(/(?:^|-)v?(\d+\.\d+\.\d+)\.crx$/i);
   const version = fileMatch?.[1] || tagVersion;
+
   return {
     version,
     url: asset?.browser_download_url || '',
@@ -144,6 +157,17 @@ function normalizeRelease(release) {
     name: release.name || tag,
     publishedAt: release.published_at || '',
   };
+}
+
+function shouldUseCache(cached, lastCheckedAt, currentVersion) {
+  if (!cached || !parseVersion(cached.version)) return false;
+  const age = Date.now() - lastCheckedAt;
+  if (age >= UPDATE_CHECK_INTERVAL_MS) return false;
+
+  // A cached version older than the installed version is definitely stale.
+  // Do not let an old cache such as v1.5.15 mask a current v1.5.21 install.
+  if (compareVersions(cached.version, currentVersion) < 0) return false;
+  return true;
 }
 
 async function checkReleaseUpdate({ force = false } = {}) {
@@ -155,10 +179,9 @@ async function checkReleaseUpdate({ force = false } = {}) {
     lastCheckedAt = Number(result[UPDATE_CHECK_KEY] || 0);
   } catch {}
 
-  const shouldFetch = force || !cached || Date.now() - lastCheckedAt >= UPDATE_CHECK_INTERVAL_MS;
-  if (!shouldFetch) {
-    if (cached) setUpdateState({ visible: true, ...cached });
-    else setHidden($u('updateCard'), true);
+  const useCache = !force && shouldUseCache(cached, lastCheckedAt, currentVersion);
+  if (useCache) {
+    setUpdateState({ visible: true, ...cached });
     return cached;
   }
 
@@ -189,7 +212,6 @@ async function downloadUpdate(button) {
     });
   } catch (error) {
     console.debug('Chromium Cloud Sync CRX download failed:', error);
-    // Fallback: let Chrome handle the direct release asset URL in a normal tab.
     void chrome.tabs.create({ url });
   }
 }
@@ -212,7 +234,6 @@ function initReleaseUpdate() {
     if (!$u('updateRelease')?.disabled) openExternalUrl($u('updateRelease')?.dataset?.url);
   });
 
-  // The language switch updates <html lang>; refresh the update controls as well.
   let lastLanguage = language();
   const observer = new MutationObserver(() => {
     const nextLanguage = language();
