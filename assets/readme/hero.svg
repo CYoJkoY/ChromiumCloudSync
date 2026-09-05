@@ -1,60 +1,80 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 520" role="img" aria-labelledby="title desc">
   <title id="title">Chromium Cloud Sync</title>
-  <desc id="desc">A project-native hero graphic showing Chromium browser windows connected directly to GitHub Gist revisions.</desc>
+  <desc id="desc">A browser synchronization concept connecting Chromium clients with a private GitHub Gist.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0b1220"/>
-      <stop offset="0.55" stop-color="#111b2e"/>
-      <stop offset="1" stop-color="#0d1825"/>
+      <stop offset="0" stop-color="#151918"/>
+      <stop offset="0.55" stop-color="#1E1E1E"/>
+      <stop offset="1" stop-color="#111413"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#7dd3b0"/>
-      <stop offset="1" stop-color="#6ec5ff"/>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8A9E8B" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#8A9E8B" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#8A9E8B" stop-opacity="0"/>
     </linearGradient>
-    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    <filter id="smallSoft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7"/>
     </filter>
   </defs>
-  <rect width="1600" height="520" rx="34" fill="url(#bg)"/>
-  <g opacity="0.32">
-    <path d="M0 420H1600" stroke="#29405b"/>
-    <path d="M0 90H1600" stroke="#29405b"/>
-    <path d="M180 0V520M420 0V520M1180 0V520M1420 0V520" stroke="#22364f"/>
+
+  <rect width="1440" height="520" rx="32" fill="url(#bg)"/>
+  <circle cx="1180" cy="80" r="170" fill="#8A9E8B" opacity="0.08" filter="url(#soft)"/>
+  <circle cx="220" cy="430" r="150" fill="#7A8E8E" opacity="0.06" filter="url(#soft)"/>
+  <path d="M80 404H1360" stroke="url(#glow)" stroke-width="1"/>
+
+  <g opacity="0.16" stroke="#8A9E8B" fill="none">
+    <path d="M76 92H296M76 112H236M1144 108H1362M1210 128H1362"/>
+    <path d="M88 142V366M1352 142V366"/>
   </g>
-  <g transform="translate(92 96)">
-    <text x="0" y="0" fill="#7dd3b0" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="22" font-weight="700" letter-spacing="5">GITHUB-BACKED CHROMIUM SYNC</text>
-    <text x="0" y="86" fill="#f3f7fb" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="66" font-weight="800">Chromium Cloud Sync</text>
-    <text x="0" y="135" fill="#aab9ca" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="25">Your browser state. Your GitHub Gist. No project-owned sync server.</text>
-    <rect x="0" y="182" width="420" height="3" rx="2" fill="url(#accent)"/>
-    <g transform="translate(0 230)">
-      <rect x="0" y="0" width="146" height="54" rx="16" fill="#172438" stroke="#38516b"/>
-      <text x="73" y="34" text-anchor="middle" fill="#dce7f0" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="17" font-weight="700">Manifest V3</text>
-      <rect x="160" y="0" width="146" height="54" rx="16" fill="#172438" stroke="#38516b"/>
-      <text x="233" y="34" text-anchor="middle" fill="#dce7f0" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="17" font-weight="700">Plain JSON</text>
-      <rect x="320" y="0" width="174" height="54" rx="16" fill="#172438" stroke="#38516b"/>
-      <text x="407" y="34" text-anchor="middle" fill="#dce7f0" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="17" font-weight="700">Native Revisions</text>
-    </g>
+
+  <g transform="translate(92 112)">
+    <rect x="0" y="0" width="330" height="218" rx="22" fill="#242927" stroke="#46544A"/>
+    <rect x="22" y="22" width="286" height="148" rx="14" fill="#111514" stroke="#36433B"/>
+    <path d="M52 132V96L83 68L114 96L145 48L184 86L216 62L275 112" fill="none" stroke="#8A9E8B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="52" cy="132" r="5" fill="#C5D2C8"/>
+    <circle cx="145" cy="48" r="5" fill="#C5D2C8"/>
+    <circle cx="275" cy="112" r="5" fill="#C5D2C8"/>
+    <rect x="112" y="182" width="106" height="10" rx="5" fill="#4F5E55"/>
+    <rect x="136" y="194" width="58" height="7" rx="3.5" fill="#344039"/>
+    <text x="22" y="40" fill="#BEB8AE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" letter-spacing="2">CHROMIUM</text>
+    <text x="22" y="204" fill="#8A9E8B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" letter-spacing="2">LOCAL STATE</text>
   </g>
-  <g transform="translate(1110 92)">
-    <g filter="url(#glow)">
-      <rect x="0" y="70" width="270" height="170" rx="24" fill="#152235" stroke="#5c7997" stroke-width="2"/>
-      <rect x="22" y="96" width="226" height="108" rx="16" fill="#0d1725" stroke="#2f475f"/>
-      <circle cx="32" cy="84" r="5" fill="#f28c8c"/><circle cx="51" cy="84" r="5" fill="#f4cf75"/><circle cx="70" cy="84" r="5" fill="#82d2a5"/>
-      <path d="M44 131h188M44 157h145M44 183h175" stroke="#506983" stroke-width="8" stroke-linecap="round"/>
-    </g>
-    <path d="M270 155C340 155 340 155 402 155" stroke="url(#accent)" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <path d="M392 145l16 10-16 10" fill="none" stroke="#6ec5ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-    <g transform="translate(418 54)">
-      <circle cx="88" cy="101" r="86" fill="#16283a" stroke="#6ec5ff" stroke-width="3"/>
-      <path d="M44 74h89v58H44z" fill="#0d1725" stroke="#7dd3b0" stroke-width="3"/>
-      <path d="M56 91h64M56 108h52M56 125h42" stroke="#7dd3b0" stroke-width="5" stroke-linecap="round"/>
-      <path d="M29 160c31 25 88 25 118 0" fill="none" stroke="#6ec5ff" stroke-width="4" stroke-linecap="round"/>
-      <text x="88" y="208" text-anchor="middle" fill="#e4edf5" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="17" font-weight="700">GitHub Gist</text>
-    </g>
-    <g transform="translate(450 286)">
-      <circle cx="9" cy="9" r="9" fill="#7dd3b0"/>
-      <text x="30" y="15" fill="#9fb0c2" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="16">read · merge · write · revise</text>
-    </g>
+
+  <g transform="translate(570 96)">
+    <circle cx="150" cy="150" r="122" fill="#242927" stroke="#5A6B60" stroke-width="2"/>
+    <circle cx="150" cy="150" r="92" fill="#1A1F1C" stroke="#8A9E8B" stroke-opacity="0.42"/>
+    <circle cx="150" cy="150" r="58" fill="#8A9E8B" opacity="0.1" filter="url(#smallSoft)"/>
+    <path d="M120 108H183C199 108 212 121 212 137V178C212 194 199 207 183 207H117C101 207 88 194 88 178V137C88 121 101 108 117 108Z" fill="#111514" stroke="#8A9E8B" stroke-width="3"/>
+    <path d="M111 132H189M111 154H189M111 176H168" stroke="#617469" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+    <path d="M66 150H38M234 150H262" stroke="#8A9E8B" stroke-width="3" stroke-linecap="round"/>
+    <path d="M150 66V38M150 234V262" stroke="#8A9E8B" stroke-width="3" stroke-linecap="round"/>
+    <text x="150" y="296" text-anchor="middle" fill="#E6DED6" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" letter-spacing="3">GITHUB GIST</text>
+    <text x="150" y="319" text-anchor="middle" fill="#7A8E8E" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" letter-spacing="2">SHARED STATE · REVISIONS</text>
   </g>
+
+  <g transform="translate(1018 112)">
+    <rect x="0" y="0" width="330" height="218" rx="22" fill="#242927" stroke="#46544A"/>
+    <rect x="22" y="22" width="286" height="148" rx="14" fill="#111514" stroke="#36433B"/>
+    <path d="M52 76H270M52 112H226M52 148H248" stroke="#526159" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="52" cy="76" r="5" fill="#8A9E8B"/>
+    <circle cx="52" cy="112" r="5" fill="#BEB8AE"/>
+    <circle cx="52" cy="148" r="5" fill="#8A9E8B"/>
+    <rect x="116" y="182" width="98" height="10" rx="5" fill="#4F5E55"/>
+    <rect x="138" y="194" width="54" height="7" rx="3.5" fill="#344039"/>
+    <text x="22" y="40" fill="#BEB8AE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" letter-spacing="2">CHROMIUM</text>
+    <text x="22" y="204" fill="#8A9E8B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" letter-spacing="2">RESTORED STATE</text>
+  </g>
+
+  <g fill="none" stroke="#8A9E8B" stroke-width="3" stroke-linecap="round">
+    <path d="M422 220C476 220 510 220 548 220"/>
+    <path d="M892 220C930 220 964 220 1018 220"/>
+    <path d="M540 212l10 8-10 8"/>
+    <path d="M1010 212l10 8-10 8"/>
+  </g>
+
+  <text x="720" y="66" text-anchor="middle" fill="#E6DED6" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="22" letter-spacing="7">BROWSER STATE · YOUR STORAGE BOUNDARY</text>
+  <text x="720" y="457" text-anchor="middle" fill="#BEB8AE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="16" letter-spacing="1.8">ONE SHARED STATE  ·  LOCAL BASE SNAPSHOT  ·  EXPLICIT CONFLICTS  ·  NATIVE HISTORY</text>
 </svg>
