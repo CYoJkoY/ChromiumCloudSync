@@ -40,10 +40,7 @@ body {
   justify-self: end;
 }
 
-.brand {
-  min-width: 0;
-}
-
+.brand,
 .brand-copy,
 .brand-title,
 .brand-sub {
@@ -86,9 +83,13 @@ body {
 
 .settings-sidebar,
 .settings-content,
-.settings-content main {
+.settings-content > main,
+.settings-content main,
+.tab-panel,
+.tab-panel > section {
   min-width: 0;
   width: 100%;
+  max-width: 100%;
 }
 
 .settings-sidebar {
@@ -121,6 +122,7 @@ body {
 .card {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   padding: 15px;
   border-radius: 13px;
 }
@@ -131,6 +133,7 @@ body {
 .field,
 .btn-row {
   min-width: 0;
+  max-width: 100%;
 }
 
 .sync-section .sync-field-group + .sync-field-group,
@@ -163,7 +166,6 @@ body {
   overflow: auto;
 }
 
-/* GitHub Release update panel. */
 .update-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -211,7 +213,6 @@ body {
   border-color: var(--danger);
 }
 
-/* History / guide pages use a focused document width. */
 .aux-shell {
   width: calc(100% - 48px);
   max-width: 980px;
@@ -226,6 +227,7 @@ body {
 .aux-shell > .card {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
 }
 
 .history-header .toolbar {
@@ -245,6 +247,7 @@ body {
 .history-title,
 .history-meta {
   min-width: 0;
+  max-width: 100%;
 }
 
 .history-title,
@@ -283,7 +286,6 @@ body {
   line-height: 1.65;
 }
 
-/* Popup is a fixed-width extension popup, independent from the options layout. */
 .popup-shell {
   width: 400px;
   max-width: 100%;
@@ -337,24 +339,18 @@ body {
   padding-inline: 2px;
 }
 
-/* Tablet / narrow option windows: switch to a single-column document flow. */
-@media (max-width: 900px) {
+/* Never allow the two-column settings shell to survive into a cramped viewport. */
+@media (max-width: 1200px) {
   .shell,
   .aux-shell {
-    width: calc(100% - 24px);
-    padding: 18px 14px 40px;
+    width: calc(100% - 32px);
+    padding-inline: 16px;
   }
 
   .page-header,
   .aux-shell .page-header {
     width: 100%;
     margin-left: 0;
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-
-  .page-header .toolbar {
-    justify-self: start;
   }
 
   .settings-layout {
@@ -368,6 +364,16 @@ body {
 
   .settings-nav-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-header {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 10px;
+  }
+
+  .page-header .toolbar {
+    justify-self: start;
   }
 
   .btn-row.primary-actions {
