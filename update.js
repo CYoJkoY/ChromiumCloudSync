@@ -33,12 +33,24 @@ function language() {
 function text(key) {
   const dict = {
     en: {
-      available: 'Update available', current: 'Current version', latest: 'Latest version',
-      download: 'Download update', release: 'View release', failed: 'Update check failed',
+      available: 'Update available',
+      latestState: 'Latest version',
+      current: 'Current version',
+      latest: 'Latest version',
+      download: 'Download update',
+      upToDate: 'Already up to date',
+      release: 'View release',
+      failed: 'Update check failed',
     },
     'zh-CN': {
-      available: '发现新版本', current: '当前版本', latest: '最新版本',
-      download: '下载更新', release: '查看发布页', failed: '检查更新失败',
+      available: '发现新版本',
+      latestState: '当前已是最新版本',
+      current: '当前版本',
+      latest: '最新版本',
+      download: '下载更新',
+      upToDate: '已为最新版本',
+      release: '查看发布页',
+      failed: '检查更新失败',
     },
   };
   return dict[language()]?.[key] || dict.en[key] || key;
@@ -48,7 +60,7 @@ function setHidden(element, hidden) {
   if (element) element.hidden = hidden;
 }
 
-function setUpdateState({ visible = false, version = '', url = '', releaseUrl = '', error = false } = {}) {
+function setUpdateState({ visible = false, version = '', url = '', releaseUrl = '', fileName = '', error = false } = {}) {
   const card = $u('updateCard');
   const title = $u('updateTitle');
   const meta = $u('updateMeta');
@@ -62,20 +74,29 @@ function setUpdateState({ visible = false, version = '', url = '', releaseUrl = 
     card.classList.add('update-error');
     title.textContent = text('failed');
     meta.textContent = '';
-    download.hidden = true;
-    release.hidden = true;
+    download.disabled = true;
+    release.disabled = true;
     return;
   }
 
   card.classList.remove('update-error');
   if (!visible) return;
-  title.textContent = `${text('available')} · v${version}`;
-  meta.textContent = `${text('current')}: v${chrome.runtime.getManifest().version} · ${text('latest')}: v${version}`;
-  download.href = url || '#';
-  release.href = releaseUrl || REPO_URL;
-  download.hidden = !url;
-  release.hidden = false;
-  download.setAttribute('aria-label', `${text('download')} v${version}`);
+
+  const currentVersion = chrome.runtime.getManifest().version;
+  const isNewer = compareVersions(version, currentVersion) > 0;
+  const hasDownload = Boolean(url) && isNewer;
+
+  title.textContent = `${isNewer ? text('available') : text('latestState')} · v${version}`;
+  meta.textContent = `${text('current')}: v${currentVersion} · ${text('latest')}: v${version}`;
+
+  download.disabled = !hasDownload;
+  download.textContent = hasDownload ? text('download') : text('upToDate');
+  release.disabled = !releaseUrl;
+  release.textContent = text('release');
+  download.dataset.url = hasDownload ? url : '';
+  download.dataset.filename = hasDownload ? fileName : '';
+  release.dataset.url = releaseUrl || '';
+  download.setAttribute('aria-label', `${download.textContent} v${version}`);
   release.setAttribute('aria-label', `${text('release')} v${version}`);
 }
 
@@ -105,6 +126,26 @@ async function readCachedRelease() {
   } catch { return null; }
 }
 
+function normalizeRelease(release) {
+  const tag = String(release.tag_name || '').trim();
+  const tagVersion = tag.replace(/^v/i, '');
+  const asset = Array.isArray(release.assets)
+    ? release.assets.find(item => /^chromium-cloud-sync-v\d+\.\d+\.\d+\.crx$/i.test(String(item.name || '')))
+      || release.assets.find(item => /\.crx$/i.test(String(item.name || '')))
+    : null;
+  const assetName = String(asset?.name || '');
+  const fileMatch = assetName.match(/(?:^|-)v?(\d+\.\d+\.\d+)\.crx$/i);
+  const version = fileMatch?.[1] || tagVersion;
+  return {
+    version,
+    url: asset?.browser_download_url || '',
+    releaseUrl: release.html_url || REPO_URL,
+    fileName: assetName,
+    name: release.name || tag,
+    publishedAt: release.published_at || '',
+  };
+}
+
 async function checkReleaseUpdate({ force = false } = {}) {
   const currentVersion = chrome.runtime.getManifest().version;
   const cached = await readCachedRelease();
@@ -116,55 +157,86 @@ async function checkReleaseUpdate({ force = false } = {}) {
 
   const shouldFetch = force || !cached || Date.now() - lastCheckedAt >= UPDATE_CHECK_INTERVAL_MS;
   if (!shouldFetch) {
-    if (compareVersions(cached.version, currentVersion) > 0) setUpdateState({ visible: true, ...cached });
-    else setUpdateState({});
+    if (cached) setUpdateState({ visible: true, ...cached });
+    else setHidden($u('updateCard'), true);
     return cached;
   }
 
   try {
     const release = await fetchLatestRelease();
-    const tag = String(release.tag_name || '').trim();
-    const version = tag.replace(/^v/i, '');
-    const asset = Array.isArray(release.assets)
-      ? release.assets.find(item => /^chromium-cloud-sync-v\d+\.\d+\.\d+\.crx$/i.test(String(item.name || '')))
-        || release.assets.find(item => /\.crx$/i.test(String(item.name || '')))
-      : null;
-    const info = {
-      version,
-      url: asset?.browser_download_url || '',
-      releaseUrl: release.html_url || REPO_URL,
-      name: release.name || tag,
-      publishedAt: release.published_at || '',
-    };
+    const info = normalizeRelease(release);
     await cacheRelease(info);
-    if (compareVersions(version, currentVersion) > 0) setUpdateState({ visible: true, ...info });
-    else setUpdateState({});
+    setUpdateState({ visible: true, ...info });
     return info;
   } catch (error) {
     console.debug('Chromium Cloud Sync update check failed:', error);
-    if (cached && compareVersions(cached.version, currentVersion) > 0) setUpdateState({ visible: true, ...cached });
+    if (cached) setUpdateState({ visible: true, ...cached });
+    else setUpdateState({ error: true });
     return cached;
   }
 }
 
+async function downloadUpdate(button) {
+  const url = button?.dataset?.url || '';
+  if (!url || button?.disabled) return;
+
+  try {
+    await chrome.downloads.download({
+      url,
+      filename: button.dataset.filename || undefined,
+      saveAs: false,
+      conflictAction: 'uniquify',
+    });
+  } catch (error) {
+    console.debug('Chromium Cloud Sync CRX download failed:', error);
+    // Fallback: let Chrome handle the direct release asset URL in a normal tab.
+    void chrome.tabs.create({ url });
+  }
+}
+
 function openExternalUrl(url) {
-  if (!url || url === '#') return;
+  if (!url) return;
   void chrome.tabs.create({ url });
 }
 
 function initReleaseUpdate() {
   const card = $u('updateCard');
   if (!card) return;
+
   $u('updateDownload')?.addEventListener('click', event => {
     event.preventDefault();
-    openExternalUrl($u('updateDownload')?.href);
+    void downloadUpdate($u('updateDownload'));
   });
   $u('updateRelease')?.addEventListener('click', event => {
     event.preventDefault();
-    openExternalUrl($u('updateRelease')?.href);
+    if (!$u('updateRelease')?.disabled) openExternalUrl($u('updateRelease')?.dataset?.url);
   });
+
+  // The language switch updates <html lang>; refresh the update controls as well.
+  let lastLanguage = language();
+  const observer = new MutationObserver(() => {
+    const nextLanguage = language();
+    if (nextLanguage === lastLanguage) return;
+    lastLanguage = nextLanguage;
+    const cached = window.CCSyncUpdate?.getCachedState?.();
+    if (cached) setUpdateState({ visible: true, ...cached });
+  });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
+
   void checkReleaseUpdate();
 }
 
-window.CCSyncUpdate = { check: checkReleaseUpdate };
+let cachedReleaseState = null;
+const originalCheck = checkReleaseUpdate;
+checkReleaseUpdate = async (...args) => {
+  const result = await originalCheck(...args);
+  cachedReleaseState = result || cachedReleaseState;
+  return result;
+};
+
+window.CCSyncUpdate = {
+  check: checkReleaseUpdate,
+  getCachedState: () => cachedReleaseState,
+};
+
 document.addEventListener('DOMContentLoaded', initReleaseUpdate);
