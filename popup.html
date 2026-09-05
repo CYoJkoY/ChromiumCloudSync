@@ -62,7 +62,14 @@
 
   <section class="card status-card">
     <div id="statusIcon" class="status-icon"><svg class="icon-xl" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/><path d="M18 3v5h-5"/></svg></div>
-    <div style="min-width:0;flex:1"><div id="statusTitle" class="status-title" data-i18n="statusReading">Reading status…</div><div id="statusMeta" class="status-meta"></div><div id="statusDetail" class="status-detail" hidden></div></div>
+    <div class="status-content">
+      <div class="status-heading-row">
+        <div id="statusTitle" class="status-title" data-i18n="statusReading">Reading status…</div>
+        <button type="button" id="checkUpdates" class="secondary status-update-button">Check for updates</button>
+      </div>
+      <div id="statusMeta" class="status-meta"></div>
+      <div id="statusDetail" class="status-detail" hidden></div>
+    </div>
   </section>
 
   <section class="card sync-card"><button type="button" id="sync" class="primary full"><svg class="icon" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3.8L3 10"/><path d="M3 5v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.8L21 14"/><path d="M21 19v-5h-5"/></svg> <span data-i18n="syncNow">Sync now</span></button></section>
@@ -79,7 +86,7 @@
   </section>
 
   <footer class="split small muted popup-footer">
-    <div class="popup-footer-meta"><span id="revision">Revision 0</span><button type="button" id="checkUpdates" class="secondary footer-action footer-update-action">Check for updates</button></div>
+    <span id="revision">Revision 0</span>
     <span class="popup-footer-actions"><button type="button" id="guide" class="secondary footer-action" data-i18n="guide">User guide</button><button type="button" id="options" class="secondary footer-action" data-i18n="settings">Settings</button></span>
   </footer>
 </main>
