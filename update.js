@@ -104,8 +104,7 @@ async function fetchLatestRelease() {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`GitHub release API returned HTTP ${response.status}`);
-    const release = await response.json();
-    return release;
+    return await response.json();
   } finally {
     clearTimeout(timer);
   }
@@ -128,7 +127,7 @@ async function readCachedRelease() {
 
 async function checkReleaseUpdate({ force = false } = {}) {
   const currentVersion = chrome.runtime.getManifest().version;
-  let cached = await readCachedRelease();
+  const cached = await readCachedRelease();
   let lastCheckedAt = 0;
   try {
     const result = await chrome.storage.local.get([UPDATE_CHECK_KEY]);
@@ -151,7 +150,7 @@ async function checkReleaseUpdate({ force = false } = {}) {
       : null;
     const info = {
       version,
-      url: asset?.browser_download_url || release.html_url || REPO_URL,
+      url: asset?.browser_download_url || '',
       releaseUrl: release.html_url || REPO_URL,
       name: release.name || tag,
       publishedAt: release.published_at || '',
@@ -169,19 +168,23 @@ async function checkReleaseUpdate({ force = false } = {}) {
   }
 }
 
+function openExternalUrl(url) {
+  if (!url) return;
+  void chrome.tabs.create({ url });
+}
+
 function initReleaseUpdate() {
   const card = $u('updateCard');
   if (!card) return;
-  $u('updateDownload')?.addEventListener('click', () => {
+  $u('updateDownload')?.addEventListener('click', event => {
+    event.preventDefault();
     const target = $u('updateDownload')?.href;
-    if (target) chrome.tabs.create({ url: target });
+    if (target && target !== '#') openExternalUrl(target);
   });
   $u('updateRelease')?.addEventListener('click', event => {
+    event.preventDefault();
     const target = $u('updateRelease')?.href;
-    if (target) {
-      event.preventDefault();
-      chrome.tabs.create({ url: target });
-    }
+    if (target && target !== '#') openExternalUrl(target);
   });
   void checkReleaseUpdate();
 }
