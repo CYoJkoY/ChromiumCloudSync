@@ -4,7 +4,7 @@
   --ccs-gutter: 24px;
   --ccs-gap: 18px;
   --ccs-sidebar: 184px;
-  --ccs-popup-width: 440px;
+  --ccs-popup-width: 500px;
 }
 
 html,
@@ -144,11 +144,13 @@ body.popup-page .action-name { font-size: 13px; }
 body.popup-page .action-desc { font-size: 12px; line-height: 1.45; }
 body.popup-page .popup-footer { margin-top: 13px; padding-inline: 3px; font-size: 12px; }
 body.popup-page .footer-action { min-height: 34px; }
-body.popup-page .update-card { padding: 14px; gap: 12px; }
-body.popup-page .update-card-main { grid-template-columns: 38px minmax(0,1fr); gap: 11px; }
+body.popup-page .update-card { padding: 14px; gap: 14px; }
+body.popup-page .update-card-main { display: grid; grid-template-columns: 38px minmax(0,1fr); gap: 11px; align-items: start; }
 body.popup-page .update-icon { width: 38px; height: 38px; border-radius: 10px; }
-body.popup-page .update-title { font-size: 13px; }
-body.popup-page .update-meta { font-size: 12px; margin-top: 3px; }
+body.popup-page .update-title { font-size: 13px; line-height: 1.45; }
+body.popup-page .update-meta { display: grid; gap: 2px; font-size: 12px; line-height: 1.45; margin-top: 4px; }
+body.popup-page .update-meta > div { min-width: 0; }
+body.popup-page .update-actions { align-self: end; }
 
 /* Never apply the settings-page mobile collapse to the popup. */
 @media (max-width: 1200px) {
