@@ -1,0 +1,196 @@
+import { mergeSnapshots, mergeDeviceStates, checksum, deriveTombstones, applyTombstones, cleanConflicts, SCHEMA_VERSION } from './sync-core.js';
+import { unwrapMasterWithSecret, decryptJson, importAesKey, base64ToBytes } from './legacy-crypto.js';
+
+const GITHUB_API='https://api.github.com';
+const CURRENT_FILE='current.json';
+const LEGACY_ENCRYPTED_FILE='current.enc.json';
+const MANIFEST_FILE='manifest.json';
+const AUTO_SYNC_MINUTES=5;
+const DEFAULT_AUTO_SYNC_ENABLED=false;
+const MAX_PUSH_RETRIES=5;
+const GITHUB_API_RETRIES=2;
+const KEYS={AUTO_SYNC_ENABLED:'autoSyncEnabled',AUTO_SYNC_INTERVAL_MINUTES:'autoSyncIntervalMinutes',SYNC_REVISION:'syncRevision',GITHUB_TOKEN:'githubToken',GIST_ID:'gistId',LAST_SYNC:'lastSyncAt',LAST_REMOTE_UPDATED:'lastRemoteUpdatedAt',ETAG:'gistEtag',BASE_SNAPSHOT:'syncBaseSnapshot',BASE_REVISION:'syncBaseRevision',TAB_SYNC_IDS:'tabSyncIds',WINDOW_SYNC_IDS:'windowSyncIds',GROUP_SYNC_IDS:'groupSyncIds',BOOKMARK_SYNC_IDS:'bookmarkSyncIds',LAST_CONFLICTS:'lastSyncConflicts'};
+const LEGACY_LOCAL_KEYS=['deviceId','deviceName','deviceNameKey','deviceSeed','deviceRevision','localKeySeed','masterEnvelope','encryptionUnlocked','securityMode','masterKeyVersion','syncBaseSnapshot','syncBaseRevision'];
+
+async function getSettings(){return chrome.storage.local.get(Object.values(KEYS));}
+async function setSettings(v){return chrome.storage.local.set(v);}
+async function getObjectMap(key){const s=await chrome.storage.local.get(key);return s[key]||{};}
+async function getStableLocalId(kind,id,key){const map=await getObjectMap(key),k=String(id);if(map[k])return map[k];map[k]=`${kind}-${crypto.randomUUID()}`;await chrome.storage.local.set({[key]:map});return map[k];}
+async function github(path,options={},tokenOverride=''){const s=await getSettings();const token=(tokenOverride||s[KEYS.GITHUB_TOKEN]||'').trim();if(!token)throw Error('未配置 GitHub Token');let lastError=null;for(let attempt=0;attempt<=GITHUB_API_RETRIES;attempt++){try{const r=await fetch(`${GITHUB_API}${path}`,{...options,headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2026-03-10','Content-Type':'application/json',Authorization:`Bearer ${token}`,...(options.headers||{})}});const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch{data={raw:text}}if(r.status===304)return {status:304,headers:r.headers};if(!r.ok){const message=data?.message||`GitHub API HTTP ${r.status}`;const err=new Error(message);err.code='GITHUB_API_ERROR';err.status=r.status;err.githubMessage=message;err.documentationUrl=data?.documentation_url||'';err.errors=Array.isArray(data?.errors)?data.errors:[];if(r.status===422 && err.errors.length){err.detail=err.errors.map(e=>[e.resource,e.field,e.code,e.message].filter(Boolean).join(': ')).join('; ');}throw err;}return {data,headers:r.headers};}catch(e){lastError=e;if(!(e?.code==='GITHUB_API_ERROR'&&[408,429,500,502,503,504].includes(e.status))||attempt===GITHUB_API_RETRIES)throw e;await new Promise(r=>setTimeout(r,500*(attempt+1)));}}throw lastError||Error('GitHub request failed');}
+async function validateToken(token=''){
+  const value=(token||'').trim();
+  if(!value)throw Error('GitHub Token is required');
+  let gistCheck;
+  try {
+    gistCheck=await github('/gists?per_page=1',{},value);
+  } catch(error) {
+    const detail=error?.githubMessage||error?.message||String(error);
+    throw Error(`GitHub Token validation failed${error?.status?` (HTTP ${error.status})`:''}: ${detail}`);
+  }
+  try {
+    const r=await github('/user',{},value);
+    return {login:r.data.login,name:r.data.name||r.data.login,avatarUrl:r.data.avatar_url||'',gistsAccessible:true};
+  } catch {
+    return {login:'GitHub authenticated',name:'GitHub authenticated',avatarUrl:'',gistsAccessible:true};
+  }
+}
+function extensionStoreInfo(ext){const id=ext.id,homepage=ext.homepageUrl||'',update=ext.updateUrl||'';let source='unknown';if(/edge\.microsoft\.com|microsoftedge/i.test(update+homepage))source='edge';else if(/google\.com|chromewebstore/i.test(homepage))source='chrome';return {chromeUrl:`https://chromewebstore.google.com/detail/${id}`,edgeUrl:`https://microsoftedge.microsoft.com/addons/detail/${id}`,source};}
+async function collectExtensions(){const list=await chrome.management.getAll();return list.filter(x=>x.type==='extension'&&x.id!==chrome.runtime.id).map(x=>({syncId:`extension-${x.id}`,id:x.id,name:x.name,version:x.version,enabled:x.enabled,description:x.description||'',homepageUrl:x.homepageUrl||'',updateUrl:x.updateUrl||'',installType:x.installType||'',store:extensionStoreInfo(x)})).sort((a,b)=>a.name.localeCompare(b.name));}
+function isRestrictedUrl(url){
+  const value=String(url||'').trim();
+  if(!value)return true;
+  return !/^https?:\/\//i.test(value);
+}
+async function collectTabGroups(){if(!chrome.tabGroups?.query)return [];const groups=await chrome.tabGroups.query({});return Promise.all(groups.map(async g=>({syncId:await getStableLocalId('group',g.id,KEYS.GROUP_SYNC_IDS),localId:g.id,windowId:g.windowId,title:g.title||'',color:g.color||'grey',collapsed:!!g.collapsed})));}
+async function collectTabs(){const windows=await chrome.windows.getAll({populate:true}),groups=await collectTabGroups(),gm=new Map(groups.map(g=>[g.localId,g])),out=[];for(const win of windows.filter(w=>w.type==='normal')){const windowSyncId=await getStableLocalId('window',win.id,KEYS.WINDOW_SYNC_IDS);const tabs=[];for(const tab of (win.tabs||[]).filter(t=>!isRestrictedUrl(t.url))){const g=gm.get(tab.groupId);tabs.push({syncId:await getStableLocalId('tab',tab.id,KEYS.TAB_SYNC_IDS),url:tab.url,title:tab.title||'',pinned:!!tab.pinned,active:!!tab.active,index:tab.index,group:g?{syncId:g.syncId,title:g.title,color:g.color,collapsed:g.collapsed}:null});}out.push({syncId:windowSyncId,state:['fullscreen','maximized','minimized','normal'].includes(win.state)?win.state:'normal',focused:!!win.focused,tabs});}return out;}
+async function collectBookmarks(){const tree=await chrome.bookmarks.getTree(),map=await getObjectMap(KEYS.BOOKMARK_SYNC_IDS),flat=[];let changed=false;async function walk(node,parentSyncId=null,index=0){let syncId=node.id==='0'?'root-bookmarks':map[String(node.id)];if(!syncId){syncId=`bookmark-${crypto.randomUUID()}`;map[String(node.id)]=syncId;changed=true;}flat.push({syncId,parentSyncId,index,title:node.title||'',...(node.url?{url:node.url}:{})});for(let i=0;i<(node.children||[]).length;i++)await walk(node.children[i],syncId,i);}for(const r of tree)await walk(r,null,0);if(changed)await chrome.storage.local.set({[KEYS.BOOKMARK_SYNC_IDS]:map});return flat;}
+async function collectExtensionSettings(){const d=await chrome.storage.local.get(null);for(const k of [...Object.values(KEYS),...LEGACY_LOCAL_KEYS])delete d[k];return d;}
+async function createSnapshot(){const s=await getSettings();return {schemaVersion:SCHEMA_VERSION,updatedAt:new Date().toISOString(),extensions:await collectExtensions(),windows:await collectTabs(),bookmarks:await collectBookmarks(),extensionSettings:await collectExtensionSettings(),syncMeta:{gistId:s[KEYS.GIST_ID]||null}};}
+function flattenLegacy(nodes,parentSyncId=null,out=[]){for(let i=0;i<(nodes||[]).length;i++){const n=nodes[i],sid=n.syncId||`legacy-bookmark-${crypto.randomUUID()}`;out.push({syncId:sid,parentSyncId,index:i,title:n.title||'',...(n.url?{url:n.url}:{})});if(n.children)flattenLegacy(n.children,sid,out);}return out;}
+function normalizeSnapshot(s){const x=JSON.parse(JSON.stringify(s||{}));if(Array.isArray(x.bookmarks)&&x.bookmarks.some(n=>n.children))x.bookmarks=flattenLegacy(x.bookmarks);delete x.device;if(x.syncMeta&&typeof x.syncMeta==='object')delete x.syncMeta.devices;x.schemaVersion=SCHEMA_VERSION;return x;}
+async function readGistRaw(gistId){const r=await github(`/gists/${encodeURIComponent(gistId)}`);const gist=r.data;const files=gist.files||{};return {gist,files,etag:r.headers.get('ETag')||'',updatedAt:gist.updated_at||''};}
+
+// Compatibility-only reader for the encrypted format used before v1.5.1.
+const te=new TextEncoder();
+async function legacyGetLocalKeySeed(){const s=await chrome.storage.local.get(['localKeySeed','deviceSeed']);if(s.localKeySeed)return s.localKeySeed;if(s.deviceSeed){await chrome.storage.local.set({localKeySeed:s.deviceSeed});return s.deviceSeed;}return null;}
+async function legacyDeriveLocalKey(){const seed=await legacyGetLocalKeySeed();if(!seed)return null;const base=await crypto.subtle.importKey('raw',te.encode(seed),'PBKDF2',false,['deriveKey']);const salt=await crypto.subtle.digest('SHA-256',te.encode('chromium-cloud-sync-local-key-v1'));return crypto.subtle.deriveKey({name:'PBKDF2',salt:new Uint8Array(salt),iterations:120000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
+async function legacyGetLocalMaster(){const s=await chrome.storage.local.get(['masterEnvelope']);if(!s.masterEnvelope)return null;try{const p=JSON.parse(s.masterEnvelope),key=await legacyDeriveLocalKey();if(!key)return null;const raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToBytes(p.iv),tagLength:128},key,base64ToBytes(p.ciphertext));return importAesKey(new Uint8Array(raw),true);}catch{return null;}}
+async function legacyDecryptState(ciphertext,manifest){
+  const local=await legacyGetLocalMaster();
+  if(local){try{return await decryptJson(ciphertext,local);}catch{}}
+  const s=await chrome.storage.local.get(['githubToken']);
+  for(const wrapper of manifest?.crypto?.wrappers||[]){
+    if(wrapper.status==='revoked'||wrapper.type!=='convenience'||!s.githubToken)continue;
+    try{const key=await unwrapMasterWithSecret(s.githubToken,wrapper,'convenience');return await decryptJson(ciphertext,key);}catch{}
+  }
+  throw Error('此 Gist 使用旧版加密格式。请先使用 v1.5.x 版本打开并成功同步一次，再升级到当前版本。');
+}
+async function cleanupLegacyLocalState(){await chrome.storage.local.remove(LEGACY_LOCAL_KEYS);}
+
+function normalizeCloudState(raw){
+  const input=raw&&typeof raw==='object'?raw:{};
+  if(input.snapshot&&typeof input.snapshot==='object'){const snapshot=normalizeSnapshot(input.snapshot);return {schemaVersion:SCHEMA_VERSION,revision:Number(input.revision||0),updatedAt:input.updatedAt||snapshot.updatedAt||new Date().toISOString(),snapshot,tombstones:Array.isArray(input.tombstones)?input.tombstones:[],conflicts:cleanConflicts(input.conflicts||[]) };}
+  if(input.devices&&typeof input.devices==='object'){
+    const merged=mergeDeviceStates(input.devices),entries=Object.values(input.devices).filter(Boolean).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||''))),tm=new Map();
+    for(const entry of entries)for(const t of entry.tombstones||[]){const k=`${t.collection}:${t.syncId}`,old=tm.get(k);if(!old||String(t.deletedAt)>String(old.deletedAt))tm.set(k,t);}
+    return {schemaVersion:SCHEMA_VERSION,revision:Math.max(0,...entries.map(e=>Number(e.revision||0))),updatedAt:input.updatedAt||entries[0]?.updatedAt||merged?.updatedAt||new Date().toISOString(),snapshot:normalizeSnapshot(merged||{}),tombstones:[...tm.values()],conflicts:cleanConflicts(input.conflicts||[])};
+  }
+  if(Array.isArray(input.extensions)||Array.isArray(input.windows)||Array.isArray(input.bookmarks)){const snapshot=normalizeSnapshot(input);return {schemaVersion:SCHEMA_VERSION,revision:Number(input.revision||1),updatedAt:input.updatedAt||snapshot.updatedAt||new Date().toISOString(),snapshot,tombstones:Array.isArray(input.tombstones)?input.tombstones:[],conflicts:cleanConflicts(input.conflicts||[])};}
+  return {schemaVersion:SCHEMA_VERSION,revision:0,updatedAt:new Date().toISOString(),snapshot:normalizeSnapshot({schemaVersion:SCHEMA_VERSION,extensions:[],windows:[],bookmarks:[],extensionSettings:{}}),tombstones:[],conflicts:[]};
+}
+
+async function loadRemote(gistId){
+  const raw=await readGistRaw(gistId);let manifest=null;const manifestText=raw.files[MANIFEST_FILE]?.content;
+  if(manifestText){try{manifest=JSON.parse(manifestText);}catch{throw Error('Gist manifest.json 无法解析');}}
+  if(!manifest){const legacyText=raw.files['chromium-cloud-sync.json']?.content;if(!legacyText)throw Error('Gist 中没有同步数据');return {state:normalizeCloudState(JSON.parse(legacyText)),manifest:{schemaVersion:SCHEMA_VERSION,format:'gist-plain-v1',currentFile:CURRENT_FILE,revision:0},raw,legacy:true};}
+  if(![7,8,9,10,11].includes(Number(manifest.schemaVersion)))throw Error(`不支持的 Gist schema: ${manifest.schemaVersion}`);
+  manifest.schemaVersion=SCHEMA_VERSION;const currentFile=manifest.currentFile||CURRENT_FILE;
+  const plainCandidate=raw.files[CURRENT_FILE]?.content || (currentFile!==LEGACY_ENCRYPTED_FILE ? raw.files[currentFile]?.content : null);
+  if(plainCandidate){try{return {state:normalizeCloudState(JSON.parse(plainCandidate)),manifest:{...manifest,format:'gist-plain-v1',currentFile:CURRENT_FILE},raw};}catch{throw Error('Gist 中的 current.json 无法解析');}}
+  const encryptedText=raw.files[LEGACY_ENCRYPTED_FILE]?.content || (currentFile===LEGACY_ENCRYPTED_FILE ? raw.files[currentFile]?.content : null);
+  if(encryptedText){const state=normalizeCloudState(await legacyDecryptState(encryptedText,manifest));return {state,manifest:{schemaVersion:SCHEMA_VERSION,format:'gist-plain-v1',currentFile:CURRENT_FILE,revision:Number(manifest.revision||state.revision||0)},raw,legacyEncrypted:true};}
+  throw Error('Gist 中没有 current.json 同步数据');
+}
+
+async function createGist(state){const manifest={schemaVersion:SCHEMA_VERSION,format:'gist-plain-v1',currentFile:CURRENT_FILE,revision:Number(state.revision||1),lastUpdatedAt:state.updatedAt||new Date().toISOString()};const payload={description:'Chromium Cloud Sync | private sync state',public:false,files:{[MANIFEST_FILE]:{content:JSON.stringify(manifest,null,2)},[CURRENT_FILE]:{content:JSON.stringify(state,null,2)}}};const r=await github('/gists',{method:'POST',body:JSON.stringify(payload)});await setSettings({[KEYS.GIST_ID]:r.data.id,[KEYS.ETAG]:r.headers.get('ETag')||'', [KEYS.BASE_SNAPSHOT]:state.snapshot||{},[KEYS.BASE_REVISION]:Number(state.revision||0),[KEYS.SYNC_REVISION]:Number(state.revision||0)});return r.data;}
+function isLegacyHistoryFile(name){return /^history\//.test(name)||/^ccsync-history-/.test(name)||/^history-/.test(name);}
+function legacyHistoryDeletes(existingFiles=[]){return [...new Set((existingFiles||[]).filter(isLegacyHistoryFile))];}
+async function updateGist(gistId,state,existingFiles={}){const now=state.updatedAt||new Date().toISOString();const manifest={schemaVersion:SCHEMA_VERSION,format:'gist-plain-v1',currentFile:CURRENT_FILE,revision:Number(state.revision||0),lastUpdatedAt:now};const files={[MANIFEST_FILE]:{content:JSON.stringify(manifest,null,2)},[CURRENT_FILE]:{content:JSON.stringify(state,null,2)}};if(Object.prototype.hasOwnProperty.call(existingFiles||{},LEGACY_ENCRYPTED_FILE))files[LEGACY_ENCRYPTED_FILE]=null;for(const f of legacyHistoryDeletes(Object.keys(existingFiles||{})))files[f]=null;for(const f of ['chromium-cloud-sync.json'])if(Object.prototype.hasOwnProperty.call(existingFiles||{},f))files[f]=null;return github(`/gists/${encodeURIComponent(gistId)}`,{method:'PATCH',body:JSON.stringify({description:'Chromium Cloud Sync | private sync state',files})});}
+async function buildLocalState(localSnapshot,remoteState,currentBase){
+  const settings=await getSettings();
+  const base=currentBase||remoteState.snapshot||{};
+  const revision=Math.max(Number(settings[KEYS.SYNC_REVISION]||0),Number(settings[KEYS.BASE_REVISION]||0),Number(remoteState.revision||0))+1;
+  const now=new Date().toISOString();
+  const {snapshot,conflicts}=mergeSnapshots(base,localSnapshot,remoteState.snapshot||{});
+  snapshot.schemaVersion=SCHEMA_VERSION;
+  snapshot.updatedAt=now;
+  let tombstones=deriveTombstones(base,localSnapshot,remoteState.tombstones||[],revision,now);
+  const clean=cleanConflicts([...(remoteState.conflicts||[]),...conflicts]);
+  const remoteWins=new Set(clean.filter(c=>c.type==='delete-vs-modify'&&c.winner==='remote').map(c=>`${c.collection}:${c.syncId}`));
+  tombstones=tombstones.filter(t=>!remoteWins.has(`${t.collection}:${t.syncId}`));
+  const finalSnapshot=applyTombstones(snapshot,tombstones);
+  finalSnapshot.schemaVersion=SCHEMA_VERSION;
+  finalSnapshot.updatedAt=now;
+  const state={schemaVersion:SCHEMA_VERSION,revision,updatedAt:now,snapshot:finalSnapshot,tombstones,conflicts:clean.slice(-200)};
+  return {state,revision,conflicts:clean};
+}
+async function pushSnapshot(){const localSnapshot=await createSnapshot();let settings=await getSettings(),gistId=settings[KEYS.GIST_ID]||'';if(gistId&&!(settings[KEYS.GITHUB_TOKEN]||'').trim())throw Error('未配置 GitHub Token');for(let attempt=1;attempt<=MAX_PUSH_RETRIES;attempt++){let remoteState={schemaVersion:SCHEMA_VERSION,revision:0,updatedAt:new Date().toISOString(),snapshot:normalizeSnapshot({extensions:[],windows:[],bookmarks:[],extensionSettings:{}}),tombstones:[],conflicts:[]},raw=null,legacyEncrypted=false;if(gistId){const loaded=await loadRemote(gistId);remoteState=loaded.state;raw=loaded.raw;legacyEncrypted=!!loaded.legacyEncrypted;}settings=await getSettings();const currentBase=settings[KEYS.BASE_SNAPSHOT]||remoteState.snapshot||{};const built=await buildLocalState(localSnapshot,remoteState,currentBase);if(!gistId){const created=await createGist(built.state);gistId=created.id;}else{await updateGist(gistId,built.state,raw.files||{});if(legacyEncrypted)await cleanupLegacyLocalState();}const verify=await loadRemote(gistId);const remoteChecksum=checksum(verify.state.snapshot),builtChecksum=checksum(built.state.snapshot);if(Number(verify.state.revision)!==built.revision||remoteChecksum!==builtChecksum){if(attempt===MAX_PUSH_RETRIES)throw Error('云端并发修改过于频繁，已停止重试；请再次同步');continue;}await setSettings({[KEYS.GIST_ID]:gistId,[KEYS.LAST_SYNC]:built.state.updatedAt,[KEYS.LAST_REMOTE_UPDATED]:verify.raw.updatedAt||built.state.updatedAt,[KEYS.ETAG]:verify.raw.etag||'',[KEYS.BASE_SNAPSHOT]:built.state.snapshot,[KEYS.BASE_REVISION]:built.revision,[KEYS.SYNC_REVISION]:built.revision,[KEYS.LAST_CONFLICTS]:built.conflicts});return {ok:true,gistId,revision:built.revision,updatedAt:built.state.updatedAt,extensionCount:built.state.snapshot?.extensions?.length||0,tabCount:countTabs(built.state.snapshot),bookmarkCount:countBookmarks(built.state.snapshot?.bookmarks),groupCount:countGroups(built.state.snapshot?.windows),conflicts:built.conflicts.length};}}
+function countTabs(s){return (s?.windows||[]).reduce((n,w)=>n+(w.tabs||[]).length,0);}function countBookmarks(a){return (a||[]).filter(x=>x.url).length;}function countGroups(ws){const s=new Set();for(const w of ws||[])for(const t of w.tabs||[])if(t.group?.syncId)s.add(t.group.syncId);return s.size;}
+async function pullState(){const s=await getSettings();if(!s[KEYS.GIST_ID])throw Error('尚未绑定 GitHub Gist');const loaded=await loadRemote(s[KEYS.GIST_ID]);await setSettings({[KEYS.LAST_REMOTE_UPDATED]:loaded.raw.updatedAt,[KEYS.ETAG]:loaded.raw.etag||''});return loaded.state;}
+async function restoreTabs(windows){
+  let wc=0,tc=0,gc=0,skipped=0;
+  for(const source of windows||[]){
+    const tabs=(source.tabs||[]).filter(t=>t.url&&!isRestrictedUrl(t.url)).sort((a,b)=>(a.index??0)-(b.index??0));
+    if(!tabs.length)continue;
+    const requestedState=source.state==='maximized'||source.state==='minimized'?'normal':(source.state==='fullscreen'?'fullscreen':'normal');
+    let w;
+    try{w=await chrome.windows.create({focused:false,state:requestedState});}
+    catch(e){w=await chrome.windows.create({focused:false});}
+    wc++;
+    const placeholder=w.tabs?.[0],restored=[];
+    for(let i=0;i<tabs.length;i++){
+      const t=tabs[i];
+      try{
+        const createData={windowId:w.id,url:t.url,active:false};
+        // Pinned tabs cannot belong to a tab group; create them separately.
+        createData.pinned=!!t.pinned;
+        const c=(i===0&&placeholder)?await chrome.tabs.update(placeholder.id,{url:t.url,pinned:!!t.pinned,active:false}):await chrome.tabs.create(createData);
+        restored.push({source:t,tabId:c.id});
+        tc++;
+      }catch(e){skipped++;}
+    }
+    const groups=new Map();
+    for(const x of restored){
+      const k=x.source.group?.syncId;
+      // Chrome does not allow pinned tabs to be grouped.
+      if(k&&!x.source.pinned){
+        if(!groups.has(k))groups.set(k,[]);
+        groups.get(k).push(x);
+      }
+    }
+    for(const items of groups.values()){
+      if(!items.length)continue;
+      try{
+        const gid=await chrome.tabs.group({tabIds:items.map(x=>x.tabId),createProperties:{windowId:w.id}});
+        const meta=items[0].source.group;
+        try{await chrome.tabGroups.update(gid,{title:meta.title||undefined,color:meta.color||'grey',collapsed:!!meta.collapsed});}catch{}
+        gc++;
+      }catch(e){skipped+=items.length;}
+    }
+  }
+  return {windows:wc,tabs:tc,groups:gc,skipped};
+}
+async function restoreBookmarks(nodes){const incoming=Array.isArray(nodes)?nodes:[],tree=await chrome.bookmarks.getTree(),map=await getObjectMap(KEYS.BOOKMARK_SYNC_IDS),bySync=new Map();(function collect(arr){for(const n of arr||[]){const sid=map[String(n.id)];if(sid)bySync.set(sid,n);collect(n.children);}})(tree);const roots=new Map([['root-bookmarks',tree.find(n=>n.id==='0')||tree[0]]]);let added=0,moved=0,updated=0;const created=new Map();const parentId=n=>created.get(n.parentSyncId)?.id||bySync.get(n.parentSyncId)?.id||roots.get(n.parentSyncId)?.id;const pending=incoming.filter(n=>n.syncId!=='root-bookmarks').slice().sort((a,b)=>Number(a.index)-Number(b.index));for(let pass=0;pending.length&&pass<incoming.length+1;pass++){let progress=false;for(let i=pending.length-1;i>=0;i--){const n=pending[i],pid=parentId(n);if(!pid)continue;let ex=bySync.get(n.syncId);if(!ex){ex=await chrome.bookmarks.create({parentId:pid,title:n.title||'',...(n.url?{url:n.url}:{})});map[String(ex.id)]=n.syncId;bySync.set(n.syncId,ex);created.set(n.syncId,ex);added++;}else{if(ex.title!==n.title||((ex.url||'')!==(n.url||''))){await chrome.bookmarks.update(ex.id,{title:n.title||'',...(n.url?{url:n.url}:{})});updated++;}if(ex.parentId!==pid){await chrome.bookmarks.move(ex.id,{parentId:pid,index:Number.isFinite(n.index)?n.index:0});moved++;}}pending.splice(i,1);progress=true;}if(!progress)break;}await chrome.storage.local.set({[KEYS.BOOKMARK_SYNC_IDS]:map});return {added,moved,updated};}
+
+
+async function saveState(gistId,loaded,nextState){const now=new Date().toISOString();const revision=Math.max(Number(nextState?.revision||0),Number(loaded.manifest?.revision||0)+1);const state={...nextState,schemaVersion:SCHEMA_VERSION,revision,updatedAt:now,snapshot:normalizeSnapshot(nextState.snapshot)};state.snapshot.updatedAt=now;await updateGist(gistId,state,loaded.raw.files||{});await setSettings({[KEYS.BASE_SNAPSHOT]:state.snapshot,[KEYS.BASE_REVISION]:revision,[KEYS.SYNC_REVISION]:revision,[KEYS.LAST_SYNC]:now,[KEYS.LAST_REMOTE_UPDATED]:now,[KEYS.LAST_CONFLICTS]:state.conflicts||[]});return {revision};}
+async function getGistRevision(gistId,revision){return (await github(`/gists/${encodeURIComponent(gistId)}/${encodeURIComponent(revision)}`)).data;}
+async function revisionState(revisionGist){const manifestText=revisionGist.files?.[MANIFEST_FILE]?.content;let manifest=null;if(manifestText){try{manifest=JSON.parse(manifestText);}catch{throw Error('历史 Revision 的 manifest.json 无法解析');}}const currentFile=manifest?.currentFile||CURRENT_FILE;const plain=revisionGist.files?.[CURRENT_FILE]?.content || (currentFile!==LEGACY_ENCRYPTED_FILE ? revisionGist.files?.[currentFile]?.content : null);if(plain){try{return normalizeCloudState(JSON.parse(plain));}catch{throw Error('历史 Revision 的 current.json 无法解析');}}const encrypted=revisionGist.files?.[LEGACY_ENCRYPTED_FILE]?.content || (currentFile===LEGACY_ENCRYPTED_FILE ? revisionGist.files?.[currentFile]?.content : null);if(encrypted&&manifest)return normalizeCloudState(await legacyDecryptState(encrypted,manifest));throw Error('历史 Revision 缺少 current.json');}
+async function historyData(){const s=await getSettings();if(!s[KEYS.GIST_ID])throw Error('尚未绑定 GitHub Gist');const loaded=await loadRemote(s[KEYS.GIST_ID]);const r=await github(`/gists/${encodeURIComponent(s[KEYS.GIST_ID])}/commits?per_page=30`);const currentSha=loaded.raw.gist?.history?.[0]?.version||loaded.raw.gist?.history?.[0]?.sha||'';return {gistId:s[KEYS.GIST_ID],revision:Number(loaded.state?.revision||loaded.manifest?.revision||0),commits:(r.data||[]).map((c,index)=>({sha:c.version,index,createdAt:c.committed_at,user:c.user?.login||'',changes:c.change_status||{},current:c.version===currentSha})),state:loaded.state};}
+async function rollbackHistory(revision){const settings=await getSettings();if(!settings[KEYS.GIST_ID])throw Error('尚未绑定 GitHub Gist');if(!revision)throw Error('缺少历史 Revision');const current=await loadRemote(settings[KEYS.GIST_ID]);const historicalGist=await getGistRevision(settings[KEYS.GIST_ID],revision);const historical=await revisionState(historicalGist);const now=new Date().toISOString();const next={...historical,schemaVersion:SCHEMA_VERSION,revision:Math.max(Number(current.state.revision||0),Number(historical.revision||0),Number(settings[KEYS.SYNC_REVISION]||0))+1,updatedAt:now,snapshot:normalizeSnapshot(historical.snapshot),conflicts:cleanConflicts([...(current.state.conflicts||[]),{type:'rollback',status:'resolved',strategy:'gist-revision',revision,at:now}])};next.snapshot.updatedAt=now;const result=await saveState(settings[KEYS.GIST_ID],current,next);return {ok:true,revision:result.revision,sourceRevision:revision};}
+
+// Compare the local extension inventory with the single shared Gist inventory.
+// A missing extension is one present in the cloud inventory but absent locally.
+async function missingExtensions(){
+  const local=await collectExtensions();
+  const settings=await getSettings();
+  if(!settings[KEYS.GIST_ID]) return {local,remote:[],missing:[],remoteUnavailable:true,errorCode:'GIST_NOT_BOUND',errorMessage:'尚未绑定 GitHub Gist'};
+  try{
+    const state=await pullState();
+    const remote=Array.isArray(state.snapshot?.extensions)?state.snapshot.extensions:[];
+    const localIds=new Set(local.map(x=>x.id));
+    const missing=remote.filter(x=>!localIds.has(x.id));
+    return {local,remote,missing,remoteUnavailable:false};
+  }catch(error){return {local,remote:[],missing:[],remoteUnavailable:true,errorCode:'REMOTE_READ_FAILED',errorMessage:error?.message||String(error)};}
+}
+async function getAutoSyncSettings(){const s=await getSettings();return {enabled:s[KEYS.AUTO_SYNC_ENABLED]===true,intervalMinutes:Number(s[KEYS.AUTO_SYNC_INTERVAL_MINUTES]||AUTO_SYNC_MINUTES)||AUTO_SYNC_MINUTES};}
+async function setupAlarms(){const cfg=await getAutoSyncSettings();await chrome.alarms.clear('cloud-sync');if(cfg.enabled)await chrome.alarms.create('cloud-sync',{periodInMinutes:cfg.intervalMinutes});}
+async function setAutoSyncSettings(enabled,intervalMinutes=AUTO_SYNC_MINUTES){const interval=Math.max(1,Math.min(1440,Number(intervalMinutes)||AUTO_SYNC_MINUTES));await setSettings({[KEYS.AUTO_SYNC_ENABLED]:!!enabled,[KEYS.AUTO_SYNC_INTERVAL_MINUTES]:interval});await setupAlarms();return {enabled:!!enabled,intervalMinutes:interval};}
+chrome.alarms.onAlarm.addListener(async a=>{if(a.name!=='cloud-sync')return;try{const cfg=await getAutoSyncSettings();if(!cfg.enabled)return;const s=await getSettings();if(s[KEYS.GITHUB_TOKEN]&&s[KEYS.GIST_ID])await pushSnapshot();}catch(e){console.warn('Gist sync failed',e);}});
+chrome.runtime.onInstalled.addListener(async()=>{const s=await getSettings();if(typeof s[KEYS.AUTO_SYNC_ENABLED]!=='boolean')await setSettings({[KEYS.AUTO_SYNC_ENABLED]:DEFAULT_AUTO_SYNC_ENABLED});if(!s[KEYS.AUTO_SYNC_INTERVAL_MINUTES])await setSettings({[KEYS.AUTO_SYNC_INTERVAL_MINUTES]:AUTO_SYNC_MINUTES});await setupAlarms();});
+chrome.runtime.onStartup.addListener(async()=>{const s=await getSettings();const patch={};if(typeof s[KEYS.AUTO_SYNC_ENABLED]!=='boolean')patch[KEYS.AUTO_SYNC_ENABLED]=DEFAULT_AUTO_SYNC_ENABLED;if(!s[KEYS.AUTO_SYNC_INTERVAL_MINUTES])patch[KEYS.AUTO_SYNC_INTERVAL_MINUTES]=AUTO_SYNC_MINUTES;if(Object.keys(patch).length)await setSettings(patch);await setupAlarms();});
+for(const ev of [chrome.tabs.onCreated,chrome.tabs.onRemoved,chrome.tabs.onUpdated,chrome.tabs.onMoved])ev.addListener(()=>debounceAutoSync());
+for(const ev of [chrome.tabGroups?.onCreated,chrome.tabGroups?.onRemoved,chrome.tabGroups?.onUpdated])if(ev)ev.addListener(()=>debounceAutoSync());
+for(const ev of [chrome.bookmarks?.onCreated,chrome.bookmarks?.onRemoved,chrome.bookmarks?.onChanged,chrome.bookmarks?.onMoved])if(ev)ev.addListener(()=>debounceAutoSync());
+let syncTimer=null;function debounceAutoSync(){clearTimeout(syncTimer);syncTimer=setTimeout(async()=>{try{const cfg=await getAutoSyncSettings();if(!cfg.enabled)return;const s=await getSettings();if(s[KEYS.GITHUB_TOKEN]&&s[KEYS.GIST_ID])await pushSnapshot();}catch(e){console.warn('Event sync failed',e);}},5000);}
+chrome.runtime.onMessage.addListener((m,_s,send)=>{(async()=>{switch(m.type){case'ping':return {ok:true,version:SCHEMA_VERSION};case'getAutoSyncSettings':return getAutoSyncSettings();case'setAutoSyncSettings':return setAutoSyncSettings(m.enabled,m.intervalMinutes);case'status':{const s=await getSettings();return {authenticated:!!s[KEYS.GITHUB_TOKEN],gistConfigured:!!s[KEYS.GIST_ID],gistId:s[KEYS.GIST_ID]||'',lastSyncAt:s[KEYS.LAST_SYNC]||'',syncRevision:Number(s[KEYS.SYNC_REVISION]||0),conflictCount:cleanConflicts(s[KEYS.LAST_CONFLICTS]||[]).length,autoSyncEnabled:s[KEYS.AUTO_SYNC_ENABLED]===true,autoSyncIntervalMinutes:Number(s[KEYS.AUTO_SYNC_INTERVAL_MINUTES]||AUTO_SYNC_MINUTES)||AUTO_SYNC_MINUTES};}case'validateToken':{try{return {ok:true,...await validateToken(m.token||'')}}catch(e){throw Error(`Token validation failed: ${e?.message||e}`);}}case'configureGist':{const token=(m.token||'').trim();if(!token)throw Error('未配置 GitHub Token');if(!m.gistId){await chrome.storage.local.remove([KEYS.GIST_ID,KEYS.ETAG]);await setSettings({[KEYS.GITHUB_TOKEN]:token});return {gistId:''};}const r=await github(`/gists/${encodeURIComponent(m.gistId)}`,{},token);if(!r.data.files?.[MANIFEST_FILE]&&!r.data.files?.['chromium-cloud-sync.json']&&!r.data.files?.[CURRENT_FILE]&&!r.data.files?.[LEGACY_ENCRYPTED_FILE])throw Error('指定 Gist 不包含 Chromium Cloud Sync 数据');await setSettings({[KEYS.GITHUB_TOKEN]:token,[KEYS.GIST_ID]:m.gistId,[KEYS.ETAG]:r.headers.get('ETag')||''});return {gistId:m.gistId};}case'createGist':{const snap=await createSnapshot(),state={schemaVersion:SCHEMA_VERSION,revision:1,updatedAt:snap.updatedAt,snapshot:snap,tombstones:[],conflicts:[]},g=await createGist(state);await setSettings({[KEYS.SYNC_REVISION]:1,[KEYS.BASE_SNAPSHOT]:snap,[KEYS.BASE_REVISION]:1,[KEYS.LAST_SYNC]:snap.updatedAt});return {id:g.id,revision:1};}case'snapshot':return createSnapshot();case'sync':return pushSnapshot();case'pull':return (await pullState()).snapshot;case'pullState':return pullState();case'restoreTabs':return restoreTabs(m.windows);case'restoreBookmarks':return restoreBookmarks(m.bookmarks);case'missingExtensions':return missingExtensions();case'rollbackHistory':return rollbackHistory(m.revision);case'historyData':return historyData();default:throw Error(`Unknown message: ${m.type}`);}})().then(send).catch(e=>send({error:e.message}));return true;});

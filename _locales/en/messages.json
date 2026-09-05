@@ -1,0 +1,8 @@
+{
+  "extensionName": {
+    "message": "Chromium Cloud Sync"
+  },
+  "extensionDescription": {
+    "message": "Encrypted Chromium browser sync through GitHub Gist."
+  }
+}

@@ -1,0 +1,158 @@
+name: Release Chromium Cloud Sync
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to build (for example v1.5.14)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish CRX + ZIP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Read and validate version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")"
+          TAG="${GITHUB_REF_NAME}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          fi
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $TAG"
+            echo "Expected format: vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+          TAG_VERSION="${TAG#v}"
+          if [[ "$VERSION" != "$TAG_VERSION" ]]; then
+            echo "Tag version ($TAG_VERSION) does not match manifest version ($VERSION)."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION"
+          echo "Release tag: $TAG"
+
+      - name: Validate project
+        run: npm run validate
+
+      - name: Build release ZIP
+        run: npm run build:zip
+
+      - name: Locate release ZIP
+        id: zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
+
+          test -f "$ZIP"
+          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t "${{ steps.zip.outputs.path }}"
+
+          unzip -l "${{ steps.zip.outputs.path }}" | grep -E '(^|/)manifest\.json$'
+          unzip -l "${{ steps.zip.outputs.path }}" | grep -E '(^|/)background\.js$'
+          unzip -l "${{ steps.zip.outputs.path }}" | grep -E '(^|/)options\.html$'
+
+      - name: Install CRX3 packer
+        run: npm install --global crx3@2.0.0
+
+      - name: Prepare CRX signing key
+        shell: bash
+        env:
+          CRX_PRIVATE_KEY_B64: ${{ secrets.CRX_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CRX_PRIVATE_KEY_B64:-}" ]]; then
+            echo "Missing required repository secret: CRX_PRIVATE_KEY_B64"
+            echo "Generate one stable CRX signing key and store its base64 contents in GitHub Secrets."
+            exit 1
+          fi
+
+          printf '%s' "$CRX_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/chromium-cloud-sync.pem"
+          chmod 600 "$RUNNER_TEMP/chromium-cloud-sync.pem"
+
+      - name: Build signed CRX3
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
+          CRX="dist/chromium-cloud-sync-v${VERSION}.crx"
+          KEY="$RUNNER_TEMP/chromium-cloud-sync.pem"
+
+          cat "$ZIP" | crx3 -p "$KEY" -o "$CRX"
+          test -s "$CRX"
+
+          MAGIC="$(head -c 4 "$CRX")"
+          if [[ "$MAGIC" != "Cr24" ]]; then
+            echo "Generated file is not a CRX package (invalid magic header)."
+            exit 1
+          fi
+
+          echo "Built: $CRX"
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.zip dist/*.crx > dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          gh release create "$TAG" \
+            "dist/chromium-cloud-sync-v${VERSION}.zip" \
+            "dist/chromium-cloud-sync-v${VERSION}.crx" \
+            "dist/SHA256SUMS.txt" \
+            --title "Chromium Cloud Sync v${VERSION}" \
+            --generate-notes

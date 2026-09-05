@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f5f7fb"><title>Sync history - Chromium Cloud Sync</title><link rel="stylesheet" href="ui.css"></head><body><div class="shell aux-shell"><header class="page-header history-header"><div class="brand"><div class="brand-mark"><img src="icons/icon.svg" alt=""></div><div class="brand-copy"><h1 class="brand-title" data-i18n="historyPage">Sync history</h1><div class="brand-sub" data-i18n="historyHelp">GitHub stores the revision history for this private Gist.</div></div></div><div class="toolbar"><div id="language" class="choice-switch language-switch" role="radiogroup" aria-label="Language" data-value="auto">
+  <span class="choice-switch-thumb" aria-hidden="true"></span>
+  <button type="button" class="choice-switch-option" role="radio" data-value="zh-CN" aria-label="简体中文" aria-pressed="false"><span class="lang-option-label">中</span></button>
+  <button type="button" class="choice-switch-option" role="radio" data-value="en" aria-label="English" aria-pressed="false"><span class="lang-option-label">EN</span></button>
+</div><div aria-label="Theme" class="choice-switch theme-switch" data-value="system" id="theme" role="radiogroup">
+<span aria-hidden="true" class="choice-switch-thumb"></span>
+<button aria-label="Light" aria-pressed="false" class="choice-switch-option theme-option" data-value="light" role="radio" type="button">
+<svg aria-hidden="true" class="theme-art theme-art-light" viewBox="0 0 32 22" focusable="false">
+<circle class="theme-sun" cx="8.2" cy="8" r="3.55"></circle>
+<path class="theme-sun-ray" d="M8.2 1.7v1.45M8.2 12.85v1.45M1.9 8h1.45M13.05 8h1.45M3.75 3.55l1.02 1.02M11.63 11.43l1.02 1.02M12.65 3.55l-1.02 1.02M4.77 11.43l-1.02 1.02"></path>
+<path class="theme-cloud-light" d="M11.2 17.65h13.35a3.25 3.25 0 0 0 .2-6.47 4.95 4.95 0 0 0-8.62-1.23 4.25 4.25 0 0 0-4.93 7.7Z"></path>
+<path class="theme-cloud-highlight" d="M13.1 15.55c.8-1.25 2.25-1.8 3.55-1.55.9-1.42 2.6-2.12 4.25-1.8" ></path>
+</svg>
+</button>
+<button aria-label="Dark" aria-pressed="false" class="choice-switch-option theme-option" data-value="dark" role="radio" type="button">
+<svg aria-hidden="true" class="theme-art theme-art-dark" viewBox="0 0 32 22" focusable="false">
+<path class="theme-moon" d="M13.45 3.25a5.65 5.65 0 1 0 4.34 9.27 6.15 6.15 0 0 1-4.34-9.27Z"></path>
+<path class="theme-star" d="M22 3.15l.62 1.32 1.44.2-1.03 1 .24 1.43L22 6.42l-1.27.68.24-1.43-1.03-1 1.44-.2.62-1.32Z"></path>
+<path class="theme-star theme-star-small" d="M26.55 8.1l.42.9.98.14-.7.68.17.97-.87-.46-.87.46.17-.97-.7-.68.98-.14.42-.9Z"></path>
+<path class="theme-cloud-dark" d="M12.2 18.05h14.15a3.35 3.35 0 0 0 .2-6.68 4.95 4.95 0 0 0-8.6-1.1 4.28 4.28 0 0 0-5.75 7.78Z"></path>
+<path class="theme-cloud-highlight-dark" d="M14.1 16.05c.8-1.18 2.16-1.72 3.42-1.48.92-1.28 2.53-1.92 4.08-1.55"></path>
+</svg>
+</button>
+</div><button type="button" id="refresh" class="secondary" data-i18n="refresh">Refresh</button></div></header><section class="card"><div class="card-title"><span data-i18n="historyVersions">History versions</span></div><div id="history"></div></section><section class="card"><div class="card-title"><span data-i18n="unresolved">Unresolved conflicts</span></div><div id="conflicts"></div></section><section class="card"><div class="card-title"><span data-i18n="status">Status</span></div><div id="status" class="status-box" data-i18n="loading">Loading…</div></section></div><script src="runtime.js"></script><script src="theme.js"></script><script src="i18n.js"></script><script src="history.js"></script></body></html>

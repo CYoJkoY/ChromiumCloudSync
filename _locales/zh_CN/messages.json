@@ -1,0 +1,8 @@
+{
+  "extensionName": {
+    "message": "Chromium Cloud Sync"
+  },
+  "extensionDescription": {
+    "message": "基于 GitHub Gist 的加密 Chromium 浏览器同步工具。"
+  }
+}
