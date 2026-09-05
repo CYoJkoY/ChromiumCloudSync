@@ -1,6 +1,6 @@
 <div align="center" style="background-color: #1E1E1E; padding: 40px 20px; border-radius: 28px;">
   <div style="background: #2A2A2A; border-radius: 36px; padding: 28px 18px; margin-bottom: 28px;">
-    <img src="assets/readme/hero.svg?v=2" alt="Chromium Cloud Sync architecture" width="960">
+    <img src="assets/readme/hero-v2.svg" alt="Chromium Cloud Sync architecture" width="960">
     <h1 style="color: #E6DED6; font-weight: 350; letter-spacing: 2px; margin: 18px 0 8px;">Chromium Cloud Sync</h1>
     <p style="color: #BEB8AE; font-size: 1.2em; max-width: 720px; margin: 0 auto;">A Chromium extension for keeping tabs, tab groups, bookmarks, installed extensions, and extension settings synchronized through your own GitHub Gist.</p>
     <p style="color: #8A9E8B; font-size: 0.95em; margin-top: 12px;">Manifest V3 · JavaScript · GitHub Gist · WebDAV · Local-first merge &amp; history</p>
@@ -191,7 +191,8 @@ ChromiumCloudSync/
 │       └── 📄 messages.json
 ├── 📁 assets
 │   └── 📁 readme
-│       └── 🖼️ hero.svg
+│       ├── 🖼️ hero.svg
+│       └── 🖼️ hero-v2.svg
 ├── 📁 icons
 │   ├── 🖼️ icon.svg
 │   ├── 🖼️ icon16.png
