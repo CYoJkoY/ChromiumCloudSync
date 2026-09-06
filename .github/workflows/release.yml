@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
+      - 'v*.*.*.dev*'
   workflow_dispatch:
     inputs:
       tag:
@@ -64,35 +65,33 @@ jobs:
           fi
 
           TAG_VERSION="${TAG#v}"
-          EFFECTIVE_VERSION="$VERSION"
           IS_DEV="false"
-
-          if [[ -n "$VERSION_NAME" ]]; then
-            EFFECTIVE_VERSION="$VERSION_NAME"
-          fi
-
-          if [[ "$TAG_VERSION" != "$EFFECTIVE_VERSION" ]]; then
-            echo "Tag version ($TAG_VERSION) does not match manifest effective version ($EFFECTIVE_VERSION)."
-            echo "manifest.version=$VERSION"
-            echo "manifest.version_name=${VERSION_NAME:-<empty>}"
-            exit 1
-          fi
+          EFFECTIVE_VERSION="$VERSION"
 
           if [[ "$TAG_VERSION" == *.dev[0-9]* ]]; then
             IS_DEV="true"
             if [[ -z "$VERSION_NAME" ]]; then
-              echo "Development tags require manifest.version_name to contain the same X.Y.Z.devN version."
+              echo "Development release requires manifest.version_name to be set to the same X.Y.Z.devN value as the tag."
               exit 1
             fi
-          elif [[ -n "$VERSION_NAME" ]]; then
-            echo "Stable release tags must not use a development manifest.version_name."
-            echo "Remove manifest.version_name for a stable release."
-            exit 1
+            if [[ "$TAG_VERSION" != "$VERSION_NAME" ]]; then
+              echo "Development tag ($TAG_VERSION) does not match manifest.version_name ($VERSION_NAME)."
+              exit 1
+            fi
+            EFFECTIVE_VERSION="$VERSION_NAME"
+          else
+            if [[ "$TAG_VERSION" != "$VERSION" ]]; then
+              echo "Stable tag ($TAG_VERSION) does not match manifest.version ($VERSION)."
+              exit 1
+            fi
+            EFFECTIVE_VERSION="$VERSION"
           fi
 
           echo "version=$EFFECTIVE_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "is_dev=$IS_DEV" >> "$GITHUB_OUTPUT"
+          echo "base_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "Effective release version: $EFFECTIVE_VERSION"
           echo "Release tag: $TAG"
           echo "Development release: $IS_DEV"
@@ -101,6 +100,8 @@ jobs:
         run: npm run validate
 
       - name: Build release ZIP
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: npm run build:zip
 
       - name: Locate release ZIP
@@ -134,7 +135,6 @@ jobs:
             "update.js"
             "extension-storage.js"
             "extension-storage-watch.js"
-            "ui-overrides.css"
             "popup.html"
             "popup.js"
             "options.html"
