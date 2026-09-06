@@ -9,28 +9,16 @@ const packagePath = path.join(root, 'package.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 
-const baseVersion = String(manifest.version || '').trim();
-const displayVersion = String(manifest.version_name || '').trim();
+const manifestVersion = String(manifest.version || '').trim();
 
-if (!/^\d+\.\d+\.\d+$/.test(baseVersion)) {
-  throw new Error(`Invalid manifest version: ${baseVersion}. Expected X.Y.Z.`);
+if (!/^\d+\.\d+\.\d+$/.test(manifestVersion)) {
+  throw new Error(`Invalid manifest version: ${manifestVersion}. Expected X.Y.Z.`);
 }
 
-const effectiveVersion = displayVersion || baseVersion;
-if (!/^\d+\.\d+\.\d+(?:\.dev\d+)?$/.test(effectiveVersion)) {
-  throw new Error(`Invalid manifest version_name: ${effectiveVersion}. Expected X.Y.Z or X.Y.Z.devN.`);
-}
-
-if (displayVersion && !displayVersion.startsWith(`${baseVersion}.dev`)) {
-  throw new Error(
-    `manifest.version_name (${displayVersion}) must be ${baseVersion} or start with ${baseVersion}.dev`
-  );
-}
-
-if (pkg.version !== effectiveVersion) {
-  pkg.version = effectiveVersion;
+if (pkg.version !== manifestVersion) {
+  pkg.version = manifestVersion;
   fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
-  console.log(`Synchronized package.json version: ${effectiveVersion}`);
+  console.log(`Synchronized package.json version with manifest.version: ${manifestVersion}`);
 } else {
-  console.log(`package.json version already synchronized: ${effectiveVersion}`);
+  console.log(`package.json version already synchronized: ${manifestVersion}`);
 }
