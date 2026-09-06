@@ -68,13 +68,41 @@ function mergeArray(base,local,remote,conflicts,path){
   return out;
 }
 
+function mergeExtensionSettings(base={}, local={}, remote={}, conflicts){
+  const B=base&&typeof base==='object'&&!Array.isArray(base)?base:{};
+  const L=local&&typeof local==='object'&&!Array.isArray(local)?local:{};
+  const R=remote&&typeof remote==='object'&&!Array.isArray(remote)?remote:{};
+  if(stableEqual(L,R)) return clone(L);
+  if(stableEqual(L,B)) return clone(R);
+  if(stableEqual(R,B)) return clone(L);
+  const out={};
+  const keys=new Set([...Object.keys(B),...Object.keys(L),...Object.keys(R)]);
+  for(const key of keys){
+    const hasB=Object.prototype.hasOwnProperty.call(B,key), hasL=Object.prototype.hasOwnProperty.call(L,key), hasR=Object.prototype.hasOwnProperty.call(R,key);
+    const b=hasB?B[key]:undefined, l=hasL?L[key]:undefined, r=hasR?R[key]:undefined;
+    if(stableEqual(l,r)){ if(hasL) out[key]=clone(l); continue; }
+    if(hasL&&hasR&&stableEqual(l,b)){ out[key]=clone(r); continue; }
+    if(hasL&&hasR&&stableEqual(r,b)){ out[key]=clone(l); continue; }
+    if(!hasL&&hasR){
+      if(hasB&&!stableEqual(r,b)) conflicts.push({type:'setting-delete-vs-modify',collection:'extensionSettings',setting:key,base:clone(b),local:undefined,remote:clone(r),status:'unresolved',winner:'remote'});
+      if(hasR) out[key]=clone(r);
+      continue;
+    }
+    if(hasL&&!hasR){
+      if(hasB&&!stableEqual(l,b)) conflicts.push({type:'setting-delete-vs-modify',collection:'extensionSettings',setting:key,base:clone(b),local:clone(l),remote:undefined,status:'unresolved',winner:'local'});
+      out[key]=clone(l);
+      continue;
+    }
+    conflicts.push({type:'setting-conflict',collection:'extensionSettings',setting:key,base:clone(b),local:clone(l),remote:clone(r),status:'unresolved',strategy:'manual'});
+    out[key]=clone(l);
+  }
+  return out;
+}
+
 export function mergeSnapshots(base={},local={},remote={}){
   const conflicts=[]; const out={schemaVersion:SCHEMA_VERSION};
   const scalarKeys=new Set(['updatedAt','schemaVersion','device']);
-  for(const key of Object.keys(local||{})) if(!scalarKeys.has(key)&&!['extensions','windows','bookmarks'].includes(key)) out[key]=clone(local[key]);
-  // Windows/tabs/groups represent the live state of one named device. They should
-  // never be merged across two identities. For the same logical device, prefer
-  // the side that actually changed from the common base.
+  for(const key of Object.keys(local||{})) if(!scalarKeys.has(key)&&!['extensions','windows','bookmarks','extensionSettings'].includes(key)) out[key]=clone(local[key]);
   const BWin=Array.isArray(base?.windows)?base.windows:[], LWin=Array.isArray(local?.windows)?local.windows:[], RWin=Array.isArray(remote?.windows)?remote.windows:[];
   if(stableEqual(LWin,RWin)) out.windows=clone(LWin);
   else if(stableEqual(LWin,BWin)) out.windows=clone(RWin);
@@ -85,6 +113,7 @@ export function mergeSnapshots(base={},local={},remote={}){
   }
   out.extensions=mergeArray(base?.extensions,local?.extensions,remote?.extensions,conflicts,'extensions');
   out.bookmarks=mergeArray(base?.bookmarks,local?.bookmarks,remote?.bookmarks,conflicts,'bookmarks');
+  out.extensionSettings=mergeExtensionSettings(base?.extensionSettings,local?.extensionSettings,remote?.extensionSettings,conflicts);
   out.device=clone(local.device||remote.device||base.device);
   out.updatedAt=new Date().toISOString();
   return {snapshot:out,conflicts};
@@ -130,8 +159,6 @@ export function mergeDeviceStates(devices){
   };
   merged.extensions=mergeCollection('extensions');
   merged.bookmarks=mergeCollection('bookmarks');
-  // Windows belong to a named device. Never three-way merge windows across devices;
-  // aggregate them by their stable syncId and keep the newest device snapshot.
   merged.windows=mergeCollection('windows');
   const latest=entries.at(-1);
   merged.device=clone(latest?.snapshot?.device||{name:latest?.deviceName||''});
