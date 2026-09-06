@@ -1,0 +1,79 @@
+name: Remove extension settings sync
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Remove extension settings synchronization
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          bg = Path('background.js')
+          text = bg.read_text(encoding='utf-8')
+          text = text.replace("let applyingRemoteExtensionSettings=false;\nlet settingsSyncTimer=null;\n", "")
+          text = re.sub(r"async function collectExtensionSettings\(\)\{.*?\nasync function applyExtensionSettings", "async function applyExtensionSettings", text, count=1, flags=re.S)
+          text = re.sub(r"async function applyExtensionSettings\(remoteSettings=\{\}\)\{.*?\nfunction scheduleSettingsSync", "function scheduleSettingsSync", text, count=1, flags=re.S)
+          text = re.sub(r"function scheduleSettingsSync\(\)\{.*?\nasync function createSnapshot", "function scheduleSettingsSync(){}\nasync function createSnapshot", text, count=1, flags=re.S)
+          text = text.replace("extensionSettings:await collectExtensionSettings(),", "")
+          text = text.replace("applyingRemoteExtensionSettings=true;try{", "try{").replace("finally{applyingRemoteExtensionSettings=false;}", "finally{}")
+          text = text.replace("if(!s[KEYS.GITHUB_TOKEN]&&", "if(!s[KEYS.GITHUB_TOKEN]&&")
+          text = re.sub(r"if\(!x\.extensionSettings\|\|typeof x\.extensionSettings!=='object'\|\|Array\.isArray\(x\.extensionSettings\)\)x\.extensionSettings=\{\};", "delete x.extensionSettings;", text)
+          text = text.replace("extensionSettings:{}})", "})")
+          bg.write_text(text, encoding='utf-8')
+
+          core = Path('sync-core.js')
+          text = core.read_text(encoding='utf-8')
+          text = re.sub(r"\nfunction mergeExtensionSettings\(base=\{\},local=\{\},remote=\{\},conflicts\)\{.*?\n\}\n\nexport function mergeSnapshots", "\nexport function mergeSnapshots", text, count=1, flags=re.S)
+          text = text.replace("['extensions','windows','bookmarks','extensionSettings']", "['extensions','windows','bookmarks']")
+          text = re.sub(r"\n  out\.extensionSettings=mergeExtensionSettings\([^\n]*\);", "\n  delete out.extensionSettings;", text, count=1)
+          core.write_text(text, encoding='utf-8')
+
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
+          text = text.replace('Tabs · Tab Groups · Windows · Bookmarks · Extensions · Extension Settings', 'Tabs · Tab Groups · Windows · Bookmarks · Extensions')
+          text = re.sub(r"\n- \*\*Settings sync\*\*.*", "", text)
+          text = re.sub(r"\n\| Extension settings \|.*\|", "", text)
+          text = re.sub(r"\n### Extension settings synchronization\n.*?(?=\n### History and rollback)", "", text, count=1, flags=re.S)
+          text = re.sub(r"\n- Extension settings are included in the synchronized snapshot, except for credentials and device-local bookkeeping\.", "", text)
+          readme.write_text(text, encoding='utf-8')
+
+          workflow = Path('.github/workflows/cleanup-extension-settings.yml')
+          marker = 'Remove extension settings synchronization'
+
+          changed = [str(p) for p in (bg, core, readme) if p.exists()]
+          print('Updated:', ', '.join(changed))
+
+      - name: Validate
+        run: npm run validate
+
+      - name: Commit cleanup and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/cleanup-extension-settings.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add background.js sync-core.js README.md .github/workflows/cleanup-extension-settings.yml
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'refactor: remove extension settings sync'
+          git push
