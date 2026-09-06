@@ -1,0 +1,53 @@
+name: Fix overview slide margin
+
+on:
+  push:
+    paths:
+      - ".github/workflows/fix-overview-margin.yml"
+      - "docs/.overview-margin-trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Increase left safe area
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("docs/ChromiumCloudSync-overview.html")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              ".topline{position:absolute;left:96px;right:96px;": ".topline{position:absolute;left:144px;right:96px;",
+              ".content{position:absolute;left:104px;right:104px;": ".content{position:absolute;left:144px;right:104px;",
+              ".footer{position:absolute;left:104px;right:104px;": ".footer{position:absolute;left:144px;right:104px;",
+          }
+          changed = False
+          for old, new in replacements.items():
+              if old in text:
+                  text = text.replace(old, new, 1)
+                  changed = True
+          if not changed:
+              raise SystemExit("Expected margin rules were not found; refusing to modify the deck.")
+          path.write_text(text, encoding="utf-8")
+
+      - name: Commit change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ChromiumCloudSync-overview.html
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "fix: increase overview deck left safe area"
+          git push
