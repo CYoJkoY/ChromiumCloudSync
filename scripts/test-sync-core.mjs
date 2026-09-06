@@ -37,18 +37,18 @@ const base = snapshot({
 
 {
   const baseBookmark = base.bookmarks[0];
-  const local = snapshot({ bookmarks: [{ ...baseBookmark, title: 'Local' }] });
-  const remote = snapshot({ bookmarks: [{ ...baseBookmark, title: 'Remote' }] });
+  const local = snapshot({ bookmarks: [{ ...baseBookmark, url: 'https://local.example' }] });
+  const remote = snapshot({ bookmarks: [{ ...baseBookmark, url: 'https://remote.example' }] });
   const { snapshot: merged, conflicts } = mergeSnapshots(base, local, remote);
-  assert.equal(merged.bookmarks[0].title, 'Local', 'manual conflict keeps local value by policy');
-  assert.equal(conflicts.some(c => c.type === 'field-conflict' && c.collection === 'bookmarks'), true);
+  assert.equal(merged.bookmarks[0].url, 'https://local.example', 'manual URL conflict keeps local value by policy');
+  assert.equal(conflicts.some(c => c.type === 'field-conflict' && c.collection === 'bookmarks' && c.field === 'url'), true);
   assert.equal(cleanConflicts(conflicts).length, conflicts.length);
 }
 
 {
   const baseBookmark = base.bookmarks[0];
-  const local = snapshot({ bookmarks: [{ ...baseBookmark, title: 'Local' }] });
-  const remote = snapshot({ bookmarks: [{ ...baseBookmark, title: 'Local' }] });
+  const local = snapshot({ bookmarks: [{ ...baseBookmark, url: 'https://same.example' }] });
+  const remote = snapshot({ bookmarks: [{ ...baseBookmark, url: 'https://same.example' }] });
   const { conflicts } = mergeSnapshots(base, local, remote);
   assert.equal(conflicts.length, 0, 'identical changes should merge cleanly');
 }
