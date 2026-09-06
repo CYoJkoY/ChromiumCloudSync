@@ -21,7 +21,7 @@
 
 **Chromium Cloud Sync** is a Manifest V3 Chromium extension for synchronizing browser state across machines without requiring a project-operated sync server.
 
-The synchronization boundary is a **private GitHub Gist** owned by you. Chromium Cloud Sync keeps the local browser state locally, builds normalized snapshots, compares local and remote state against a stored base, and applies deterministic merge rules instead of blindly overwriting one side.
+The synchronization boundary is a **private GitHub Gist** owned by you. Chromium Cloud Sync keeps local browser state locally, builds normalized snapshots, compares local and remote state against a stored base, and applies deterministic merge rules instead of blindly overwriting one side.
 
 Alongside synchronization, the project can back up third-party extension packages (`.crx` / `.zip`) to a **private GitHub repository** or a **WebDAV** server. Package backup is intentionally separate from the browser-state synchronization Gist.
 
@@ -34,6 +34,7 @@ Most browser-sync solutions hide the storage and conflict model behind a service
 - **Your storage boundary** — synchronization data lives in your GitHub Gist.
 - **Local-first merging** — changes are compared against a local base snapshot before they are merged.
 - **Inspectable history** — revisions, conflicts, tombstones, and rollback history remain visible.
+- **Settings sync** — user-facing extension preferences can follow you across machines.
 - **Separate package backup** — extension binaries can be stored independently of the sync state.
 - **No framework dependency** — the extension is implemented with native JavaScript, HTML, and CSS.
 
@@ -49,7 +50,7 @@ Synchronizes the browser data that is useful across multiple Chromium installati
 | Tab groups | Preserves title, color, collapsed state, and stable synchronization identity. |
 | Bookmarks | Uses stable synchronization IDs rather than assuming local browser IDs are globally identical. |
 | Extensions | Synchronizes installed third-party extension metadata and detects missing extensions. |
-| Extension settings | Synchronizes extension-local storage while excluding Chromium Cloud Sync's own control state. |
+| Extension settings | Synchronizes user-facing local extension settings, including language, theme, automatic-sync preferences, and extension package-backup configuration. Credentials and device-local synchronization metadata are kept local. |
 
 ### Deterministic merge and conflict handling
 
@@ -80,6 +81,16 @@ The core synchronization model is a three-way merge:
 The merge engine can distinguish local-only changes, remote-only changes, unchanged values, and real conflicts. Supported resolution strategies include field-level `latest`, `maxVersion`, and manual handling where appropriate.
 
 Deleted entities are tracked with **tombstones**, preventing a deletion from silently being undone by a stale copy on another machine.
+
+### Extension settings synchronization
+
+Extension settings are part of the same synchronized snapshot as browser state rather than living in a separate cloud store.
+
+When a setting changes locally, the change is included in the next manual or automatic synchronization. When another device changes a setting, the merged result is written back to the local extension after synchronization.
+
+The settings layer uses the same base/local/remote comparison model as the rest of the snapshot. When the same setting is changed independently on both devices, the conflict remains recorded instead of silently pretending the values were identical.
+
+The synchronization boundary intentionally excludes credentials and device-local bookkeeping. GitHub tokens, the bound Gist ID, synchronization baselines, stable local ID maps, and the WebDAV password are not copied between devices.
 
 ### History and rollback
 
@@ -288,7 +299,8 @@ Chromium Cloud Sync is designed around user-controlled storage, but user-control
 
 - Synchronization data is stored in a configured private GitHub Gist.
 - The current format uses JSON in `current.json`.
-- The extension stores the GitHub token and Gist configuration in `chrome.storage.local`.
+- Extension settings are included in the synchronized snapshot, except for credentials and device-local bookkeeping.
+- The extension stores the GitHub token and Gist configuration in `chrome.storage.local` and does not sync those values.
 - Legacy encrypted Gist data can still be read for backward compatibility.
 - SHA-256 hashes are used for package integrity metadata.
 
