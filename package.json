@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "version:sync": "node scripts/sync-package-version.mjs",
-    "validate": "npm run version:sync && node scripts/validate.mjs",
+    "test": "node scripts/test-sync-core.mjs",
+    "validate": "npm run version:sync && npm test && node scripts/validate.mjs",
     "build:zip": "npm run version:sync && node scripts/build.mjs"
   }
 }
