@@ -19,12 +19,11 @@ if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) {
   throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`);
 }
 
-const version = releaseVersion || versionName || baseVersion;
-if (!/^\d+\.\d+\.\d+(?:\.dev\d+)?$/.test(version)) {
-  throw new Error(`Invalid release version: ${version}`);
-}
+// Release workflow supplies the channel-specific build version.
+// Without it, local builds intentionally default to the stable manifest.version.
+const version = releaseVersion || baseVersion;
 if (version !== baseVersion && version !== versionName) {
-  throw new Error(`Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName}`);
+  throw new Error(`Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName || '<empty>'}`);
 }
 
 fs.rmSync(out, {recursive: true, force: true});
