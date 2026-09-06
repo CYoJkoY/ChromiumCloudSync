@@ -9,7 +9,6 @@
     const parts = text.split(/\s*·\s*/).map(part => part.trim()).filter(Boolean);
     if (!parts.length) return;
 
-    // Build explicit line breaks instead of relying on whitespace CSS.
     const current = parts.join('\n');
     if (meta.dataset.ccsFormatted === current) return;
 
@@ -23,33 +22,38 @@
     meta.style.lineHeight = '1.55';
   }
 
-  async function syncBackupCardVisibility() {
+  function openExtensionRecoveryCenter() {
+    chrome.tabs.create({ url: chrome.runtime.getURL('extensions.html') });
+  }
+
+  function interceptExtensionButton(event) {
+    const button = event.target?.closest?.('#checkExtensions');
+    if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openExtensionRecoveryCenter();
+  }
+
+  function removeLegacyBackupCard() {
     const card = $('extensionBackupCard');
-    if (!card) return;
-    try {
-      const s = await chrome.storage.local.get(['extensionBackupBackend']);
-      const enabled = s.extensionBackupBackend === 'github' || s.extensionBackupBackend === 'webdav';
-      card.hidden = !enabled;
-    } catch {
-      card.hidden = true;
-    }
+    if (card) card.remove();
   }
 
   function init() {
     formatStatusMeta();
-    syncBackupCardVisibility();
+    removeLegacyBackupCard();
 
     const meta = $('statusMeta');
     if (meta) {
-      const observer = new MutationObserver(() => {
-        formatStatusMeta();
-      });
+      const observer = new MutationObserver(formatStatusMeta);
       observer.observe(meta, { childList: true, characterData: true, subtree: true });
     }
 
+    document.addEventListener('click', interceptExtensionButton, true);
+
     chrome.storage?.onChanged?.addListener((changes, area) => {
       if (area !== 'local' || !changes.extensionBackupBackend) return;
-      syncBackupCardVisibility();
+      removeLegacyBackupCard();
     });
   }
 
