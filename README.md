@@ -13,7 +13,7 @@
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/releases"><img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?include_prereleases&label=dev%20builds&style=flat-square" alt="Development releases"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-9E8F7E?style=flat-square" alt="GPL-3.0-only license"></a>
     <img src="https://img.shields.io/badge/Manifest-V3-7A8E8E?style=flat-square" alt="Manifest V3">
-    <img src="https://img.shields.io/badge/platform-Chromium-8A9E8B?style=flat-square" alt="Chromium"></a>
+    <img src="https://img.shields.io/badge/platform-Chromium-8A9E8B?style=flat-square" alt="Chromium">
   </p>
 </div>
 
@@ -318,7 +318,7 @@ For development changes, run `npm run validate` before submitting a pull request
 
 This project is licensed under the **GNU General Public License v3.0 only (GPL-3.0-only)**.
 
-See [`LICENSE`](LICENSE) for the license notice. The `-only` qualifier is intentional: this project is released under **GPL version 3 only**, not GPL v3 or any later version. SPDX uses the `GPL-3.0-only` identifier for that choice. citeturn168830search0
+See [`LICENSE`](LICENSE) for the license notice. The `-only` qualifier is intentional: this project is released under **GPL version 3 only**, not GPL v3 or any later version. SPDX uses the `GPL-3.0-only` identifier for that choice.
 
 ## Support the Author
 
