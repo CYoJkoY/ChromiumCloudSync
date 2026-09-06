@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>Extension Recovery - Chromium Cloud Sync</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="ui-overrides.css">
+</head>
+<body>
+  <div class="shell aux-shell extension-recovery-shell">
+    <header class="page-header">
+      <div class="brand">
+        <div class="brand-mark"><img src="icons/icon.svg" alt=""></div>
+        <div class="brand-copy">
+          <h1 class="brand-title" data-i18n="extensionRecoveryTitle">Extension Recovery</h1>
+          <div class="brand-sub" data-i18n="extensionRecoverySubtitle">Find missing extensions and restore the browser environment.</div>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div id="language" class="choice-switch language-switch" role="radiogroup" aria-label="Language" data-value="auto">
+          <span class="choice-switch-thumb" aria-hidden="true"></span>
+          <button type="button" class="choice-switch-option" role="radio" data-value="zh-CN" aria-label="简体中文"><span class="lang-option-label">中</span></button>
+          <button type="button" class="choice-switch-option" role="radio" data-value="en" aria-label="English"><span class="lang-option-label">EN</span></button>
+        </div>
+        <div id="theme" class="choice-switch theme-switch" role="radiogroup" aria-label="Theme" data-value="system">
+          <span class="choice-switch-thumb" aria-hidden="true"></span>
+          <button type="button" class="choice-switch-option theme-option" role="radio" data-value="light" aria-label="Light">
+            <svg aria-hidden="true" class="theme-art theme-art-light" viewBox="0 0 32 22"><circle class="theme-sun" cx="8.2" cy="8" r="3.55"></circle><path class="theme-sun-ray" d="M8.2 1.7v1.45M8.2 12.85v1.45M1.9 8h1.45M13.05 8h1.45M3.75 3.55l1.02 1.02M11.63 11.43l1.02 1.02M12.65 3.55l-1.02 1.02M4.77 11.43l-1.02 1.02"></path><path class="theme-cloud-light" d="M11.2 17.65h13.35a3.25 3.25 0 0 0 .2-6.47 4.95 4.95 0 0 0-8.62-1.23 4.25 4.25 0 0 0-4.93 7.7Z"></path><path class="theme-cloud-highlight" d="M13.1 15.55c.8-1.25 2.25-1.8 3.55-1.55.9-1.42 2.6-2.12 4.25-1.8"></path></svg>
+          </button>
+          <button type="button" class="choice-switch-option theme-option" role="radio" data-value="dark" aria-label="Dark">
+            <svg aria-hidden="true" class="theme-art theme-art-dark" viewBox="0 0 32 22"><path class="theme-moon" d="M13.45 3.25a5.65 5.65 0 1 0 4.34 9.27 6.15 6.15 0 0 1-4.34-9.27Z"></path><path class="theme-star" d="M22 3.15l.62 1.32 1.44.2-1.03 1 .24 1.43L22 6.42l-1.27.68.24-1.43-1.03-1 1.44-.2.62-1.32Z"></path></svg>
+          </button>
+        </div>
+        <button type="button" id="refresh" class="secondary" data-i18n="refresh">Refresh</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="status-box" id="summary" data-i18n="loading">Loading…</div>
+    </section>
+
+    <section class="card">
+      <div class="card-title" data-i18n="missingExtensionsTitle">Missing extensions</div>
+      <p class="card-desc" data-i18n="missingExtensionsDesc">These extensions exist in the cloud snapshot but are not installed on this browser.</p>
+      <div id="missingList"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-title" data-i18n="recoveryPolicyTitle">Recovery policy</div>
+      <div class="guide-copy">
+        <p data-i18n="recoveryPolicyBody">Chromium Cloud Sync records extension metadata and identifies missing extensions. Store installation stays a user action. Third-party CRX / ZIP packages are handled separately by the configured package-backup backend.</p>
+        <p data-i18n="recoveryPolicyNote">The recovery center never writes into third-party extension storage and never synchronizes third-party extension settings.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title" data-i18n="packageRecoveryTitle">Package recovery</div>
+      <p class="card-desc" data-i18n="packageRecoveryBody">For extensions that are not available from a browser store, use the package-backup controls in Settings to download a stored CRX / ZIP file.</p>
+      <div class="btn-row primary-actions">
+        <button type="button" id="openSettings" class="primary" data-i18n="openSettings">Open Settings</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="runtime.js"></script>
+  <script src="theme.js"></script>
+  <script src="i18n.js"></script>
+  <script src="extensions.js"></script>
+</body>
+</html>
