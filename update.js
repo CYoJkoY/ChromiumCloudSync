@@ -8,7 +8,7 @@ const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const $u = id => document.getElementById(id);
 
 function parseVersion(value) {
-  const match = String(value || '').trim().replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  const match = String(value || '').trim().replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)$/);
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
@@ -164,7 +164,14 @@ async function readCachedRelease() {
   }
 }
 
+function isStableRelease(info) {
+  if (!info || info.draft || info.prerelease) return false;
+  return Boolean(parseVersion(info.tag_name || info.version));
+}
+
 function normalizeRelease(release) {
+  if (!isStableRelease(release)) return null;
+
   const tag = String(release.tag_name || '').trim();
   const version = tag.replace(/^v/i, '');
   const assets = Array.isArray(release.assets) ? release.assets : [];
@@ -177,11 +184,19 @@ function normalizeRelease(release) {
     fileName: String(asset?.name || ''),
     name: release.name || tag,
     publishedAt: release.published_at || '',
+    tag_name: tag,
+    prerelease: false,
+    draft: false,
   };
 }
 
+function isStableCachedRelease(cached) {
+  if (!cached || cached.prerelease === true || cached.draft === true) return false;
+  return Boolean(parseVersion(cached.version || cached.tag_name));
+}
+
 function shouldUseCache(cached, lastCheckedAt) {
-  if (!cached || !parseVersion(cached.version)) return false;
+  if (!isStableCachedRelease(cached)) return false;
   if (!lastCheckedAt) return false;
   return Date.now() - lastCheckedAt < UPDATE_CHECK_INTERVAL_MS;
 }
@@ -202,14 +217,15 @@ async function checkReleaseUpdate({ force = false } = {}) {
   try {
     const release = await fetchLatestRelease();
     const info = normalizeRelease(release);
+    if (!info) throw new Error('GitHub returned a non-stable release; stable update channel requires a non-prerelease, non-draft release.');
     await cacheRelease(info);
     setUpdateState({ visible: true, ...info });
     return info;
   } catch (error) {
     console.debug('Chromium Cloud Sync update check failed:', error);
-    if (cached) setUpdateState({ visible: true, ...cached });
+    if (isStableCachedRelease(cached)) setUpdateState({ visible: true, ...cached });
     else setUpdateState({ error: true });
-    return cached;
+    return isStableCachedRelease(cached) ? cached : null;
   }
 }
 
@@ -288,7 +304,7 @@ function initReleaseUpdate() {
     lastLanguage = nextLanguage;
     setCheckButtonState({ checking: Boolean($u('checkUpdates')?.disabled) });
     const cached = window.CCSyncUpdate?.getCachedState?.();
-    if (cached) setUpdateState({ visible: true, ...cached });
+    if (isStableCachedRelease(cached)) setUpdateState({ visible: true, ...cached });
   });
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
 
