@@ -32,13 +32,19 @@ if (!bg.includes('if(Object.prototype.hasOwnProperty.call(existingFiles||{},LEGA
 
 const optionsHtml = fs.readFileSync(path.join(root, 'options.html'), 'utf8');
 if (optionsHtml.includes('extension-storage-layout.js')) throw new Error('Obsolete extension storage layout shim is still loaded');
+if (!optionsHtml.includes('id="extensionStorageNavLabel"')) throw new Error('Missing extension storage navigation label anchor');
+if (!optionsHtml.includes('id="extensionStoragePanelTitle"')) throw new Error('Missing extension storage panel title anchor');
+if (!optionsHtml.includes('id="extensionStoragePanelDescription"')) throw new Error('Missing extension storage panel description anchor');
 
 const storage = fs.readFileSync(path.join(root, 'extension-storage.js'), 'utf8');
-for (const required of ['extensionBackupGithubToken','extensionBackupSelectedIds','githubInfo','selection.json','ccsyncExtensionPackageInput']) {
+for (const required of ['extensionBackupGithubToken','extensionBackupSelectedIds','githubInfo','selection.json','ccsyncExtensionPackageInput','sameStorageConfig','ccsync-ext-hidden','refreshLanguage']) {
   if (!storage.includes(required)) throw new Error(`Extension storage is missing ${required}`);
 }
-if (!storage.includes('token.l.hidden=!gh')) throw new Error('GitHub extension-backup token is not scoped to the GitHub backend UI');
+if (!storage.includes('setHidden(el,!gh)')) throw new Error('GitHub extension-backup fields do not use explicit dynamic visibility');
+if (!storage.includes('setHidden(el,!dv)')) throw new Error('WebDAV extension-backup fields do not use explicit dynamic visibility');
 if (!storage.includes("if(!d.private)throw Error(t('privateRepo'))")) throw new Error('GitHub extension-backup storage does not enforce private repositories');
 if (!storage.includes("if(d.permissions&&!d.permissions.push)throw Error(t('notWritable'))")) throw new Error('GitHub extension-backup storage does not enforce write access');
+if (!storage.includes('String(a.token||\'\').trim()===String(b.token||\'\').trim()')) throw new Error('GitHub extension-backup selection matching does not include the Token');
+if (!storage.includes('String(a.davPass||\'\')===String(b.davPass||\'\')')) throw new Error('WebDAV extension-backup selection matching does not include the password');
 
 console.log(`Validation passed for stable manifest ${baseVersion}${versionName ? ` (development name: ${versionName})` : ''}`);
