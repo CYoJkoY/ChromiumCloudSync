@@ -37,4 +37,4 @@ const bg = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
 if (bg.includes(`[LEGACY_ENCRYPTED_FILE]:{content:null}`)) throw new Error('Invalid Gist PATCH payload: legacy encrypted file must be deleted with a null file value, not null content');
 if (!bg.includes('if(Object.prototype.hasOwnProperty.call(existingFiles||{},LEGACY_ENCRYPTED_FILE))files[LEGACY_ENCRYPTED_FILE]=null;')) throw new Error('Missing legacy encrypted file cleanup guard');
 
-console.log(`Validation passed for manifest ${baseVersion}${versionName ? ` (${versionName})` : ''}`);
+console.log(`Validation passed for stable manifest ${baseVersion}${versionName ? ` (development name: ${versionName})` : ''}`);
