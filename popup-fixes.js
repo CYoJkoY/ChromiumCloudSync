@@ -34,14 +34,20 @@
     openExtensionRecoveryCenter();
   }
 
-  function removeLegacyBackupCard() {
+  function syncBackupCardVisibility() {
     const card = $('extensionBackupCard');
-    if (card) card.remove();
+    if (!card) return;
+    chrome.storage.local.get(['extensionBackupBackend']).then(s => {
+      const enabled = s.extensionBackupBackend === 'github' || s.extensionBackupBackend === 'webdav';
+      card.hidden = !enabled;
+    }).catch(() => {
+      card.hidden = true;
+    });
   }
 
   function init() {
     formatStatusMeta();
-    removeLegacyBackupCard();
+    syncBackupCardVisibility();
 
     const meta = $('statusMeta');
     if (meta) {
@@ -53,7 +59,7 @@
 
     chrome.storage?.onChanged?.addListener((changes, area) => {
       if (area !== 'local' || !changes.extensionBackupBackend) return;
-      removeLegacyBackupCard();
+      syncBackupCardVisibility();
     });
   }
 
