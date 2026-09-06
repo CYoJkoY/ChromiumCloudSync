@@ -34,7 +34,7 @@ const optionsHtml = fs.readFileSync(path.join(root, 'options.html'), 'utf8');
 if (optionsHtml.includes('extension-storage-layout.js')) throw new Error('Obsolete extension storage layout shim is still loaded');
 
 const storage = fs.readFileSync(path.join(root, 'extension-storage.js'), 'utf8');
-for (const required of ['extensionBackupGithubToken','extensionBackupSelectedIds','githubInfo','selection.json','ccsyncExtensionPackageInput']) {
+for (const required of ['extensionBackupGithubToken','extensionBackupSelectedIds','githubInfo','selection.json','ccsExtensionPackageInput']) {
   if (!storage.includes(required)) throw new Error(`Extension storage is missing ${required}`);
 }
 if (!storage.includes('token.l.hidden=!gh')) throw new Error('GitHub extension-backup token is not scoped to the GitHub backend UI');
