@@ -7,16 +7,24 @@ const out = path.join(root, 'dist');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const baseVersion = String(manifest.version || '').trim();
 const versionName = String(manifest.version_name || '').trim();
-const version = versionName || baseVersion;
+const releaseVersion = String(process.env.RELEASE_VERSION || '').trim();
 
 if (!/^\d+\.\d+\.\d+$/.test(baseVersion)) {
-  throw new Error(`Invalid manifest version: ${baseVersion}`);
+  throw new Error(`Invalid manifest version: ${baseVersion}; expected X.Y.Z`);
 }
 if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) {
-  throw new Error(`Invalid manifest version_name: ${versionName}`);
+  throw new Error(`Invalid manifest version_name: ${versionName}; expected X.Y.Z.devN`);
 }
 if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) {
   throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`);
+}
+
+const version = releaseVersion || versionName || baseVersion;
+if (!/^\d+\.\d+\.\d+(?:\.dev\d+)?$/.test(version)) {
+  throw new Error(`Invalid release version: ${version}`);
+}
+if (version !== baseVersion && version !== versionName) {
+  throw new Error(`Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName}`);
 }
 
 fs.rmSync(out, {recursive: true, force: true});
