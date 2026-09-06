@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to build (for example v1.5.14)'
+        description: 'Existing release tag to build (for example v1.7.8 or v1.7.8.dev1)'
         required: true
         type: string
 
@@ -43,21 +43,59 @@ jobs:
           node --version
           npm --version
 
+      - name: Synchronize package.json version
+        run: npm run version:sync
+
       - name: Read and validate version
         id: version
         shell: bash
         run: |
           set -euo pipefail
+
           VERSION="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")"
+          VERSION_NAME="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version_name || ''")"
           TAG="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then TAG="${{ inputs.tag }}"; fi
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "Invalid release tag: $TAG"; echo "Expected format: vMAJOR.MINOR.PATCH"; exit 1; fi
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+            echo "Invalid release tag: $TAG"
+            echo "Expected format: vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.devN"
+            exit 1
+          fi
+
           TAG_VERSION="${TAG#v}"
-          if [[ "$VERSION" != "$TAG_VERSION" ]]; then echo "Tag version ($TAG_VERSION) does not match manifest version ($VERSION)."; exit 1; fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          EFFECTIVE_VERSION="$VERSION"
+          IS_DEV="false"
+
+          if [[ -n "$VERSION_NAME" ]]; then
+            EFFECTIVE_VERSION="$VERSION_NAME"
+          fi
+
+          if [[ "$TAG_VERSION" != "$EFFECTIVE_VERSION" ]]; then
+            echo "Tag version ($TAG_VERSION) does not match manifest effective version ($EFFECTIVE_VERSION)."
+            echo "manifest.version=$VERSION"
+            echo "manifest.version_name=${VERSION_NAME:-<empty>}"
+            exit 1
+          fi
+
+          if [[ "$TAG_VERSION" == *.dev[0-9]* ]]; then
+            IS_DEV="true"
+            if [[ -z "$VERSION_NAME" ]]; then
+              echo "Development tags require manifest.version_name to contain the same X.Y.Z.devN version."
+              exit 1
+            fi
+          elif [[ -n "$VERSION_NAME" ]]; then
+            echo "Stable release tags must not use a development manifest.version_name."
+            echo "Remove manifest.version_name for a stable release."
+            exit 1
+          fi
+
+          echo "version=$EFFECTIVE_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Release version: $VERSION"
+          echo "is_dev=$IS_DEV" >> "$GITHUB_OUTPUT"
+          echo "Effective release version: $EFFECTIVE_VERSION"
           echo "Release tag: $TAG"
+          echo "Development release: $IS_DEV"
 
       - name: Validate project
         run: npm run validate
@@ -134,7 +172,11 @@ jobs:
           CRX_PRIVATE_KEY_B64: ${{ secrets.CRX_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
-          if [[ -z "${CRX_PRIVATE_KEY_B64:-}" ]]; then echo "Missing required repository secret: CRX_PRIVATE_KEY_B64"; echo "Create a stable CRX signing key and store its base64 contents in GitHub Secrets."; exit 1; fi
+          if [[ -z "${CRX_PRIVATE_KEY_B64:-}" ]]; then
+            echo "Missing required repository secret: CRX_PRIVATE_KEY_B64"
+            echo "Create a stable CRX signing key and store its base64 contents in GitHub Secrets."
+            exit 1
+          fi
           printf '%s' "$CRX_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/chromium-cloud-sync.pem"
           chmod 600 "$RUNNER_TEMP/chromium-cloud-sync.pem"
           test -s "$RUNNER_TEMP/chromium-cloud-sync.pem"
@@ -169,7 +211,9 @@ jobs:
           ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
           CRX="dist/chromium-cloud-sync-v${VERSION}.crx"
           SUMS="dist/SHA256SUMS.txt"
-          test -s "$ZIP"; test -s "$CRX"; test -s "$SUMS"
+          test -s "$ZIP"
+          test -s "$CRX"
+          test -s "$SUMS"
           grep -F "chromium-cloud-sync-v${VERSION}.zip" "$SUMS"
           grep -F "chromium-cloud-sync-v${VERSION}.crx" "$SUMS"
           echo "All release artifacts are ready."
@@ -182,4 +226,19 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
-          gh release create "$TAG" "dist/chromium-cloud-sync-v${VERSION}.zip" "dist/chromium-cloud-sync-v${VERSION}.crx" "dist/SHA256SUMS.txt" --title "Chromium Cloud Sync v${VERSION}" --generate-notes
+          IS_DEV="${{ steps.version.outputs.is_dev }}"
+
+          ARGS=(
+            "$TAG"
+            "dist/chromium-cloud-sync-v${VERSION}.zip"
+            "dist/chromium-cloud-sync-v${VERSION}.crx"
+            "dist/SHA256SUMS.txt"
+            --title "Chromium Cloud Sync v${VERSION}"
+            --generate-notes
+          )
+
+          if [[ "$IS_DEV" == "true" ]]; then
+            ARGS+=(--prerelease)
+          fi
+
+          gh release create "${ARGS[@]}"
