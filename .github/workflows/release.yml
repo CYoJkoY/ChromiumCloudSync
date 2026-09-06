@@ -44,7 +44,7 @@ jobs:
           node --version
           npm --version
 
-      - name: Synchronize package.json version
+      - name: Synchronize package.json stable version
         run: npm run version:sync
 
       - name: Read and validate version
@@ -71,7 +71,7 @@ jobs:
           if [[ "$TAG_VERSION" == *.dev[0-9]* ]]; then
             IS_DEV="true"
             if [[ -z "$VERSION_NAME" ]]; then
-              echo "Development release requires manifest.version_name to be set to the same X.Y.Z.devN value as the tag."
+              echo "Development release requires manifest.version_name to be set."
               exit 1
             fi
             if [[ "$TAG_VERSION" != "$VERSION_NAME" ]]; then
@@ -84,7 +84,13 @@ jobs:
               echo "Stable tag ($TAG_VERSION) does not match manifest.version ($VERSION)."
               exit 1
             fi
-            EFFECTIVE_VERSION="$VERSION"
+          fi
+
+          # package.json.version always remains the stable manifest.version.
+          PACKAGE_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")"
+          if [[ "$PACKAGE_VERSION" != "$VERSION" ]]; then
+            echo "package.json version ($PACKAGE_VERSION) must match manifest.version ($VERSION)."
+            exit 1
           fi
 
           echo "version=$EFFECTIVE_VERSION" >> "$GITHUB_OUTPUT"
@@ -93,6 +99,7 @@ jobs:
           echo "base_version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "Effective release version: $EFFECTIVE_VERSION"
+          echo "Stable/package version: $VERSION"
           echo "Release tag: $TAG"
           echo "Development release: $IS_DEV"
 
