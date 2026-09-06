@@ -102,7 +102,7 @@ function mergeExtensionSettings(base={}, local={}, remote={}, conflicts){
 export function mergeSnapshots(base={},local={},remote={}){
   const conflicts=[]; const out={schemaVersion:SCHEMA_VERSION};
   const scalarKeys=new Set(['updatedAt','schemaVersion','device']);
-  for(const key of Object.keys(local||{})) if(!scalarKeys.has(key)&&!['extensions','windows','bookmarks','extensionSettings'].includes(key)) out[key]=clone(local[key]);
+  for(const key of Object.keys(local||{})) if(!scalarKeys.has(key)&&!['extensions','windows','bookmarks'].includes(key)) out[key]=clone(local[key]);
   const BWin=Array.isArray(base?.windows)?base.windows:[], LWin=Array.isArray(local?.windows)?local.windows:[], RWin=Array.isArray(remote?.windows)?remote.windows:[];
   if(stableEqual(LWin,RWin)) out.windows=clone(LWin);
   else if(stableEqual(LWin,BWin)) out.windows=clone(RWin);
@@ -113,7 +113,7 @@ export function mergeSnapshots(base={},local={},remote={}){
   }
   out.extensions=mergeArray(base?.extensions,local?.extensions,remote?.extensions,conflicts,'extensions');
   out.bookmarks=mergeArray(base?.bookmarks,local?.bookmarks,remote?.bookmarks,conflicts,'bookmarks');
-  out.extensionSettings=mergeExtensionSettings(base?.extensionSettings,local?.extensionSettings,remote?.extensionSettings,conflicts);
+  delete out.extensionSettings;
   out.device=clone(local.device||remote.device||base.device);
   out.updatedAt=new Date().toISOString();
   return {snapshot:out,conflicts};
