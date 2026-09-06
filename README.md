@@ -172,7 +172,7 @@ The two fields have different roles:
 
 | Field | Purpose |
 | :--- | :--- |
-| `version` | Stable Chrome extension version and the version copied to `package.json`. |
+| `version` | Stable Chromium extension version and the version synchronized to `package.json`. |
 | `version_name` | Optional development build identifier in the form `X.Y.Z.devN`. |
 
 This means the same manifest can represent both channels without deleting `version_name`:
@@ -318,7 +318,7 @@ For development changes, run `npm run validate` before submitting a pull request
 
 This project is licensed under the **MIT License**.
 
-See [`LICENSE`](LICENSE) for the complete license text.
+See [`LICENSE`](LICENSE) for the complete MIT License text and copyright notice.
 
 ## Support the Author
 
