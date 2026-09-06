@@ -1,1 +1,11 @@
-{"name":"chromium-cloud-sync","version":"1.5.14","private":true,"type":"module","scripts":{"validate":"node scripts/validate.mjs","build:zip":"node scripts/build.mjs"}}
+{
+  "name": "chromium-cloud-sync",
+  "version": "1.7.8",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "version:sync": "node scripts/sync-package-version.mjs",
+    "validate": "npm run version:sync && node scripts/validate.mjs",
+    "build:zip": "npm run version:sync && node scripts/build.mjs"
+  }
+}
