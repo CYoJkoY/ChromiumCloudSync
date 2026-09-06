@@ -228,6 +228,7 @@ The local build defaults to `manifest.version`. The release workflow supplies th
 ```text
 ChromiumCloudSync/
 ├── .github/workflows/
+│   ├── ci.yml
 │   ├── release.yml
 │   └── sync-package-version.yml
 ├── _locales/
