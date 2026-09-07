@@ -1,49 +1,51 @@
 <div align="center">
-  <img src="assets/readme/hero-v2.svg" alt="Chromium Cloud Sync browser-state synchronization workflow" width="960">
-</div>
+  <img src="assets/readme/hero-v2.svg" alt="Chromium Cloud Sync — controlled synchronization for Chromium browser state" width="960" style="max-width: 100%; height: auto;">
 
-<div align="center">
   <h1>Chromium Cloud Sync</h1>
-  <p><strong>Sync your Chromium browser state through infrastructure you control.</strong></p>
-  <p>Tabs · Tab Groups · Windows · Bookmarks · Extensions · Recovery</p>
+  <p><strong>Synchronize useful Chromium state while keeping the storage boundary under your control.</strong></p>
+  <p>Tabs · Tab Groups · Windows · Bookmarks · Extensions · History</p>
+
   <p>
-    <a href="https://github.com/CYoJkoY/ChromiumCloudSync/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/CYoJkoY/ChromiumCloudSync/release.yml?style=flat-square&label=release" alt="Release workflow status"></a>
-    <a href="https://github.com/CYoJkoY/ChromiumCloudSync/releases"><img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?style=flat-square" alt="Latest stable release"></a>
+    <a href="https://github.com/CYoJkoY/ChromiumCloudSync/releases"><img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?style=flat-square&label=stable" alt="Latest stable release"></a>
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/releases"><img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?include_prereleases&label=dev%20builds&style=flat-square" alt="Development releases"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-9E8F7E?style=flat-square" alt="MIT license"></a>
+    <a href="https://github.com/CYoJkoY/ChromiumCloudSync/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/CYoJkoY/ChromiumCloudSync/release.yml?style=flat-square&label=release" alt="Release workflow status"></a>
     <img src="https://img.shields.io/badge/Manifest-V3-7A8E8E?style=flat-square" alt="Manifest V3">
-    <img src="https://img.shields.io/badge/platform-Chromium-8A9E8B?style=flat-square" alt="Chromium">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-9E8F7E?style=flat-square" alt="MIT License"></a>
   </p>
+
+  <p><a href="#what-it-synchronizes">Sync scope</a> · <a href="#sync-model">Sync model</a> · <a href="#extension-recovery-center">Extensions</a> · <a href="#installation">Installation</a> · <a href="#development">Development</a></p>
 </div>
 
-## Overview
+> **Core boundary:** browser state is synchronized through a private GitHub Gist. Optional third-party extension package backup uses a separate private GitHub repository or WebDAV backend.
+
+## What it is
 
 **Chromium Cloud Sync** is a Manifest V3 browser extension for synchronizing useful Chromium state across machines without requiring a project-operated cloud service.
 
-The browser-state boundary is a private **GitHub Gist**. The extension builds normalized snapshots locally, compares them with a local base snapshot, merges local and remote changes, and records deletions and conflicts instead of blindly replacing one side.
+The extension builds normalized snapshots locally, compares them with a local base snapshot, merges local and remote changes, and records deletions and conflicts instead of blindly replacing one side.
 
-A separate optional package-backup system stores third-party extension `.crx` / `.zip` files in a **private GitHub repository** or **WebDAV** server. Package storage is deliberately independent from the browser-state synchronization Gist.
+The design deliberately separates browser-state synchronization from extension-package backup. That keeps the core sync snapshot small and makes package recovery an explicit, independently configurable function.
 
-> **Security:** the current `current.json` synchronization payload is ordinary JSON. It is **not end-to-end encrypted**. Older encrypted Gist formats remain readable for compatibility.
+> **Security:** the current `current.json` synchronization payload is ordinary JSON and is **not end-to-end encrypted**. Older encrypted Gist formats remain readable for compatibility.
 
 ## What it synchronizes
 
 | Data | Behavior |
 | :--- | :--- |
-| Tabs & windows | Synchronizes normal Chromium windows and HTTP(S) tabs. Browser-internal URLs are skipped. |
-| Tab groups | Preserves group title, color, collapsed state, and stable synchronization identity. |
+| Tabs & windows | Synchronizes normal Chromium windows and HTTP(S) tabs; browser-internal URLs are skipped. |
+| Tab groups | Preserves title, color, collapsed state, and stable synchronization identity. |
 | Bookmarks | Uses stable synchronization IDs so local Chromium bookmark IDs do not need to match across machines. |
 | Extensions | Synchronizes third-party extension metadata and detects extensions missing on the current browser. |
 
-### What it intentionally does not synchronize
+### Explicit boundary: extension settings
 
-Chromium Cloud Sync does **not** synchronize third-party extension settings.
+Third-party extension settings are **not synchronized**.
 
-That boundary is intentional. Chromium extensions have isolated storage, settings differ widely between projects, and a generic sync extension cannot safely read or write another extension's private storage. The project therefore treats extension inventory and extension package recovery as separate, explicit functions.
+Chromium extensions have isolated storage and widely different schemas. A generic sync extension cannot safely read or write another extension's private settings. Chromium Cloud Sync therefore treats extension inventory and package recovery as explicit functions instead of claiming to synchronize arbitrary extension state.
 
 ## Sync model
 
-The synchronization engine uses a three-way comparison:
+The sync engine uses a three-way comparison:
 
 ```text
                  Base snapshot
@@ -54,76 +56,76 @@ The synchronization engine uses a three-way comparison:
             │                     │
             └──────────┬──────────┘
                        ▼
-                 Merge policy
+                  Merge policy
                        │
              ┌─────────┴─────────┐
              ▼                   ▼
         Merged state          Conflicts
 ```
 
-Local-only changes and remote-only changes can be merged automatically. Field-level differences use collection-specific policies such as latest-value resolution or maximum-version selection. Deletions become **tombstones**, which prevents stale copies from silently resurrecting deleted items.
+Local-only and remote-only changes can be merged automatically. Collection-specific policies handle field differences, while deletions become **tombstones** so stale copies do not silently resurrect deleted items.
 
-The synchronization state is versioned with monotonically increasing revisions. Every write is verified by reading the remote state back and comparing both revision and snapshot checksum; repeated concurrent failures are stopped instead of being written indefinitely.
+The sync state uses monotonically increasing revisions. Every write is verified by reading the remote state back and comparing revision and snapshot checksum; repeated concurrent failures stop instead of writing indefinitely.
 
 ## Extension Recovery Center
 
-The extension system has two separate responsibilities:
+Extension inventory and package recovery are separate layers.
 
 ```text
 Extension inventory
-        │
-        ├── Installed metadata
-        ├── Missing-extension detection
-        └── Extension Recovery Center
+    │
+    ├── Installed metadata
+    ├── Missing-extension detection
+    └── Recovery Center
 
-Third-party package backup
-        │
-        ├── GitHub private repository
-        └── WebDAV
+Package backup
+    │
+    ├── Private GitHub repository
+    └── WebDAV
 ```
 
-When an extension exists in the cloud inventory but is not installed locally, **Extension Recovery Center** shows it with its extension ID, recorded cloud version, installation type, and any verified Chrome Web Store, Microsoft Edge Add-ons, or homepage link available from the metadata.
+When an extension exists in the cloud inventory but is not installed locally, **Extension Recovery Center** shows its extension ID, recorded cloud version, installation type, and verified browser-store or homepage links available from the metadata.
 
-The recovery center does not silently install extensions. Browser installation remains an explicit user action.
+The recovery center does not silently install extensions. Installation remains an explicit browser action.
 
-For extensions that are unavailable from a browser store, the separate package-backup backend can keep CRX / ZIP files for manual recovery.
+For extensions unavailable from a browser store, the package-backup backend can retain CRX / ZIP files for manual recovery.
 
 ## Extension package backup
 
-Package backup is configured independently in **Settings → Third-party extension file storage**.
+Configure this separately in **Settings → Third-party extension file storage**.
 
-Supported backends:
-
-- **GitHub private repository** — stores package files, metadata, versioned paths, and SHA-256 hashes.
-- **WebDAV** — stores the same package structure on a server you control.
-- **Disabled** — no package backup is used.
+| Backend | Purpose |
+| :--- | :--- |
+| GitHub private repository | Stores package files, metadata, versioned paths, and SHA-256 hashes. |
+| WebDAV | Stores the same package structure on a server you control. |
+| Disabled | No third-party extension package backup. |
 
 GitHub browser-side uploads are limited to **95 MB**. Package installation remains manual.
 
 ## History and rollback
 
-The GitHub Gist revision history provides recovery points for synchronized browser state. Chromium Cloud Sync also maintains a local index of up to **30** recent history entries.
+GitHub Gist revision history provides recovery points for synchronized browser state. The extension also keeps a local index of up to **30** recent history entries.
 
-The History page can inspect remote revisions and create a new current revision from a selected historical state. Rollback never pretends that an old revision is current; it creates a new revision with the restored snapshot.
+The History page can inspect remote revisions and create a new current revision from a selected historical state. Rollback is implemented as a new revision, so an older snapshot is restored without pretending that its original revision is current.
 
 ## Installation
 
 ### Release package
 
-Open the [Releases](https://github.com/CYoJkoY/ChromiumCloudSync/releases) page and download the required artifact.
+Open [Releases](https://github.com/CYoJkoY/ChromiumCloudSync/releases) and download the required artifact.
 
-Each release provides:
-
-- `.zip` — unpacked extension package.
-- `.crx` — signed CRX3 package.
-- `SHA256SUMS.txt` — SHA-256 checksums.
+| Artifact | Use |
+| :--- | :--- |
+| `.zip` | Unpacked extension package |
+| `.crx` | Signed CRX3 package |
+| `SHA256SUMS.txt` | SHA-256 checksums |
 
 ### Load unpacked
 
 1. Open `chrome://extensions/` or the equivalent extension-management page for your Chromium browser.
 2. Enable **Developer mode**.
-3. Select **Load unpacked**.
-4. Choose the repository directory containing `manifest.json`.
+3. Choose **Load unpacked**.
+4. Select the repository directory containing `manifest.json`.
 
 ## Initial setup
 
@@ -136,34 +138,15 @@ GitHub Token
 Validate token
      │
      ├── Create a private sync Gist
-     │
      └── Bind an existing sync Gist
      │
      ▼
 Sync now
 ```
 
-Automatic synchronization is disabled by default. Its default interval is **5 minutes** after enabling it.
+Automatic synchronization is disabled by default. When enabled, the default interval is **5 minutes**.
 
-Your GitHub token is a credential. Keep it out of source control, use the smallest practical permission set, and revoke it if exposed.
-
-## Troubleshooting
-
-### Synchronization fails immediately
-
-Open the popup and read the detailed status message. Check the GitHub Token and Gist binding in Settings before changing browser data.
-
-### An extension is missing on another browser
-
-Open **Extension Recovery Center** from the popup. The page compares the local extension inventory with the cloud inventory and provides the verified installation path available from the stored metadata.
-
-### An extension is not available in a browser store
-
-Configure the separate package-backup backend in Settings and restore the CRX / ZIP package manually.
-
-### A conflict appears
-
-Open **History** to inspect the recorded conflict information and recent revisions. Do not delete the remote state blindly; the synchronization engine keeps revision history specifically so a previous state can be recovered.
+Treat the GitHub token as a credential: keep it out of source control, use the smallest practical permission set, and revoke it if exposed.
 
 ## Versioning and release channels
 
@@ -181,23 +164,18 @@ Open **History** to inspect the recorded conflict information and recent revisio
 | `version` | Stable Chromium extension version and the version mirrored to `package.json`. |
 | `version_name` | Optional development identifier in the form `X.Y.Z.devN`. |
 
-Stable and development releases therefore share one numeric extension version while keeping the development suffix in `version_name`.
+Release tags follow the same distinction:
 
 ```text
-v1.7.9
-└── stable release
-
-v1.7.9.dev2
-└── development / pre-release
+v1.7.9       → stable release
+v1.7.9.dev2  → development / pre-release
 ```
 
-`package.json.version` follows only `manifest.version`. Development suffixes never enter `package.json`.
-
-The release workflow publishes `vX.Y.Z.devN` as a GitHub pre-release and `vX.Y.Z` as a stable release. The extension's built-in update checker intentionally ignores pre-releases.
+`package.json.version` follows only `manifest.version`; development suffixes never enter `package.json`. The built-in update checker intentionally ignores pre-releases.
 
 ## Development
 
-The project uses native JavaScript, HTML, and CSS with no frontend framework.
+Chromium Cloud Sync uses native JavaScript, HTML, and CSS with no frontend framework.
 
 ### Validate
 
@@ -205,7 +183,7 @@ The project uses native JavaScript, HTML, and CSS with no frontend framework.
 npm run validate
 ```
 
-Validation checks version consistency, JavaScript syntax, required files, legacy Gist handling, the absence of removed extension-settings synchronization code, and the sync-core regression suite.
+Validation checks version consistency, JavaScript syntax, required files, legacy Gist handling, removal of obsolete extension-settings synchronization code, and the sync-core regression suite.
 
 ### Test the sync engine
 
@@ -213,7 +191,7 @@ Validation checks version consistency, JavaScript syntax, required files, legacy
 npm test
 ```
 
-The regression tests cover local-only changes, tombstone creation, field conflicts, and identical-change convergence.
+Regression tests cover local-only changes, tombstone creation, field conflicts, and identical-change convergence.
 
 ### Build
 
@@ -221,7 +199,7 @@ The regression tests cover local-only changes, tombstone creation, field conflic
 npm run build:zip
 ```
 
-The local build defaults to `manifest.version`. The release workflow supplies the exact stable or development release version when packaging a tag.
+The local build defaults to `manifest.version`. Release packaging supplies the exact stable or development version for the pushed tag.
 
 ## Repository structure
 
@@ -232,8 +210,6 @@ ChromiumCloudSync/
 │   ├── release.yml
 │   └── sync-package-version.yml
 ├── _locales/
-│   ├── en/
-│   └── zh_CN/
 ├── assets/readme/
 ├── icons/
 ├── scripts/
@@ -242,31 +218,19 @@ ChromiumCloudSync/
 │   ├── test-sync-core.mjs
 │   └── validate.mjs
 ├── background.js
-├── extensions.html
-├── extensions.js
-├── extension-storage.js
-├── extension-storage-layout.js
-├── extension-storage-watch.js
-├── guide.html
-├── guide.js
-├── history.html
-├── history.js
-├── i18n.js
-├── legacy-crypto.js
+├── extension-storage*.js
+├── extensions.html / extensions.js
+├── guide.html / guide.js
+├── history.html / history.js
 ├── manifest.json
-├── options.html
-├── options.js
+├── options.html / options.js
 ├── package.json
-├── popup.html
-├── popup-i18n.js
-├── popup.js
-├── popup-fixes.js
+├── popup.html / popup.js
 ├── runtime.js
 ├── sync-core.js
 ├── theme.js
-├── ui-overrides.css
-├── ui.css
 ├── update.js
+├── ui.css / ui-overrides.css
 ├── LICENSE
 └── README.md
 ```
@@ -277,7 +241,7 @@ ChromiumCloudSync/
 Popup / Settings / History / Guide / Recovery Center
                          │
                          ▼
-                   Runtime layer
+                    Runtime layer
                          │
               ┌──────────┴──────────┐
               ▼                     ▼
@@ -288,18 +252,36 @@ Popup / Settings / History / Guide / Recovery Center
           GitHub Gist          GitHub repo / WebDAV
 ```
 
-The background service worker owns Chromium API access and remote synchronization. `sync-core.js` remains a pure merge-oriented module. Package storage is deliberately isolated from the browser-state snapshot.
+The background service worker owns Chromium API access and remote synchronization. `sync-core.js` remains a merge-oriented module, while package storage is isolated from the browser-state snapshot.
+
+## Troubleshooting
+
+### Synchronization fails immediately
+
+Read the detailed popup status first. Check the GitHub Token and Gist binding in Settings before modifying browser data.
+
+### An extension is missing
+
+Open **Extension Recovery Center** and compare the local inventory with the cloud inventory. Use the verified installation path stored in the metadata.
+
+### An extension is unavailable from a browser store
+
+Configure package backup in Settings and restore its CRX / ZIP package manually.
+
+### A conflict appears
+
+Open **History** and inspect the recorded conflict information and recent revisions. Avoid deleting remote state blindly; revision history exists specifically for recovery.
 
 ## Security and privacy
 
-- New synchronization Gists created by the extension are private.
-- The current synchronized state is stored as normal JSON in `current.json`.
+- Newly created synchronization Gists are private.
+- `current.json` is stored as ordinary JSON.
 - The GitHub token and Gist binding remain local to the browser.
 - WebDAV credentials remain local to the browser.
-- Legacy encrypted Gist formats can still be read for compatibility.
-- SHA-256 is used for extension-package integrity metadata; it is not encryption.
+- Legacy encrypted Gist formats remain readable for compatibility.
+- SHA-256 protects package-integrity metadata; it is not encryption.
 
-Do not commit GitHub tokens, WebDAV passwords, private synchronization data, or signing keys to this repository or issue tracker.
+Do not commit GitHub tokens, WebDAV passwords, private synchronization data, or signing keys to this repository or its issue tracker.
 
 ## Limitations
 
@@ -313,24 +295,20 @@ Issues and pull requests are welcome.
 
 For sync bugs, include the browser version, Chromium Cloud Sync version, affected collection, whether the change was local or remote, and the visible conflict or error message. Never include credentials or private Gist contents.
 
-Run both `npm test` and `npm run validate` before submitting changes that affect synchronization logic.
+Run both `npm test` and `npm run validate` before submitting synchronization changes.
+
+## Support
+
+If Chromium Cloud Sync saves you time or gives you more control over browser-state storage, development support is available through the deployed payment page:
+
+**https://cyojkoy.github.io/Payment/**
 
 ## License
 
 This project is licensed under the **MIT License**.
 
-See [`LICENSE`](LICENSE) for the complete MIT License text and copyright notice.
-
-## Support the Author
-
-If this project saves you time or improves your workflow, consider supporting its development.
+See [`LICENSE`](LICENSE) for the complete license text and copyright notice.
 
 <div align="center">
-  <a href="https://cyojkoy.github.io/Payment/">
-    <img src="https://img.shields.io/badge/Support_the_Author-9E8F7E?style=for-the-badge&logo=buy-me-a-coffee&logoColor=BEB8AE" alt="Support the Author">
-  </a>
-</div>
-
-<div align="center">
-  <sub>Built for users who want synchronized Chromium state without giving up control over where their data is stored.</sub>
+  <sub>Chromium Cloud Sync · synchronized browser state without a project-operated cloud service.</sub>
 </div>
