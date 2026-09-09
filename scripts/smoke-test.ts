@@ -68,10 +68,7 @@ class CdpClient {
     if (this.socket.readyState !== WebSocket.OPEN) throw new Error('CDP socket is not open: ' + method);
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error('CDP command timed out: ' + method));
-      }, commandTimeout);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('CDP command timed out: ' + method)); }, commandTimeout);
       this.pending.set(id, { resolve, reject, timer });
       try { this.socket.send(JSON.stringify({ id, method, params })); }
       catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error instanceof Error ? error : new Error(String(error))); }
@@ -84,13 +81,8 @@ function closeSocket(socket: WebSocket | undefined) {
   try { if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(); } catch {}
 }
 
-function evaluate(expression: string, awaitPromise = false): Record<string, unknown> {
-  return { expression, returnByValue: true, awaitPromise };
-}
-
 async function main() {
-  const manifestPath = path.join(dist, 'manifest.json');
-  if (!fs.existsSync(manifestPath)) throw new Error('dist/manifest.json is missing; run npm run build:extension first');
+  if (!fs.existsSync(path.join(dist, 'manifest.json'))) throw new Error('dist/manifest.json is missing; run npm run build:extension first');
 
   const executable = findChromium();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
@@ -106,57 +98,67 @@ async function main() {
   const args = useXvfb ? ['-a', '-s', '-screen 0 1280x900x24', '--', executable, ...chromeArgs] : chromeArgs;
 
   let browserErrors = '';
-  let workerSocket: WebSocket | undefined;
+  let browserSocket: WebSocket | undefined;
   let popupSocket: WebSocket | undefined;
   const browser = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
   browser.stderr?.setEncoding('utf8');
   browser.stderr?.on('data', (chunk) => { browserErrors += String(chunk); });
 
   try {
-    await waitFor(async () => { try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; } }, 15000);
-    const workerTarget = await waitFor(async () => {
+    const browserInfo = await waitFor(async () => {
+      try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; }
+    }, 15000);
+
+    const serviceWorker = await waitFor(async () => {
       const list = await getJson('http://127.0.0.1:' + port + '/json/list');
       return list.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js')) || null;
     }, 15000);
-    const extensionId = new URL(workerTarget.url).hostname;
 
-    workerSocket = new WebSocket(workerTarget.webSocketDebuggerUrl);
-    await waitFor(async () => workerSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
-    const worker = new CdpClient(workerSocket);
-    await worker.command('Runtime.enable');
-    const openResult = await worker.command('Runtime.evaluate', evaluate(
-      "(()=>{if(typeof chrome.action?.openPopup!=='function')throw new Error('chrome.action.openPopup is unavailable');chrome.action.openPopup();return true})()",
-      false,
-    ));
-    if (openResult.exceptionDetails) throw new Error(openResult.exceptionDetails.text || 'chrome.action.openPopup failed');
+    const extensionId = new URL(serviceWorker.url).hostname;
+    browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
+    await waitFor(async () => browserSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
+    const browserCdp = new CdpClient(browserSocket);
+    const created = await browserCdp.command('Target.createTarget', {
+      url: 'chrome-extension://' + extensionId + '/popup.html',
+      newWindow: false,
+      background: false,
+    });
+    if (!created.targetId) throw new Error('Chromium did not create extension popup target');
 
     const popupTarget = await waitFor(async () => {
       const list = await getJson('http://127.0.0.1:' + port + '/json/list');
-      return list.find((item: any) => item.type === 'page' && String(item.url).startsWith('chrome-extension://' + extensionId + '/popup.html') && item.webSocketDebuggerUrl) || null;
+      return list.find((item: any) => item.id === created.targetId && item.type === 'page' && item.webSocketDebuggerUrl) || null;
     }, 10000);
 
     popupSocket = new WebSocket(popupTarget.webSocketDebuggerUrl);
     await waitFor(async () => popupSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
     const popup = new CdpClient(popupSocket);
     await popup.command('Runtime.enable');
+    await popup.command('Page.enable');
 
-    const readiness = await waitFor(async () => {
-      const result = await popup.command('Runtime.evaluate', evaluate(
-        "(()=>({ready:document.readyState,href:location.href,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme,scripts:[...document.scripts].map(s=>s.src)}))()",
-      ));
+    const initial = await popup.command('Runtime.evaluate', {
+      expression: "(()=>({url:location.href,ready:document.readyState,bodyLength:document.body?.innerHTML.length||0,scriptCount:document.scripts.length,scripts:[...document.scripts].map(s=>s.src),sync:!!document.getElementById('sync'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme}))()",
+      returnByValue: true,
+    });
+
+    await waitFor(async () => {
+      const result = await popup.command('Runtime.evaluate', {
+        expression: "(()=>({ready:document.readyState,bodyLength:document.body?.innerHTML.length||0,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme}))()",
+        returnByValue: true,
+      });
       const value = result.result?.value;
-      return value?.sync ? value : null;
+      if (value?.sync && value?.restore && value?.options && value?.runtime && value?.request && value?.i18n && value?.theme) return value;
+      return null;
     }, 10000);
 
-    const required = ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme'];
-    const missing = required.filter((key) => !readiness[key]);
-    if (missing.length) throw new Error('Popup runtime incomplete: ' + JSON.stringify({ missing, readiness }));
-
-    const click = await popup.command('Runtime.evaluate', evaluate(
-      "(()=>{const b=document.getElementById('sync');if(!b)throw new Error('Sync button missing');b.click();return {disabled:b.disabled,busy:b.getAttribute('aria-busy')}})()",
-    ));
-    const clickState = click.result?.value;
-    if (!clickState?.disabled || clickState.busy !== 'true') throw new Error('Popup bindAction handler did not run after clicking Sync: ' + JSON.stringify(clickState));
+    const clickResult = await popup.command('Runtime.evaluate', {
+      expression: "(()=>{const b=document.getElementById('sync');b.click();return {disabled:b.disabled,busy:b.getAttribute('aria-busy')}})()",
+      returnByValue: true,
+    });
+    const clickState = clickResult.result?.value;
+    if (!clickState?.disabled || clickState.busy !== 'true') {
+      throw new Error('Popup bindAction handler did not run: ' + JSON.stringify({ initial: initial.result?.value, clickState }));
+    }
 
     console.log('Browser smoke test passed for extension ' + extensionId);
   } catch (error) {
@@ -164,7 +166,7 @@ async function main() {
     throw detail ? new Error((error instanceof Error ? error.message : String(error)) + '\nChromium stderr:\n' + detail) : error;
   } finally {
     closeSocket(popupSocket);
-    closeSocket(workerSocket);
+    closeSocket(browserSocket);
     browser.kill('SIGKILL');
     try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
     catch (error) { console.warn('Unable to remove Chromium smoke-test profile: ' + (error instanceof Error ? error.message : String(error))); }
