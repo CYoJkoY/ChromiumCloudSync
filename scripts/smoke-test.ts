@@ -119,6 +119,7 @@ async function main() {
     '--user-data-dir=' + userDataDir,
     '--no-first-run',
     '--no-default-browser-check',
+    '--window-size=1280,900',
     'about:blank',
   ];
 
@@ -153,20 +154,31 @@ async function main() {
     const extensionId = new URL(targets.serviceWorker.url).hostname;
     if (!extensionId) throw new Error('Unable to determine extension ID from background service worker');
 
-    browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
-    await waitFor(async () => browserSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
-    const browserCdp = new CdpClient(browserSocket);
-    const created = await browserCdp.command('Target.createTarget', {
-      url: `chrome-extension://${extensionId}/popup.html`,
-      newWindow: false,
-      background: false,
+    const serviceWorkerSocket = new WebSocket(targets.serviceWorker.webSocketDebuggerUrl);
+    await waitFor(async () => serviceWorkerSocket.readyState === WebSocket.OPEN ? true : null, 5000);
+    const workerCdp = new CdpClient(serviceWorkerSocket);
+    await workerCdp.command('Runtime.enable');
+
+    const openPopup = await workerCdp.command('Runtime.evaluate', {
+      expression: `(() => {
+        if (typeof chrome.action?.openPopup !== 'function') return { supported: false };
+        return chrome.action.openPopup().then(() => ({ supported: true, opened: true })).catch(error => ({ supported: true, opened: false, error: String(error?.message || error) }));
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
     });
-    const targetId = created.targetId;
-    if (!targetId) throw new Error('Chromium did not create a Popup target');
+
+    const popupResult = openPopup.result?.value;
+    if (popupResult?.supported === false) {
+      throw new Error('Chrome action.openPopup() is unavailable in this Chromium version');
+    }
+    if (!popupResult?.opened) {
+      throw new Error(`Chrome action.openPopup() failed: ${popupResult?.error || 'unknown error'}`);
+    }
 
     const popupTarget = await waitFor(async () => {
       const list = await json(`http://127.0.0.1:${remoteDebuggingPort}/json/list`);
-      return list.find((entry: any) => entry.id === targetId && entry.type === 'page' && entry.webSocketDebuggerUrl) || null;
+      return list.find((entry: any) => entry.type === 'page' && String(entry.url).startsWith(`chrome-extension://${extensionId}/popup.html`) && entry.webSocketDebuggerUrl) || null;
     }, 10000);
 
     popupSocket = new WebSocket(popupTarget.webSocketDebuggerUrl);
@@ -174,6 +186,18 @@ async function main() {
     const cdp = new CdpClient(popupSocket);
     await cdp.command('Runtime.enable');
     await cdp.command('Page.enable');
+
+    const pageErrors: string[] = [];
+    const eventSocket = popupSocket;
+    eventSocket.addEventListener('message', (event) => {
+      const message = JSON.parse(String(event.data));
+      if (message.method === 'Runtime.exceptionThrown') pageErrors.push(message.params?.exceptionDetails?.text || 'Runtime exception');
+      if (message.method === 'Runtime.consoleAPICalled') {
+        const args = message.params?.args || [];
+        const text = args.map((arg: any) => arg.value ?? arg.description ?? '').join(' ');
+        if (message.params.type === 'error') pageErrors.push(`console.error: ${text}`);
+      }
+    });
 
     await waitFor(async () => {
       const result = await cdp.command('Runtime.evaluate', { expression: 'document.readyState', returnByValue: true });
@@ -191,13 +215,14 @@ async function main() {
         request: typeof window.CCSyncRuntime?.request === 'function',
         i18n: Boolean(window.CCSyncI18n),
         theme: Boolean(window.CCSyncTheme),
+        scripts: [...document.scripts].map(s => s.src),
       }))()`,
       returnByValue: true,
     });
 
     const value = checks.result?.value;
-    for (const key of ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme']) {
-      if (!value?.[key]) throw new Error(`Popup smoke test failed: ${key} is unavailable`);
+    if (!value?.sync || !value?.restore || !value?.options || !value?.runtime || !value?.request || !value?.i18n || !value?.theme) {
+      throw new Error(`Popup smoke test failed: ${JSON.stringify({ value, pageErrors })}`);
     }
 
     await cdp.command('Runtime.evaluate', {
@@ -220,7 +245,7 @@ async function main() {
       });
       return result.result?.value === true ? true : null;
     }, 3000);
-    if (!handlerCheck) throw new Error('Popup bindAction handler did not run after click');
+    if (!handlerCheck) throw new Error(`Popup bindAction handler did not run after click: ${JSON.stringify({ value, pageErrors })}`);
 
     console.log(`Browser smoke test passed for extension ${extensionId}`);
   } catch (error) {
