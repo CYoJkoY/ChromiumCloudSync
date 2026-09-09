@@ -105,11 +105,7 @@ async function main() {
   const executable = chromiumExecutable();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
   const remoteDebuggingPort = 9223;
-  let browserStderr = '';
-  let browserSocket: WebSocket | undefined;
-  let popupSocket: WebSocket | undefined;
-  const browser = spawn(executable, [
-    '--headless=new',
+  const chromeArgs = [
     '--no-sandbox',
     '--disable-gpu',
     '--disable-dev-shm-usage',
@@ -121,8 +117,21 @@ async function main() {
     '--load-extension=' + dist,
     `--remote-debugging-port=${remoteDebuggingPort}`,
     '--user-data-dir=' + userDataDir,
+    '--no-first-run',
+    '--no-default-browser-check',
     'about:blank',
-  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  ];
+
+  const useXvfb = process.platform === 'linux' && process.env.CI === 'true';
+  const launchCommand = useXvfb ? 'xvfb-run' : executable;
+  const launchArgs = useXvfb
+    ? ['-a', '-s', '-screen 0 1280x900x24', '--', executable, ...chromeArgs]
+    : chromeArgs;
+
+  let browserStderr = '';
+  let browserSocket: WebSocket | undefined;
+  let popupSocket: WebSocket | undefined;
+  const browser = spawn(launchCommand, launchArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
   browser.stderr?.setEncoding('utf8');
   browser.stderr?.on('data', (chunk) => { browserStderr += String(chunk); });
 
