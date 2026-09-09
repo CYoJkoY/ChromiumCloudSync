@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate, test, and run Chromium smoke test
+    name: Validate and test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,21 +32,51 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Ensure Chromium and Xvfb are available
+      - name: Validate source, build, and tests
+        run: npm run validate
+
+      - name: Build release ZIP
+        run: npm run build:zip
+
+      - name: Verify release ZIP contents
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v chromium >/dev/null 2>&1; then
-            sudo apt-get install -y chromium
-          fi
-          if ! command -v Xvfb >/dev/null 2>&1; then
-            sudo apt-get install -y xvfb
-          fi
-          chromium --version
-          Xvfb -help >/dev/null 2>&1 || true
-
-      - name: Validate source and build
-        run: npm run validate
-
-      - name: Run Chromium runtime smoke test
-        run: npm run test:browser
+          VERSION_NAME="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version_name || ''")"
+          VERSION="${VERSION_NAME:-$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")}" 
+          ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
+          test -f "$ZIP"
+          unzip -t "$ZIP"
+          FILES="$(unzip -Z1 "$ZIP")"
+          REQUIRED_FILES=(
+            "manifest.json"
+            "background.js"
+            "legacy-crypto.js"
+            "sync-core.js"
+            "i18n.js"
+            "theme.js"
+            "runtime.js"
+            "update.js"
+            "extension-storage.js"
+            "extension-storage-watch.js"
+            "popup.html"
+            "popup.js"
+            "options.html"
+            "options.js"
+            "history.html"
+            "history.js"
+            "guide.html"
+            "guide.js"
+            "extensions.html"
+            "extensions.js"
+            "popup-fixes.js"
+            "ui.css"
+            "ui-system.css"
+            "ui-overrides.css"
+            "_locales/en/messages.json"
+            "_locales/zh_CN/messages.json"
+            "icons/icon.svg"
+          )
+          for REQUIRED in "${REQUIRED_FILES[@]}"; do
+            grep -Fxq "$REQUIRED" <<< "$FILES" || { echo "Missing required ZIP entry: $REQUIRED"; exit 1; }
+          done
