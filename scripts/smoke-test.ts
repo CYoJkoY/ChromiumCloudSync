@@ -111,7 +111,7 @@ async function main() {
   browser.stderr?.on('data', (chunk) => { browserStderr += String(chunk); });
 
   try {
-    await waitFor(async () => {
+    const browserInfo = await waitFor(async () => {
       try {
         return await json(`http://127.0.0.1:${remoteDebuggingPort}/json/version`);
       } catch {
@@ -128,15 +128,27 @@ async function main() {
     const extensionId = new URL(targets.serviceWorker.url).hostname;
     if (!extensionId) throw new Error('Unable to determine extension ID from background service worker');
 
-    const pageTarget = targets.list.find((entry: any) => entry.type === 'page' && entry.url === 'about:blank');
-    if (!pageTarget?.webSocketDebuggerUrl) throw new Error('No controllable Chromium page target found');
+    const browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
+    await waitFor(async () => browserSocket.readyState === WebSocket.OPEN ? true : null, 5000);
+    const browserCdp = new CdpClient(browserSocket);
+    const created = await browserCdp.command('Target.createTarget', {
+      url: `chrome-extension://${extensionId}/popup.html`,
+      newWindow: false,
+      background: false,
+    });
+    const targetId = created.targetId;
+    if (!targetId) throw new Error('Chromium did not create a Popup target');
 
-    const socket = new WebSocket(pageTarget.webSocketDebuggerUrl);
+    const popupTarget = await waitFor(async () => {
+      const list = await json(`http://127.0.0.1:${remoteDebuggingPort}/json/list`);
+      return list.find((entry: any) => entry.id === targetId && entry.type === 'page' && entry.webSocketDebuggerUrl) || null;
+    }, 10000);
+
+    const socket = new WebSocket(popupTarget.webSocketDebuggerUrl);
     await waitFor(async () => socket.readyState === WebSocket.OPEN ? true : null, 5000);
     const cdp = new CdpClient(socket);
     await cdp.command('Runtime.enable');
     await cdp.command('Page.enable');
-    await cdp.command('Page.navigate', { url: `chrome-extension://${extensionId}/popup.html` });
 
     await waitFor(async () => {
       const result = await cdp.command('Runtime.evaluate', { expression: 'document.readyState', returnByValue: true });
@@ -145,6 +157,7 @@ async function main() {
 
     const checks = await cdp.command('Runtime.evaluate', {
       expression: `(() => ({
+        url: location.href,
         title: document.title,
         sync: Boolean(document.getElementById('sync')),
         restore: Boolean(document.getElementById('restore')),
@@ -185,6 +198,7 @@ async function main() {
     if (!handlerCheck) throw new Error('Popup bindAction handler did not run after click');
 
     socket.close();
+    browserSocket.close();
     console.log(`Browser smoke test passed for extension ${extensionId}`);
   } catch (error) {
     const detail = browserStderr.trim();
