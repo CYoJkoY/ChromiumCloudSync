@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate and test
+    name: Validate, test, and run Chromium smoke test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,5 +32,24 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Validate
+      - name: Ensure Chromium is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v chromium >/dev/null 2>&1; then
+            chromium --version
+          elif command -v chromium-browser >/dev/null 2>&1; then
+            chromium-browser --version
+          elif command -v google-chrome >/dev/null 2>&1; then
+            google-chrome --version
+          else
+            sudo apt-get update
+            sudo apt-get install -y chromium
+            chromium --version
+          fi
+
+      - name: Validate source and build
         run: npm run validate
+
+      - name: Run Chromium runtime smoke test
+        run: npm run test:browser
