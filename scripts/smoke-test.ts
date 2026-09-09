@@ -162,18 +162,27 @@ async function main() {
       if (!value?.[key]) throw new Error(`Popup smoke test failed: ${key} is unavailable`);
     }
 
-    const clickCheck = await cdp.command('Runtime.evaluate', {
+    await cdp.command('Runtime.evaluate', {
       expression: `(() => {
         const button = document.getElementById('sync');
-        if (!button) return false;
-        let received = false;
-        button.addEventListener('click', () => { received = true; }, { once: true });
+        if (!button) throw new Error('Sync button is missing');
         button.click();
-        return received;
+        return true;
       })()`,
       returnByValue: true,
     });
-    if (clickCheck.result?.value !== true) throw new Error('Popup click event smoke test failed');
+
+    const handlerCheck = await waitFor(async () => {
+      const result = await cdp.command('Runtime.evaluate', {
+        expression: `(() => {
+          const button = document.getElementById('sync');
+          return Boolean(button?.disabled && button?.getAttribute('aria-busy') === 'true');
+        })()`,
+        returnByValue: true,
+      });
+      return result.result?.value === true ? true : null;
+    }, 3000);
+    if (!handlerCheck) throw new Error('Popup bindAction handler did not run after click');
 
     socket.close();
     console.log(`Browser smoke test passed for extension ${extensionId}`);
