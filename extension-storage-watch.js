@@ -23,4 +23,3 @@
     };
     new MutationObserver(rerender).observe(list, { childList: true, subtree: true });
 })();
-export {};

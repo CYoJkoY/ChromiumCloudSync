@@ -50,4 +50,3 @@ function setupChoiceSwitch(root, initialValue, onChange) { if (!root)
     const tv = tm === 'dark' || tm === 'light' ? tm : (document.documentElement.dataset.theme || 'light');
     setupChoiceSwitch(theme, tv, async (v) => CCSyncTheme.setTheme(v));
 } apply(); })();
-export {};

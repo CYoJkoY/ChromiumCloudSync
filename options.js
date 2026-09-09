@@ -158,4 +158,3 @@ async function setupPreferences() { await i.initAndApply(); const s = await stor
 catch (e) {
     showError(e);
 } })();
-export {};

@@ -24,4 +24,3 @@
     document.addEventListener('DOMContentLoaded', apply);
     new MutationObserver(() => apply()).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
 })();
-export {};

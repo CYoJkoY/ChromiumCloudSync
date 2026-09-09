@@ -92,4 +92,3 @@
     }
     window.CCSyncRuntime = { request, storageGet, storageSet, bindAction };
 })();
-export {};

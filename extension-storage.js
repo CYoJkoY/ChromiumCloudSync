@@ -485,4 +485,3 @@
     else
         void initOptions().catch(e => console.error('Extension storage init failed:', e));
 })();
-export {};

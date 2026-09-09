@@ -317,4 +317,3 @@ window.CCSyncUpdate = {
     getCachedState: () => cachedReleaseState,
 };
 document.addEventListener('DOMContentLoaded', initReleaseUpdate);
-export {};

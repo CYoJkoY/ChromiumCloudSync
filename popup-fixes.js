@@ -46,4 +46,3 @@
     else
         init();
 })();
-export {};

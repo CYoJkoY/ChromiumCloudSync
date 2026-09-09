@@ -145,4 +145,3 @@ function setupChoiceSwitch(root, initialValue, onChange) { if (!root)
 catch (error) {
     setError(error);
 } })();
-export {};

@@ -228,4 +228,3 @@ async function storageSetSafe(value) {
         console.warn('Could not save local UI preference', error);
     }
 }
-export {};

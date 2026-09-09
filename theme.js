@@ -91,4 +91,3 @@
         void initTheme();
     }
 })();
-export {};

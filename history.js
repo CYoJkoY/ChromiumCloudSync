@@ -192,4 +192,3 @@ document.getElementById('refresh').addEventListener('click', load);
     }
     await load();
 })();
-export {};

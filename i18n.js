@@ -49,4 +49,3 @@
     async function initAndApply(root = document) { await initI18n(); applyI18n(root); }
     window.CCSyncI18n = { initI18n, setLanguage, t, applyI18n, initAndApply, currentLanguage: () => current };
 })();
-export {};
