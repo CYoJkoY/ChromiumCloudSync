@@ -33,7 +33,7 @@ if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) {
   throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`);
 }
 
-const version = releaseVersion || baseVersion;
+const version = releaseVersion || versionName || baseVersion;
 if (version !== baseVersion && version !== versionName) {
   throw new Error(`Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName || '<empty>'}`);
 }
