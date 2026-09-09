@@ -17,6 +17,12 @@ const runtimeFiles = [
   'popup-i18n.js', 'popup.js', 'runtime.js', 'sync-core.js', 'theme.js', 'update.js'
 ];
 
+const extensionFiles = [
+  'manifest.json',
+  'popup.html', 'options.html', 'history.html', 'guide.html', 'extensions.html',
+  'ui-overrides.css', 'ui-system.css', 'ui.css'
+];
+
 if (!/^\d+\.\d+\.\d+$/.test(baseVersion)) {
   throw new Error(`Invalid manifest version: ${baseVersion}; expected X.Y.Z`);
 }
@@ -34,33 +40,38 @@ if (version !== baseVersion && version !== versionName) {
 
 fs.rmSync(compilerOut, { recursive: true, force: true });
 fs.rmSync(dist, { recursive: true, force: true });
-for (const file of runtimeFiles) fs.rmSync(path.join(root, file), { force: true });
+fs.mkdirSync(dist, { recursive: true });
 
 const tsc = process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
 execFileSync(tsc, ['-p', path.join(root, 'tsconfig.json')], { cwd: root, stdio: 'inherit' });
 
-fs.mkdirSync(dist, { recursive: true });
 for (const file of runtimeFiles) {
   const compiled = path.join(compilerOut, file);
   if (!fs.existsSync(compiled)) throw new Error(`Missing compiled extension file: ${file}`);
-  fs.copyFileSync(compiled, path.join(root, file));
+  fs.copyFileSync(compiled, path.join(dist, file));
+}
+
+for (const file of extensionFiles) {
+  const source = path.join(root, file);
+  if (!fs.existsSync(source)) throw new Error(`Missing extension file: ${file}`);
+  fs.cpSync(source, path.join(dist, file), { recursive: true });
+}
+
+for (const directory of ['_locales', 'icons']) {
+  const source = path.join(root, directory);
+  if (!fs.existsSync(source)) throw new Error(`Missing extension directory: ${directory}`);
+  fs.cpSync(source, path.join(dist, directory), { recursive: true });
 }
 
 if (!makeZip) {
   fs.rmSync(compilerOut, { recursive: true, force: true });
-  console.log(`Prepared extension runtime JavaScript from TypeScript sources in ${root}`);
+  console.log(`Prepared runnable extension in ${dist}`);
   process.exit(0);
 }
 
 const zip = path.join(dist, `chromium-cloud-sync-v${version}.zip`);
 fs.rmSync(zip, { force: true });
-const entries = [
-  'manifest.json', 'background.js', 'legacy-crypto.js', 'sync-core.js', 'i18n.js', 'theme.js', 'runtime.js',
-  'update.js', 'extension-storage.js', 'extension-storage-watch.js', 'popup-i18n.js', 'popup.js',
-  'options.js', 'history.js', 'guide.js', 'extensions.js', 'popup-fixes.js',
-  'ui-overrides.css', 'ui-system.css', 'ui.css', 'popup.html', 'options.html', 'history.html', 'guide.html', 'extensions.html',
-  '_locales', 'icons'
-];
-execFileSync('zip', ['-qr', zip, ...entries], { cwd: root, stdio: 'inherit' });
+const zipEntries = fs.readdirSync(dist).filter((entry) => entry !== path.basename(zip));
+execFileSync('zip', ['-qr', zip, ...zipEntries], { cwd: dist, stdio: 'inherit' });
 fs.rmSync(compilerOut, { recursive: true, force: true });
 console.log(`Built ${version}: ${zip}`);
