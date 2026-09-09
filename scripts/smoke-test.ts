@@ -191,7 +191,12 @@ async function main() {
     throw detail ? new Error(`${error instanceof Error ? error.message : String(error)}\nChromium stderr:\n${detail}`) : error;
   } finally {
     browser.kill('SIGTERM');
-    fs.rmSync(userDataDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Unable to remove Chromium smoke-test profile: ${message}`);
+    }
   }
 }
 
