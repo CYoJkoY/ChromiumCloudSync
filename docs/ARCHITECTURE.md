@@ -35,7 +35,7 @@ The background service worker coordinates snapshot collection, merge policy, per
 
 ### Domain logic
 
-`sync-core.js` owns merge and conflict behavior. Domain functions should not depend on DOM APIs.
+`sync-core.ts` owns merge and conflict behavior. Domain functions do not depend on DOM APIs.
 
 ### Platform adapters
 
@@ -49,22 +49,33 @@ GitHub API access is an explicit adapter boundary. Authentication material is re
 
 `chrome.storage.local` is the primary settings and state persistence layer. The private Gist is the remote synchronization store. IndexedDB or SQLite should only be introduced when the workload demonstrates a real need for structured/local-scale data beyond extension storage.
 
-## Frontend direction
+## TypeScript build model
 
-The extension uses native HTML/CSS/JavaScript today. This is intentionally retained for existing surfaces while the codebase is gradually moved toward explicit module boundaries.
+The repository contains TypeScript source only for executable application and tooling code. Browser JavaScript is generated during the build and ignored by Git so the extension can still be loaded by Chromium and packaged for release.
 
-For future substantial UI work:
+```text
+TypeScript source (*.ts)
+        │
+        ▼
+   TypeScript compiler
+        │
+        ├── .build/*.js  temporary compiler output
+        ▼
+   root runtime *.js   generated + ignored
+        │
+        ├── Chromium service worker
+        └── HTML script entrypoints
+```
 
-- use TypeScript when cross-context contracts or shared domain models become difficult to maintain in JavaScript;
-- keep content/page integration native and narrow;
-- use a UI framework only for a surface whose state and component reuse demonstrably justify it;
-- define message types and response semantics before adding new runtime messages.
+The generated root JavaScript preserves the existing filenames and execution order. This keeps the Manifest V3 runtime contract, global script boundaries, and storage/sync behavior unchanged while moving the editable source to TypeScript.
+
+`npm run build:extension` prepares the ignored runtime files. `npm run build:zip` additionally packages the same runtime into a release ZIP.
 
 ## Message contract
 
 New cross-context messages should follow a stable shape:
 
-```js
+```ts
 {
   type: 'namespace.action',
   requestId: 'uuid',
@@ -81,14 +92,16 @@ Content scripts and DOM-facing work must remain narrow. Prefer event-driven back
 
 ## Migration rule
 
-Do not rewrite the whole extension merely to introduce a new stack. Refactor by boundary:
+The TypeScript migration is source/build-only. It does not change the product runtime model, sync protocol, storage boundary, or UI framework.
 
 ```text
-existing JS
-  → explicit modules
-  → shared contracts
-  → TypeScript for high-value boundaries
-  → framework only where state complexity proves it necessary
+existing JavaScript source
+        ↓
+same source logic as TypeScript
+        ↓
+compiler-generated browser JavaScript
+        ↓
+existing Manifest V3 entrypoints
 ```
 
-This keeps the extension maintainable without adding runtime or dependency weight that the product does not need.
+Future changes should use TypeScript for shared contracts and domain logic while keeping the browser-extension runtime narrow and native unless a concrete product requirement justifies additional framework or process complexity.
