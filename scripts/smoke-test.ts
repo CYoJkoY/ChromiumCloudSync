@@ -15,16 +15,12 @@ function findChromium(): string {
     : process.platform === 'darwin'
       ? [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']
       : [process.env.CHROME_PATH, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'];
-
   for (const candidate of candidates) {
     if (!candidate) continue;
     if (candidate.includes('/') || candidate.includes('\\')) {
       if (fs.existsSync(candidate)) return candidate;
     } else {
-      try {
-        execFileSync(candidate, ['--version'], { stdio: 'ignore' });
-        return candidate;
-      } catch {}
+      try { execFileSync(candidate, ['--version'], { stdio: 'ignore' }); return candidate; } catch {}
     }
   }
   throw new Error('Chromium/Chrome executable not found. Set CHROME_PATH or install Chromium.');
@@ -49,7 +45,6 @@ async function waitFor<T>(reader: () => Promise<T | null>, timeoutMs: number): P
 class CdpClient {
   private nextId = 0;
   private readonly pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
-
   constructor(private readonly socket: WebSocket) {
     socket.addEventListener('message', (event) => {
       const message = JSON.parse(String(event.data));
@@ -61,7 +56,6 @@ class CdpClient {
       if (message.error) pending.reject(new Error(message.error.message || 'CDP command failed'));
       else pending.resolve(message.result);
     });
-
     socket.addEventListener('close', () => {
       for (const pending of this.pending.values()) {
         clearTimeout(pending.timer);
@@ -70,7 +64,6 @@ class CdpClient {
       this.pending.clear();
     });
   }
-
   async command(method: string, params: Record<string, unknown> = {}): Promise<any> {
     if (this.socket.readyState !== WebSocket.OPEN) throw new Error('CDP socket is not open: ' + method);
     const id = ++this.nextId;
@@ -80,30 +73,19 @@ class CdpClient {
         reject(new Error('CDP command timed out: ' + method));
       }, commandTimeout);
       this.pending.set(id, { resolve, reject, timer });
-      try {
-        this.socket.send(JSON.stringify({ id, method, params }));
-      } catch (error) {
-        clearTimeout(timer);
-        this.pending.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
+      try { this.socket.send(JSON.stringify({ id, method, params })); }
+      catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error instanceof Error ? error : new Error(String(error))); }
     });
   }
 }
 
 function closeSocket(socket: WebSocket | undefined) {
   if (!socket) return;
-  try {
-    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
-  } catch {}
+  try { if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(); } catch {}
 }
 
-function evaluateExpression(expression: string) {
-  return {
-    expression,
-    returnByValue: true,
-    awaitPromise: true,
-  };
+function evaluate(expression: string, awaitPromise = false): Record<string, unknown> {
+  return { expression, returnByValue: true, awaitPromise };
 }
 
 async function main() {
@@ -112,16 +94,16 @@ async function main() {
 
   const executable = findChromium();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
-  const xvfb = process.platform === 'linux' && process.env.CI === 'true';
   const chromeArgs = [
     '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
     '--disable-background-networking', '--disable-default-apps', '--disable-popup-blocking',
     '--disable-features=Translate,OptimizationHints', '--disable-extensions-except=' + dist,
     '--load-extension=' + dist, '--remote-debugging-port=' + port, '--user-data-dir=' + profile,
-    '--no-first-run', '--no-default-browser-check', '--window-size=1280,900', 'about:blank',
+    '--no-first-run', '--no-default-browser-check', '--window-size=1280,900', 'about:blank'
   ];
-  const command = xvfb ? 'xvfb-run' : executable;
-  const args = xvfb ? ['-a', '-s', '-screen 0 1280x900x24', '--', executable, ...chromeArgs] : chromeArgs;
+  const useXvfb = process.platform === 'linux' && process.env.CI === 'true';
+  const command = useXvfb ? 'xvfb-run' : executable;
+  const args = useXvfb ? ['-a', '-s', '-screen 0 1280x900x24', '--', executable, ...chromeArgs] : chromeArgs;
 
   let browserErrors = '';
   let workerSocket: WebSocket | undefined;
@@ -131,30 +113,22 @@ async function main() {
   browser.stderr?.on('data', (chunk) => { browserErrors += String(chunk); });
 
   try {
-    const browserInfo = await waitFor(async () => {
-      try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; }
-    }, 15000);
-
-    const initialTargets = await waitFor(async () => {
+    await waitFor(async () => { try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; } }, 15000);
+    const workerTarget = await waitFor(async () => {
       const list = await getJson('http://127.0.0.1:' + port + '/json/list');
-      const worker = list.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js'));
-      return worker || null;
+      return list.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js')) || null;
     }, 15000);
+    const extensionId = new URL(workerTarget.url).hostname;
 
-    const extensionId = new URL(initialTargets.url).hostname;
-    if (!extensionId) throw new Error('Unable to determine extension ID');
-
-    workerSocket = new WebSocket(initialTargets.webSocketDebuggerUrl);
+    workerSocket = new WebSocket(workerTarget.webSocketDebuggerUrl);
     await waitFor(async () => workerSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
     const worker = new CdpClient(workerSocket);
     await worker.command('Runtime.enable');
-
-    const openResult = await worker.command('Runtime.evaluate', evaluateExpression(
-      "(async()=>{if(typeof chrome.action?.openPopup!=='function')return {supported:false};try{await chrome.action.openPopup();return {supported:true,opened:true}}catch(error){return {supported:true,opened:false,error:String(error?.message||error)}}})()",
+    const openResult = await worker.command('Runtime.evaluate', evaluate(
+      "(()=>{if(typeof chrome.action?.openPopup!=='function')throw new Error('chrome.action.openPopup is unavailable');chrome.action.openPopup();return true})()",
+      false,
     ));
-    const openState = openResult.result?.value;
-    if (!openState?.supported) throw new Error('chrome.action.openPopup is unavailable');
-    if (!openState.opened) throw new Error('chrome.action.openPopup failed: ' + (openState.error || 'unknown error'));
+    if (openResult.exceptionDetails) throw new Error(openResult.exceptionDetails.text || 'chrome.action.openPopup failed');
 
     const popupTarget = await waitFor(async () => {
       const list = await getJson('http://127.0.0.1:' + port + '/json/list');
@@ -167,7 +141,7 @@ async function main() {
     await popup.command('Runtime.enable');
 
     const readiness = await waitFor(async () => {
-      const result = await popup.command('Runtime.evaluate', evaluateExpression(
+      const result = await popup.command('Runtime.evaluate', evaluate(
         "(()=>({ready:document.readyState,href:location.href,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme,scripts:[...document.scripts].map(s=>s.src)}))()",
       ));
       const value = result.result?.value;
@@ -178,19 +152,12 @@ async function main() {
     const missing = required.filter((key) => !readiness[key]);
     if (missing.length) throw new Error('Popup runtime incomplete: ' + JSON.stringify({ missing, readiness }));
 
-    const clickResult = await popup.command('Runtime.evaluate', evaluateExpression(
-      "(()=>{const button=document.getElementById('sync');if(!button)throw new Error('Sync button missing');button.click();return true})()",
+    const click = await popup.command('Runtime.evaluate', evaluate(
+      "(()=>{const b=document.getElementById('sync');if(!b)throw new Error('Sync button missing');b.click();return {disabled:b.disabled,busy:b.getAttribute('aria-busy')}})()",
     ));
-    if (clickResult.exceptionDetails) throw new Error(clickResult.exceptionDetails.text || 'Popup click failed');
+    const clickState = click.result?.value;
+    if (!clickState?.disabled || clickState.busy !== 'true') throw new Error('Popup bindAction handler did not run after clicking Sync: ' + JSON.stringify(clickState));
 
-    const handlerRan = await waitFor(async () => {
-      const result = await popup.command('Runtime.evaluate', evaluateExpression(
-        "(()=>{const b=document.getElementById('sync');return !!(b&&b.disabled&&b.getAttribute('aria-busy')==='true')})()",
-      ));
-      return result.result?.value === true ? true : null;
-    }, 3000);
-
-    if (!handlerRan) throw new Error('Popup bindAction handler did not run after clicking Sync');
     console.log('Browser smoke test passed for extension ' + extensionId);
   } catch (error) {
     const detail = browserErrors.trim();
@@ -199,15 +166,9 @@ async function main() {
     closeSocket(popupSocket);
     closeSocket(workerSocket);
     browser.kill('SIGKILL');
-    try {
-      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    } catch (error) {
-      console.warn('Unable to remove Chromium smoke-test profile: ' + (error instanceof Error ? error.message : String(error)));
-    }
+    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+    catch (error) { console.warn('Unable to remove Chromium smoke-test profile: ' + (error instanceof Error ? error.message : String(error))); }
   }
 }
 
-main().catch((error) => {
-  console.error(error?.stack || error);
-  process.exitCode = 1;
-});
+main().catch((error) => { console.error(error?.stack || error); process.exitCode = 1; });
