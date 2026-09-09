@@ -67,20 +67,20 @@ Backends: private GitHub repository, WebDAV, or disabled.
 ### Load unpacked
 
 1. Run `npm install`.
-2. Run `npm run build:extension` to compile the TypeScript source into ignored runtime JavaScript files.
+2. Run `npm run build:extension`. This creates the complete runnable extension under `dist/`; the generated JavaScript remains outside the source tree and is not committed.
 3. Open `chrome://extensions/` or the equivalent Chromium extension-management page.
 4. Enable **Developer mode**.
-5. Choose **Load unpacked** and select the repository directory containing `manifest.json`.
+5. Choose **Load unpacked** and select the `dist/` directory.
 
 ### First setup
 
 Open **Chromium Cloud Sync → Settings**, validate a GitHub token, then create or bind a private sync Gist. Automatic synchronization is disabled by default and uses a 5-minute interval when enabled.
 
-The current manifest declares extension version `1.8.0` with development identifier `1.8.0.dev1`.
+The current manifest declares extension version `1.8.0` with development identifier `1.8.0.dev3`.
 
 ## <img src="assets/readme/icons/development.svg" width="20" height="20" alt=""> Development & support
 
-The extension uses TypeScript as its source language, with native HTML and CSS for UI surfaces. Browser-executable JavaScript is generated into ignored build output and is never kept as source in the repository.
+The repository is TypeScript-only for executable source code. Native HTML and CSS remain the UI layer. Browser-executable JavaScript is generated only during the build into ignored `dist/` artifacts, while the Git repository retains the TypeScript source.
 
 Important commands:
 
@@ -94,7 +94,7 @@ npm run build:zip
 
 `manifest.json` is the source of truth for stable versioning; development suffixes remain in `version_name` and do not enter `package.json.version`.
 
-The migration intentionally preserves the existing execution model and script ordering. TypeScript adds the source/build layer without introducing a UI framework or changing the sync protocol.
+TypeScript is the source layer, and the build step is responsible for producing the browser-executable runtime. The extension keeps the existing Manifest V3 execution model and script ordering without introducing a UI framework or changing the sync protocol.
 
 Do not commit GitHub tokens, WebDAV passwords, private Gist data, or signing keys.
 
