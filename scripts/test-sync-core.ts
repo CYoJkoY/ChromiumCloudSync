@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mergeSnapshots, deriveTombstones, applyTombstones, cleanConflicts } from '../sync-core.js';
+import { mergeSnapshots, deriveTombstones, applyTombstones, cleanConflicts } from '../sync-core.ts';
 
-function snapshot(overrides = {}) {
+function snapshot(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: 10,
     extensions: [],

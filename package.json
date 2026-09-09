@@ -4,9 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "version:sync": "node scripts/sync-package-version.mjs",
-    "test": "node scripts/test-sync-core.mjs",
-    "validate": "npm run version:sync && npm test && node scripts/validate.mjs",
-    "build:zip": "npm run version:sync && node scripts/build.mjs"
+    "version:sync": "tsx scripts/sync-package-version.ts",
+    "test": "tsx scripts/test-sync-core.ts",
+    "build:extension": "tsx scripts/build.ts --prepare-only",
+    "validate": "npm run version:sync && npm test && npm run build:extension && tsx scripts/validate.ts",
+    "build:zip": "npm run version:sync && tsx scripts/build.ts --zip"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
   }
 }
