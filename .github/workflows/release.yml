@@ -37,6 +37,9 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
       - name: Verify Node.js and npm
         shell: bash
         run: |
@@ -86,7 +89,6 @@ jobs:
             fi
           fi
 
-          # package.json.version always remains the stable manifest.version.
           PACKAGE_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")"
           if [[ "$PACKAGE_VERSION" != "$VERSION" ]]; then
             echo "package.json version ($PACKAGE_VERSION) must match manifest.version ($VERSION)."
@@ -150,7 +152,12 @@ jobs:
             "history.js"
             "guide.html"
             "guide.js"
+            "extensions.html"
+            "extensions.js"
+            "popup-fixes.js"
             "ui.css"
+            "ui-system.css"
+            "ui-overrides.css"
             "_locales/en/messages.json"
             "_locales/zh_CN/messages.json"
             "icons/icon.svg"
