@@ -7,7 +7,7 @@ on:
     paths:
       - 'manifest.json'
       - 'package.json'
-      - 'scripts/sync-package-version.mjs'
+      - 'scripts/sync-package-version.ts'
   workflow_dispatch:
 
 permissions:
@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
 
       - name: Synchronize package.json version
         run: npm run version:sync
