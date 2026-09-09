@@ -82,16 +82,14 @@ function closeSocket(socket: WebSocket | undefined) {
 
 async function main() {
   if (!fs.existsSync(path.join(dist, 'manifest.json'))) throw new Error('dist/manifest.json is missing; run npm run build:extension first');
-
   const executable = chromiumExecutable();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
   const remoteDebuggingPort = 9223;
   const chromeArgs = [
     '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
     '--disable-background-networking', '--disable-default-apps', '--disable-popup-blocking',
-    '--disable-features=Translate,OptimizationHints',
-    '--disable-extensions-except=' + dist, '--load-extension=' + dist,
-    `--remote-debugging-port=${remoteDebuggingPort}`, '--user-data-dir=' + userDataDir,
+    '--disable-features=Translate,OptimizationHints', '--disable-extensions-except=' + dist,
+    '--load-extension=' + dist, `--remote-debugging-port=${remoteDebuggingPort}`, '--user-data-dir=' + userDataDir,
     '--no-first-run', '--no-default-browser-check', '--window-size=1280,900', 'about:blank'
   ];
   const useXvfb = process.platform === 'linux' && process.env.CI === 'true';
@@ -129,61 +127,52 @@ async function main() {
       const list = await json(`http://127.0.0.1:${remoteDebuggingPort}/json/list`);
       return list.find((entry: any) => entry.type === 'page' && String(entry.url).startsWith(`chrome-extension://${extensionId}/popup.html`) && entry.webSocketDebuggerUrl) || null;
     }, 10000);
-
     popupSocket = new WebSocket(popupTarget.webSocketDebuggerUrl);
     await waitFor(async () => popupSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
     const cdp = new CdpClient(popupSocket);
     await cdp.command('Runtime.enable');
     await cdp.command('Page.enable');
 
-    const pageErrors: string[] = [];
-    popupSocket.addEventListener('message', (event) => {
-      const message = JSON.parse(String(event.data));
-      if (message.method === 'Runtime.exceptionThrown') pageErrors.push(message.params?.exceptionDetails?.text || 'Runtime exception');
-      if (message.method === 'Runtime.consoleAPICalled' && message.params?.type === 'error') {
-        pageErrors.push((message.params.args || []).map((arg: any) => arg.value ?? arg.description ?? '').join(' '));
-      }
-    });
+    const readiness = await waitFor(async () => {
+      const result = await cdp.command('Runtime.evaluate', {
+        expression: `(() => ({
+          ready: document.readyState,
+          href: location.href,
+          sync: Boolean(document.getElementById('sync')),
+          restore: Boolean(document.getElementById('restore')),
+          options: Boolean(document.getElementById('options')),
+          runtime: Boolean(window.CCSyncRuntime),
+          request: typeof window.CCSyncRuntime?.request === 'function',
+          i18n: Boolean(window.CCSyncI18n),
+          theme: Boolean(window.CCSyncTheme),
+          scripts: [...document.scripts].map(s => s.src)
+        }))()`,
+        returnByValue: true,
+      });
+      const value = result.result?.value;
+      return value?.sync ? value : null;
+    }, 10000);
 
-    await waitFor(async () => {
-      const result = await cdp.command('Runtime.evaluate', { expression: 'document.readyState', returnByValue: true });
-      return result.result?.value === 'complete' ? true : null;
-    });
+    const missing = ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme'].filter((key) => !readiness?.[key]);
+    if (missing.length) throw new Error(`Popup runtime incomplete: ${JSON.stringify({ missing, readiness })}`);
 
-    const checks = await cdp.command('Runtime.evaluate', {
-      expression: `(() => ({
-        url: location.href,
-        title: document.title,
-        sync: Boolean(document.getElementById('sync')),
-        restore: Boolean(document.getElementById('restore')),
-        options: Boolean(document.getElementById('options')),
-        runtime: Boolean(window.CCSyncRuntime),
-        request: typeof window.CCSyncRuntime?.request === 'function',
-        i18n: Boolean(window.CCSyncI18n),
-        theme: Boolean(window.CCSyncTheme),
-        scripts: [...document.scripts].map(s => s.src),
-      }))()`,
-      returnByValue: true,
-    });
-    const value = checks.result?.value;
-    const missing = ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme'].filter((key) => !value?.[key]);
-    if (missing.length) throw new Error(`Popup smoke test failed; missing=${missing.join(',')}; diagnostics=${JSON.stringify({ value, pageErrors })}`);
-
-    await cdp.command('Runtime.evaluate', { expression: `document.getElementById('sync').click();`, returnByValue: true });
+    await cdp.command('Runtime.evaluate', { expression: `document.getElementById('sync').click()`, returnByValue: true });
     const handlerCheck = await waitFor(async () => {
-      const result = await cdp.command('Runtime.evaluate', { expression: `(() => { const b=document.getElementById('sync'); return Boolean(b?.disabled && b?.getAttribute('aria-busy')==='true'); })()`, returnByValue: true });
+      const result = await cdp.command('Runtime.evaluate', {
+        expression: `(() => { const b=document.getElementById('sync'); return Boolean(b?.disabled && b?.getAttribute('aria-busy')==='true'); })()`,
+        returnByValue: true,
+      });
       return result.result?.value === true ? true : null;
     }, 3000);
-    if (!handlerCheck) throw new Error(`Popup bindAction handler did not run: ${JSON.stringify({ value, pageErrors })}`);
+    if (!handlerCheck) throw new Error('Popup bindAction handler did not run after click');
 
     console.log(`Browser smoke test passed for extension ${extensionId}`);
   } catch (error) {
     const detail = browserStderr.trim();
     throw detail ? new Error(`${error instanceof Error ? error.message : String(error)}\nChromium stderr:\n${detail}`) : error;
   } finally {
-    closeSocket(popupSocket); closeSocket(workerSocket); closeSocket(browserSocket);
-    browser.kill('SIGKILL');
-    try { fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+    closeSocket(popupSocket); closeSocket(workerSocket); closeSocket(browserSocket); browser.kill('SIGKILL');
+    try { fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100); }
     catch (error) { console.warn(`Unable to remove Chromium smoke-test profile: ${error instanceof Error ? error.message : String(error)}`); }
   }
 }
