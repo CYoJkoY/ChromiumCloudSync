@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const dist = path.join(root, 'dist');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const baseVersion = String(manifest.version || '').trim();
@@ -23,7 +24,7 @@ const sourceFiles = [
 for (const file of sourceFiles) if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing TypeScript source ${file}`);
 
 const trackedJs = execFileSync('git', ['ls-files', '*.js', '*.mjs'], { cwd: root, encoding: 'utf8' }).trim();
-if (trackedJs) throw new Error(`JavaScript sources are still tracked:\n${trackedJs}`);
+if (trackedJs) throw new Error(`Runtime JavaScript must not be tracked in the source repository:\n${trackedJs}`);
 
 const htmlFiles = ['popup.html', 'options.html', 'history.html', 'guide.html', 'extensions.html'];
 const requiredRefs = {
@@ -34,9 +35,10 @@ const requiredRefs = {
   'extensions.html': ['runtime.js', 'theme.js', 'i18n.js', 'extensions.js'],
 };
 for (const html of htmlFiles) {
-  const text = fs.readFileSync(path.join(root, html), 'utf8');
+  const source = path.join(root, html);
+  const text = fs.readFileSync(source, 'utf8');
   for (const script of requiredRefs[html]) if (!text.includes(`src="${script}"`)) throw new Error(`${html} is missing script reference ${script}`);
-  if (/<script[^>]+src="dist\//i.test(text)) throw new Error(`${html} must keep the original root script layout`);
+  if (/<script[^>]+src="dist\//i.test(text)) throw new Error(`${html} must use extension-root runtime paths`);
 }
 
 const runtimeFiles = [
@@ -45,9 +47,19 @@ const runtimeFiles = [
   'i18n.js', 'runtime.js', 'theme.js', 'update.js', 'extensions.js'
 ];
 for (const file of runtimeFiles) {
-  const target = path.join(root, file);
+  const target = path.join(dist, file);
   if (!fs.existsSync(target)) throw new Error(`Missing generated runtime ${file}; run npm run build:extension first`);
   execFileSync(process.execPath, ['--check', target], { stdio: 'inherit' });
+}
+
+const distManifest = JSON.parse(fs.readFileSync(path.join(dist, 'manifest.json'), 'utf8'));
+if (distManifest.background?.service_worker !== 'background.js') throw new Error('Built manifest background service worker must remain background.js');
+for (const html of htmlFiles) {
+  const text = fs.readFileSync(path.join(dist, html), 'utf8');
+  for (const script of requiredRefs[html]) {
+    if (!text.includes(`src="${script}"`)) throw new Error(`Built ${html} is missing script reference ${script}`);
+    if (!fs.existsSync(path.join(dist, script))) throw new Error(`Built ${html} references missing runtime ${script}`);
+  }
 }
 
 const scanFiles = [
@@ -81,4 +93,4 @@ if (!storage.includes("if(d.permissions&&!d.permissions.push)throw Error(t('notW
 if (!storage.includes('String(a.token||\'\').trim()===String(b.token||\'\').trim()')) throw new Error('GitHub extension-backup selection matching does not include the Token');
 if (!storage.includes('String(a.davPass||\'\')===String(b.davPass||\'\')')) throw new Error('WebDAV extension-backup selection matching does not include the password');
 
-console.log(`Validation passed for TypeScript source and generated runtime ${baseVersion}${versionName ? ` (${versionName})` : ''}`);
+console.log(`Validation passed for TypeScript-only source and generated runtime ${baseVersion}${versionName ? ` (${versionName})` : ''}`);
