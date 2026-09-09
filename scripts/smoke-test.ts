@@ -15,7 +15,6 @@ function findChromium(): string {
     : process.platform === 'darwin'
       ? [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']
       : [process.env.CHROME_PATH, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'];
-
   for (const candidate of candidates) {
     if (!candidate) continue;
     if (candidate.includes('/') || candidate.includes('\\')) {
@@ -46,7 +45,6 @@ async function waitFor<T>(reader: () => Promise<T | null>, timeoutMs: number): P
 class CdpClient {
   private nextId = 0;
   private readonly pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
-
   constructor(private readonly socket: WebSocket) {
     socket.addEventListener('message', (event) => {
       const message = JSON.parse(String(event.data));
@@ -66,15 +64,11 @@ class CdpClient {
       this.pending.clear();
     });
   }
-
   async command(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<any> {
     if (this.socket.readyState !== WebSocket.OPEN) throw new Error('CDP socket is not open: ' + method);
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error('CDP command timed out: ' + method));
-      }, commandTimeout);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('CDP command timed out: ' + method)); }, commandTimeout);
       this.pending.set(id, { resolve, reject, timer });
       try {
         const message: Record<string, unknown> = { id, method, params };
@@ -112,6 +106,8 @@ async function main() {
 
   let browserErrors = '';
   let browserSocket: WebSocket | undefined;
+  let extensionsSocket: WebSocket | undefined;
+  let popupSocket: WebSocket | undefined;
   const browser = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
   browser.stderr?.setEncoding('utf8');
   browser.stderr?.on('data', (chunk) => { browserErrors += String(chunk); });
@@ -124,40 +120,67 @@ async function main() {
     browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
     await waitFor(async () => browserSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
     const browserCdp = new CdpClient(browserSocket);
-    await browserCdp.command('Target.setDiscoverTargets', { discover: true });
 
-    const workerTarget = await waitFor(async () => {
-      const result = await browserCdp.command('Target.getTargets');
-      return result.targetInfos?.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js')) || null;
-    }, 15000);
-
-    const extensionId = new URL(workerTarget.url).hostname;
-    if (!extensionId) throw new Error('Unable to determine extension ID from service worker target');
-
-    const created = await browserCdp.command('Target.createTarget', {
-      url: 'chrome-extension://' + extensionId + '/popup.html',
-      newWindow: true,
-      background: false,
+    const extensionsTarget = await browserCdp.command('Target.createTarget', {
+      url: 'chrome://extensions/', newWindow: true, background: false,
     });
-    if (!created.targetId) throw new Error('Chromium did not create extension popup target');
+    if (!extensionsTarget.targetId) throw new Error('Chromium did not create chrome://extensions/ target');
 
-    await waitFor(async () => {
-      const result = await browserCdp.command('Target.getTargets');
-      return result.targetInfos?.find((item: any) => item.targetId === created.targetId && item.type === 'page') || null;
+    const attachedExtensions = await browserCdp.command('Target.attachToTarget', {
+      targetId: extensionsTarget.targetId, flatten: true,
+    });
+    if (!attachedExtensions.sessionId) throw new Error('Chromium did not attach to chrome://extensions/');
+    const extensionsSession = attachedExtensions.sessionId;
+    await browserCdp.command('Runtime.enable', {}, extensionsSession);
+
+    const extensionInfo = await waitFor(async () => {
+      const result = await browserCdp.command('Runtime.evaluate', {
+        expression: `(() => {
+          const found = [];
+          const seen = new Set();
+          const visit = (node) => {
+            if (!node || seen.has(node)) return;
+            seen.add(node);
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const id = node.getAttribute('id');
+              const extensionId = node.getAttribute('extension-id') || node.getAttribute('extensionid');
+              const text = (node.textContent || '').trim();
+              if ((extensionId || (id && /^[a-p]{32}$/.test(id))) && /Chromium Cloud Sync/i.test(text)) {
+                found.push({ id: extensionId || id, text: text.slice(0, 200) });
+              }
+            }
+            if (node.shadowRoot) visit(node.shadowRoot);
+            for (const child of node.children || []) visit(child);
+          };
+          visit(document.documentElement);
+          return { href: location.href, found };
+        })()`,
+        returnByValue: true,
+      }, extensionsSession);
+      const value = result.result?.result?.value;
+      return value?.found?.length ? value.found[0] : null;
     }, 10000);
 
-    const attached = await browserCdp.command('Target.attachToTarget', { targetId: created.targetId, flatten: true });
-    if (!attached.sessionId) throw new Error('Chromium did not provide a Popup CDP session');
-    const sessionId = attached.sessionId;
+    const extensionId = extensionInfo.id;
+    if (!/^[a-p]{32}$/.test(extensionId)) throw new Error('Invalid extension ID discovered from chrome://extensions/: ' + extensionId);
 
-    await browserCdp.command('Runtime.enable', {}, sessionId);
-    await browserCdp.command('Page.enable', {}, sessionId);
+    const popupTarget = await browserCdp.command('Target.createTarget', {
+      url: 'chrome-extension://' + extensionId + '/popup.html', newWindow: true, background: false,
+    });
+    if (!popupTarget.targetId) throw new Error('Chromium did not create extension popup target');
+
+    const attachedPopup = await browserCdp.command('Target.attachToTarget', {
+      targetId: popupTarget.targetId, flatten: true,
+    });
+    if (!attachedPopup.sessionId) throw new Error('Chromium did not attach to extension popup');
+    const popupSession = attachedPopup.sessionId;
+    await browserCdp.command('Runtime.enable', {}, popupSession);
 
     const readiness = await waitFor(async () => {
       const result = await browserCdp.command('Runtime.evaluate', {
-        expression: "(()=>({ready:document.readyState,href:location.href,bodyLength:document.body?.innerHTML.length||0,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme,scripts:[...document.scripts].map(s=>s.src)}))()",
+        expression: "(()=>({url:location.href,ready:document.readyState,bodyLength:document.body?.innerHTML.length||0,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme,scripts:[...document.scripts].map(s=>s.src)}))()",
         returnByValue: true,
-      }, sessionId);
+      }, popupSession);
       const value = result.result?.result?.value;
       const required = ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme'];
       return required.every((key) => value?.[key]) ? value : null;
@@ -166,17 +189,17 @@ async function main() {
     const click = await browserCdp.command('Runtime.evaluate', {
       expression: "(()=>{const b=document.getElementById('sync');b.click();return {disabled:b.disabled,busy:b.getAttribute('aria-busy')}})()",
       returnByValue: true,
-    }, sessionId);
+    }, popupSession);
     const clickState = click.result?.result?.value;
-    if (!clickState?.disabled || clickState.busy !== 'true') {
-      throw new Error('Popup bindAction handler did not run after clicking Sync: ' + JSON.stringify({ readiness, clickState }));
-    }
+    if (!clickState?.disabled || clickState.busy !== 'true') throw new Error('Popup bindAction handler did not run after clicking Sync: ' + JSON.stringify({ readiness, clickState }));
 
     console.log('Browser smoke test passed for extension ' + extensionId);
   } catch (error) {
     const detail = browserErrors.trim();
     throw detail ? new Error((error instanceof Error ? error.message : String(error)) + '\nChromium stderr:\n' + detail) : error;
   } finally {
+    closeSocket(popupSocket);
+    closeSocket(extensionsSocket);
     closeSocket(browserSocket);
     browser.kill('SIGKILL');
     try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
