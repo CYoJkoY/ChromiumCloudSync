@@ -1,0 +1,47 @@
+:root{
+  --ccs-canvas:#f4f6f9;
+  --ccs-surface:#fff;
+  --ccs-surface-subtle:#f8fafc;
+  --ccs-surface-active:#eaf0ff;
+  --ccs-text:#182230;
+  --ccs-text-muted:#667085;
+  --ccs-border:#dfe4ea;
+  --ccs-border-strong:#c8d0da;
+  --ccs-accent:#315efb;
+  --ccs-accent-hover:#244de0;
+  --ccs-focus:rgba(49,94,251,.2);
+  --ccs-radius:12px;
+  --ccs-radius-small:9px;
+  --ccs-transition:160ms ease;
+}
+
+html[data-theme="dark"]{
+  --ccs-canvas:#0f1318;
+  --ccs-surface:#171c22;
+  --ccs-surface-subtle:#1d242d;
+  --ccs-surface-active:#222f50;
+  --ccs-text:#f1f5f9;
+  --ccs-text-muted:#96a2b0;
+  --ccs-border:#303a45;
+  --ccs-border-strong:#43505e;
+  --ccs-accent:#8ea7ff;
+  --ccs-accent-hover:#aec0ff;
+  --ccs-focus:rgba(142,167,255,.27);
+}
+
+body{background:var(--ccs-canvas);color:var(--ccs-text)}
+.card,.settings-sidebar,.settings-content .card{border-radius:var(--ccs-radius);box-shadow:0 1px 2px rgba(16,24,40,.04),0 5px 16px rgba(16,24,40,.04)}
+html[data-theme="dark"] .card,html[data-theme="dark"] .settings-sidebar,html[data-theme="dark"] .settings-content .card{box-shadow:0 1px 2px rgba(0,0,0,.26),0 8px 22px rgba(0,0,0,.16)}
+
+.primary,.secondary,.action-tile,.nav-tab,.nav-action,.choice-switch,.select,.field{transition:background-color var(--ccs-transition),border-color var(--ccs-transition),color var(--ccs-transition),box-shadow var(--ccs-transition),transform var(--ccs-transition)}
+.primary:hover,.secondary:hover,.action-tile:hover,.nav-tab:hover,.nav-action:hover{transform:translateY(-1px)}
+.primary:focus-visible,.secondary:focus-visible,.action-tile:focus-visible,.nav-tab:focus-visible,.nav-action:focus-visible,.field:focus-visible,.select:focus-visible{outline:2px solid var(--ccs-accent);outline-offset:2px;box-shadow:0 0 0 3px var(--ccs-focus)}
+
+.action-tile{background:var(--ccs-surface);border-color:var(--ccs-border);border-radius:var(--ccs-radius)}
+.action-tile:hover{background:var(--ccs-surface-subtle);border-color:var(--ccs-border-strong)}
+.nav-tab.active{background:var(--ccs-surface-active);color:var(--ccs-accent)}
+.nav-tab.active .nav-tab-icon{color:var(--ccs-accent)}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:0.001ms!important;animation-duration:0.001ms!important;animation-iteration-count:1!important}
+}
