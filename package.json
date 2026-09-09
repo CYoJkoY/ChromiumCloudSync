@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "npm run build:extension",
+    "dev": "npm run build:extension",
     "version:sync": "tsx scripts/sync-package-version.ts",
     "test": "tsx scripts/test-sync-core.ts",
     "build:extension": "tsx scripts/build.ts --prepare-only",
