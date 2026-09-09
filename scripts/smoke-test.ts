@@ -15,6 +15,7 @@ function findChromium(): string {
     : process.platform === 'darwin'
       ? [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']
       : [process.env.CHROME_PATH, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'];
+
   for (const candidate of candidates) {
     if (!candidate) continue;
     if (candidate.includes('/') || candidate.includes('\\')) {
@@ -83,7 +84,6 @@ function closeSocket(socket: WebSocket | undefined) {
 
 async function main() {
   if (!fs.existsSync(path.join(dist, 'manifest.json'))) throw new Error('dist/manifest.json is missing; run npm run build:extension first');
-
   const executable = findChromium();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
   const chromeArgs = [
@@ -100,24 +100,27 @@ async function main() {
   let browserErrors = '';
   let browserSocket: WebSocket | undefined;
   let popupSocket: WebSocket | undefined;
+  let extensionId = '';
   const browser = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
   browser.stderr?.setEncoding('utf8');
   browser.stderr?.on('data', (chunk) => { browserErrors += String(chunk); });
 
   try {
-    const browserInfo = await waitFor(async () => {
-      try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; }
-    }, 15000);
+    const browserInfo = await waitFor(async () => { try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; } }, 15000);
 
-    const serviceWorker = await waitFor(async () => {
-      const list = await getJson('http://127.0.0.1:' + port + '/json/list');
-      return list.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js')) || null;
-    }, 15000);
-
-    const extensionId = new URL(serviceWorker.url).hostname;
     browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
     await waitFor(async () => browserSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
     const browserCdp = new CdpClient(browserSocket);
+    await browserCdp.command('Target.setDiscoverTargets', { discover: true });
+
+    const workerTarget = await waitFor(async () => {
+      const result = await browserCdp.command('Target.getTargets');
+      const target = result.targetInfos?.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js'));
+      return target || null;
+    }, 15000);
+    extensionId = new URL(workerTarget.url).hostname;
+    if (!extensionId) throw new Error('Unable to determine extension ID from service worker target');
+
     const created = await browserCdp.command('Target.createTarget', {
       url: 'chrome-extension://' + extensionId + '/popup.html',
       newWindow: false,
@@ -126,39 +129,40 @@ async function main() {
     if (!created.targetId) throw new Error('Chromium did not create extension popup target');
 
     const popupTarget = await waitFor(async () => {
-      const list = await getJson('http://127.0.0.1:' + port + '/json/list');
-      return list.find((item: any) => item.id === created.targetId && item.type === 'page' && item.webSocketDebuggerUrl) || null;
+      const result = await browserCdp.command('Target.getTargets');
+      return result.targetInfos?.find((item: any) => item.targetId === created.targetId && item.type === 'page') || null;
     }, 10000);
 
-    popupSocket = new WebSocket(popupTarget.webSocketDebuggerUrl);
+    const popupHttpTarget = await waitFor(async () => {
+      const list = await getJson('http://127.0.0.1:' + port + '/json/list');
+      return list.find((item: any) => item.id === created.targetId && item.webSocketDebuggerUrl) || null;
+    }, 5000);
+    if (!popupTarget || !popupHttpTarget) throw new Error('Chromium created a popup target but did not expose its debugger endpoint');
+
+    popupSocket = new WebSocket(popupHttpTarget.webSocketDebuggerUrl);
     await waitFor(async () => popupSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
     const popup = new CdpClient(popupSocket);
     await popup.command('Runtime.enable');
-    await popup.command('Page.enable');
 
-    const initial = await popup.command('Runtime.evaluate', {
-      expression: "(()=>({url:location.href,ready:document.readyState,bodyLength:document.body?.innerHTML.length||0,scriptCount:document.scripts.length,scripts:[...document.scripts].map(s=>s.src),sync:!!document.getElementById('sync'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme}))()",
-      returnByValue: true,
-    });
-
-    await waitFor(async () => {
+    const readiness = await waitFor(async () => {
       const result = await popup.command('Runtime.evaluate', {
-        expression: "(()=>({ready:document.readyState,bodyLength:document.body?.innerHTML.length||0,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme}))()",
+        expression: "(()=>({ready:document.readyState,href:location.href,bodyLength:document.body?.innerHTML.length||0,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme,scripts:[...document.scripts].map(s=>s.src)}))()",
         returnByValue: true,
       });
       const value = result.result?.value;
-      if (value?.sync && value?.restore && value?.options && value?.runtime && value?.request && value?.i18n && value?.theme) return value;
-      return null;
+      return value?.sync ? value : null;
     }, 10000);
 
-    const clickResult = await popup.command('Runtime.evaluate', {
+    const required = ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme'];
+    const missing = required.filter((key) => !readiness[key]);
+    if (missing.length) throw new Error('Popup runtime incomplete: ' + JSON.stringify({ missing, readiness, target: popupTarget }));
+
+    const click = await popup.command('Runtime.evaluate', {
       expression: "(()=>{const b=document.getElementById('sync');b.click();return {disabled:b.disabled,busy:b.getAttribute('aria-busy')}})()",
       returnByValue: true,
     });
-    const clickState = clickResult.result?.value;
-    if (!clickState?.disabled || clickState.busy !== 'true') {
-      throw new Error('Popup bindAction handler did not run: ' + JSON.stringify({ initial: initial.result?.value, clickState }));
-    }
+    const clickState = click.result?.value;
+    if (!clickState?.disabled || clickState.busy !== 'true') throw new Error('Popup bindAction handler did not run after clicking Sync: ' + JSON.stringify(clickState));
 
     console.log('Browser smoke test passed for extension ' + extensionId);
   } catch (error) {
