@@ -71,6 +71,7 @@ class CdpClient {
   }
 
   command(method: string, params: Record<string, unknown> = {}) {
+    if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error(`CDP socket is not open: ${method}`));
     const id = ++this.nextId;
     return new Promise<any>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -78,9 +79,22 @@ class CdpClient {
         reject(new Error(`CDP command timed out: ${method}`));
       }, CDP_COMMAND_TIMEOUT_MS);
       this.pending.set(id, { resolve, reject, timer });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      try {
+        this.socket.send(JSON.stringify({ id, method, params }));
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
+}
+
+function closeSocket(socket: WebSocket | undefined) {
+  if (!socket) return;
+  try {
+    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
+  } catch {}
 }
 
 async function main() {
@@ -92,6 +106,8 @@ async function main() {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
   const remoteDebuggingPort = 9223;
   let browserStderr = '';
+  let browserSocket: WebSocket | undefined;
+  let popupSocket: WebSocket | undefined;
   const browser = spawn(executable, [
     '--headless=new',
     '--no-sandbox',
@@ -128,8 +144,8 @@ async function main() {
     const extensionId = new URL(targets.serviceWorker.url).hostname;
     if (!extensionId) throw new Error('Unable to determine extension ID from background service worker');
 
-    const browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
-    await waitFor(async () => browserSocket.readyState === WebSocket.OPEN ? true : null, 5000);
+    browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
+    await waitFor(async () => browserSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
     const browserCdp = new CdpClient(browserSocket);
     const created = await browserCdp.command('Target.createTarget', {
       url: `chrome-extension://${extensionId}/popup.html`,
@@ -144,9 +160,9 @@ async function main() {
       return list.find((entry: any) => entry.id === targetId && entry.type === 'page' && entry.webSocketDebuggerUrl) || null;
     }, 10000);
 
-    const socket = new WebSocket(popupTarget.webSocketDebuggerUrl);
-    await waitFor(async () => socket.readyState === WebSocket.OPEN ? true : null, 5000);
-    const cdp = new CdpClient(socket);
+    popupSocket = new WebSocket(popupTarget.webSocketDebuggerUrl);
+    await waitFor(async () => popupSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
+    const cdp = new CdpClient(popupSocket);
     await cdp.command('Runtime.enable');
     await cdp.command('Page.enable');
 
@@ -197,16 +213,16 @@ async function main() {
     }, 3000);
     if (!handlerCheck) throw new Error('Popup bindAction handler did not run after click');
 
-    socket.close();
-    browserSocket.close();
     console.log(`Browser smoke test passed for extension ${extensionId}`);
   } catch (error) {
     const detail = browserStderr.trim();
     throw detail ? new Error(`${error instanceof Error ? error.message : String(error)}\nChromium stderr:\n${detail}`) : error;
   } finally {
-    browser.kill('SIGTERM');
+    closeSocket(popupSocket);
+    closeSocket(browserSocket);
+    browser.kill('SIGKILL');
     try {
-      fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Unable to remove Chromium smoke-test profile: ${message}`);
