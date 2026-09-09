@@ -23,9 +23,6 @@ const sourceFiles = [
 ];
 for (const file of sourceFiles) if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing TypeScript source ${file}`);
 
-const trackedJs = execFileSync('git', ['ls-files', '*.js', '*.mjs'], { cwd: root, encoding: 'utf8' }).trim();
-if (trackedJs) throw new Error(`Runtime JavaScript must not be tracked in the source repository:\n${trackedJs}`);
-
 const htmlFiles = ['popup.html', 'options.html', 'history.html', 'guide.html', 'extensions.html'];
 const requiredRefs = {
   'popup.html': ['runtime.js', 'theme.js', 'i18n.js', 'popup-i18n.js', 'popup.js', 'update.js', 'popup-fixes.js'],
@@ -46,10 +43,18 @@ const runtimeFiles = [
   'popup-fixes.js', 'extension-storage.js', 'extension-storage-watch.js', 'history.js', 'guide.js',
   'i18n.js', 'runtime.js', 'theme.js', 'update.js', 'extensions.js'
 ];
+
 for (const file of runtimeFiles) {
-  const target = path.join(dist, file);
-  if (!fs.existsSync(target)) throw new Error(`Missing generated runtime ${file}; run npm run build:extension first`);
-  execFileSync(process.execPath, ['--check', target], { stdio: 'inherit' });
+  const rootTarget = path.join(root, file);
+  const distTarget = path.join(dist, file);
+  if (!fs.existsSync(rootTarget)) throw new Error(`Missing runnable root runtime ${file}; run npm run build:extension first`);
+  if (!fs.existsSync(distTarget)) throw new Error(`Missing generated dist runtime ${file}; run npm run build:extension first`);
+  execFileSync(process.execPath, ['--check', rootTarget], { stdio: 'inherit' });
+  execFileSync(process.execPath, ['--check', distTarget], { stdio: 'inherit' });
+
+  const rootText = fs.readFileSync(rootTarget, 'utf8');
+  const distText = fs.readFileSync(distTarget, 'utf8');
+  if (rootText !== distText) throw new Error(`Root and dist runtime differ: ${file}`);
 }
 
 const distManifest = JSON.parse(fs.readFileSync(path.join(dist, 'manifest.json'), 'utf8'));
@@ -93,4 +98,4 @@ if (!storage.includes("if(d.permissions&&!d.permissions.push)throw Error(t('notW
 if (!storage.includes('String(a.token||\'\').trim()===String(b.token||\'\').trim()')) throw new Error('GitHub extension-backup selection matching does not include the Token');
 if (!storage.includes('String(a.davPass||\'\')===String(b.davPass||\'\')')) throw new Error('WebDAV extension-backup selection matching does not include the password');
 
-console.log(`Validation passed for TypeScript-only source and generated runtime ${baseVersion}${versionName ? ` (${versionName})` : ''}`);
+console.log(`Validation passed for TypeScript source and runnable generated runtime ${baseVersion}${versionName ? ` (${versionName})` : ''}`);
