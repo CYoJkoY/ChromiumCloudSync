@@ -1,41 +1,31 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
-const execFileAsync = promisify(execFile);
-const root = path.dirname(path.dirname(new URL(import.meta.url).pathname));
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const dist = path.join(root, 'dist');
 
 function chromiumExecutable() {
   const candidates = process.platform === 'win32'
     ? [process.env.CHROME_PATH, 'chrome.exe', 'msedge.exe']
     : process.platform === 'darwin'
-      ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']
+      ? [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']
       : [process.env.CHROME_PATH, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'];
+
   for (const candidate of candidates) {
     if (!candidate) continue;
     if (candidate.includes('/') || candidate.includes('\\')) {
       if (fs.existsSync(candidate)) return candidate;
     } else {
       try {
-        const { stdout } = requireNodeCommand(candidate);
-        if (stdout.trim()) return candidate;
+        execFileSync(candidate, ['--version'], { stdio: 'ignore' });
+        return candidate;
       } catch {}
     }
   }
   throw new Error('Chromium/Chrome executable not found. Set CHROME_PATH or install Chromium.');
-}
-
-function requireNodeCommand(command: string) {
-  const result = spawnSync(command, ['--version'], { encoding: 'utf8' });
-  return result;
-}
-
-function spawnSync(command: string, args: string[], options: { encoding: BufferEncoding }) {
-  const child = execFileSync(command, args, options);
-  return { stdout: child, stderr: '' };
 }
 
 async function waitFor<T>(read: () => Promise<T | null>, timeoutMs = 15000): Promise<T> {
@@ -80,9 +70,13 @@ class CdpClient {
 }
 
 async function main() {
-  if (!fs.existsSync(path.join(dist, 'manifest.json'))) throw new Error('dist/manifest.json is missing; run npm run build:extension first');
+  if (!fs.existsSync(path.join(dist, 'manifest.json'))) {
+    throw new Error('dist/manifest.json is missing; run npm run build:extension first');
+  }
+
   const executable = chromiumExecutable();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
+  const remoteDebuggingPort = 9223;
   const browser = spawn(executable, [
     '--headless=new',
     '--no-sandbox',
@@ -91,9 +85,10 @@ async function main() {
     '--disable-background-networking',
     '--disable-default-apps',
     '--disable-popup-blocking',
+    '--disable-features=Translate,OptimizationHints',
     '--disable-extensions-except=' + dist,
     '--load-extension=' + dist,
-    '--remote-debugging-port=9222',
+    `--remote-debugging-port=${remoteDebuggingPort}`,
     '--user-data-dir=' + userDataDir,
     'about:blank',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -101,15 +96,15 @@ async function main() {
   try {
     await waitFor(async () => {
       try {
-        return await json('http://127.0.0.1:9222/json/version');
+        return await json(`http://127.0.0.1:${remoteDebuggingPort}/json/version`);
       } catch {
         return null;
       }
     });
 
     const targets = await waitFor(async () => {
-      const list = await json('http://127.0.0.1:9222/json/list');
-      const serviceWorker = list.find((entry: any) => entry.type === 'service_worker' && String(entry.url).includes('/background.js'));
+      const list = await json(`http://127.0.0.1:${remoteDebuggingPort}/json/list`);
+      const serviceWorker = list.find((entry: any) => entry.type === 'service_worker' && String(entry.url).endsWith('/background.js'));
       return serviceWorker ? { list, serviceWorker } : null;
     });
 
@@ -138,13 +133,15 @@ async function main() {
         restore: Boolean(document.getElementById('restore')),
         options: Boolean(document.getElementById('options')),
         runtime: Boolean(window.CCSyncRuntime),
-        popupRuntime: Boolean(window.CCSyncRuntime?.request),
+        request: typeof window.CCSyncRuntime?.request === 'function',
+        i18n: Boolean(window.CCSyncI18n),
+        theme: Boolean(window.CCSyncTheme),
       }))()`,
       returnByValue: true,
     });
 
     const value = checks.result?.value;
-    for (const key of ['sync', 'restore', 'options', 'runtime', 'popupRuntime']) {
+    for (const key of ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme']) {
       if (!value?.[key]) throw new Error(`Popup smoke test failed: ${key} is unavailable`);
     }
 
