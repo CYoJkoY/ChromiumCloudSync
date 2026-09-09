@@ -8,7 +8,6 @@
     "dev": "npm run build:extension",
     "version:sync": "tsx scripts/sync-package-version.ts",
     "test": "tsx scripts/test-sync-core.ts",
-    "test:browser": "tsx scripts/smoke-test.ts",
     "build:extension": "tsx scripts/build.ts --prepare-only",
     "validate": "npm run version:sync && npm test && npm run build:extension && tsx scripts/validate.ts",
     "build:zip": "npm run version:sync && tsx scripts/build.ts --zip",
