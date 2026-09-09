@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": ".",
+    "outDir": ".build",
+    "strict": false,
+    "noCheck": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowJs": false,
+    "types": ["node"]
+  },
+  "files": [
+    "background.ts",
+    "extension-storage-watch.ts",
+    "extension-storage.ts",
+    "extensions.ts",
+    "guide.ts",
+    "history.ts",
+    "i18n.ts",
+    "legacy-crypto.ts",
+    "options.ts",
+    "popup-fixes.ts",
+    "popup-i18n.ts",
+    "popup.ts",
+    "runtime.ts",
+    "sync-core.ts",
+    "theme.ts",
+    "update.ts"
+  ]
+}
