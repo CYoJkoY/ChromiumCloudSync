@@ -66,28 +66,35 @@ Backends: private GitHub repository, WebDAV, or disabled.
 
 ### Load unpacked
 
-1. Open `chrome://extensions/` or the equivalent Chromium extension-management page.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked**.
-4. Select the directory containing `manifest.json`.
+1. Run `npm install`.
+2. Run `npm run build:extension` to compile the TypeScript source into ignored runtime JavaScript files.
+3. Open `chrome://extensions/` or the equivalent Chromium extension-management page.
+4. Enable **Developer mode**.
+5. Choose **Load unpacked** and select the repository directory containing `manifest.json`.
 
 ### First setup
 
 Open **Chromium Cloud Sync → Settings**, validate a GitHub token, then create or bind a private sync Gist. Automatic synchronization is disabled by default and uses a 5-minute interval when enabled.
 
-The current manifest declares extension version `1.7.9` with development identifier `1.7.9.dev7`.
+The current manifest declares extension version `1.8.0` with development identifier `1.8.0.dev1`.
 
 ## <img src="assets/readme/icons/development.svg" width="20" height="20" alt=""> Development & support
 
-The extension uses native JavaScript, HTML, and CSS. Important commands:
+The extension uses TypeScript as its source language, with native HTML and CSS for UI surfaces. Browser-executable JavaScript is generated into ignored build output and is never kept as source in the repository.
+
+Important commands:
 
 ```bash
+npm install
 npm run validate
 npm test
+npm run build:extension
 npm run build:zip
 ```
 
 `manifest.json` is the source of truth for stable versioning; development suffixes remain in `version_name` and do not enter `package.json.version`.
+
+The migration intentionally preserves the existing execution model and script ordering. TypeScript adds the source/build layer without introducing a UI framework or changing the sync protocol.
 
 Do not commit GitHub tokens, WebDAV passwords, private Gist data, or signing keys.
 
