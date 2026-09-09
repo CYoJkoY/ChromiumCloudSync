@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const dist = path.join(root, 'dist');
+const CDP_COMMAND_TIMEOUT_MS = 10000;
 
 function chromiumExecutable() {
   const candidates = process.platform === 'win32'
@@ -46,7 +47,7 @@ async function json(url: string) {
 
 class CdpClient {
   private nextId = 0;
-  private readonly pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
+  private readonly pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
 
   constructor(private readonly socket: WebSocket) {
     socket.addEventListener('message', (event) => {
@@ -54,16 +55,29 @@ class CdpClient {
       if (!message.id) return;
       const pending = this.pending.get(message.id);
       if (!pending) return;
+      clearTimeout(pending.timer);
       this.pending.delete(message.id);
       if (message.error) pending.reject(new Error(message.error.message || 'CDP command failed'));
       else pending.resolve(message.result);
+    });
+
+    socket.addEventListener('close', () => {
+      for (const pending of this.pending.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error('CDP WebSocket closed'));
+      }
+      this.pending.clear();
     });
   }
 
   command(method: string, params: Record<string, unknown> = {}) {
     const id = ++this.nextId;
     return new Promise<any>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP command timed out: ${method}`));
+      }, CDP_COMMAND_TIMEOUT_MS);
+      this.pending.set(id, { resolve, reject, timer });
       this.socket.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -77,6 +91,7 @@ async function main() {
   const executable = chromiumExecutable();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
   const remoteDebuggingPort = 9223;
+  let browserStderr = '';
   const browser = spawn(executable, [
     '--headless=new',
     '--no-sandbox',
@@ -91,7 +106,9 @@ async function main() {
     `--remote-debugging-port=${remoteDebuggingPort}`,
     '--user-data-dir=' + userDataDir,
     'about:blank',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  browser.stderr?.setEncoding('utf8');
+  browser.stderr?.on('data', (chunk) => { browserStderr += String(chunk); });
 
   try {
     await waitFor(async () => {
@@ -160,6 +177,9 @@ async function main() {
 
     socket.close();
     console.log(`Browser smoke test passed for extension ${extensionId}`);
+  } catch (error) {
+    const detail = browserStderr.trim();
+    throw detail ? new Error(`${error instanceof Error ? error.message : String(error)}\nChromium stderr:\n${detail}`) : error;
   } finally {
     browser.kill('SIGTERM');
     fs.rmSync(userDataDir, { recursive: true, force: true });
