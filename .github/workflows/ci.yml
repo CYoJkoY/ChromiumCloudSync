@@ -36,8 +36,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y chromium xvfb
+          missing=()
+          command -v chromium >/dev/null 2>&1 || missing+=(chromium)
+          command -v Xvfb >/dev/null 2>&1 || missing+=(xvfb)
+          if (( ${#missing[@]} )); then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
           chromium --version
           Xvfb -version
 
