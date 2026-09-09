@@ -32,21 +32,14 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Ensure Chromium is available
+      - name: Ensure Chromium and Xvfb are available
         shell: bash
         run: |
           set -euo pipefail
-          if command -v chromium >/dev/null 2>&1; then
-            chromium --version
-          elif command -v chromium-browser >/dev/null 2>&1; then
-            chromium-browser --version
-          elif command -v google-chrome >/dev/null 2>&1; then
-            google-chrome --version
-          else
-            sudo apt-get update
-            sudo apt-get install -y chromium
-            chromium --version
-          fi
+          sudo apt-get update
+          sudo apt-get install -y chromium xvfb
+          chromium --version
+          Xvfb -version
 
       - name: Validate source and build
         run: npm run validate
