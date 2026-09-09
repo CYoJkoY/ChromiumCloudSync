@@ -48,6 +48,11 @@ execFileSync(tsc, ['-p', path.join(root, 'tsconfig.json')], { cwd: root, stdio: 
 for (const file of runtimeFiles) {
   const compiled = path.join(compilerOut, file);
   if (!fs.existsSync(compiled)) throw new Error(`Missing compiled extension file: ${file}`);
+
+  // Manifest and HTML entrypoints intentionally reference runtime files at the
+  // extension root. Keep those files available for `Load unpacked` while also
+  // copying the exact same build into dist for validation and packaging.
+  fs.copyFileSync(compiled, path.join(root, file));
   fs.copyFileSync(compiled, path.join(dist, file));
 }
 
@@ -65,7 +70,7 @@ for (const directory of ['_locales', 'icons']) {
 
 if (!makeZip) {
   fs.rmSync(compilerOut, { recursive: true, force: true });
-  console.log(`Prepared runnable extension in ${dist}`);
+  console.log(`Prepared runnable extension in ${dist} and repository root`);
   process.exit(0);
 }
 
