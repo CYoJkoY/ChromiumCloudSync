@@ -46,6 +46,7 @@ async function waitFor<T>(reader: () => Promise<T | null>, timeoutMs: number): P
 class CdpClient {
   private nextId = 0;
   private readonly pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+
   constructor(private readonly socket: WebSocket) {
     socket.addEventListener('message', (event) => {
       const message = JSON.parse(String(event.data));
@@ -65,14 +66,25 @@ class CdpClient {
       this.pending.clear();
     });
   }
-  async command(method: string, params: Record<string, unknown> = {}): Promise<any> {
+
+  async command(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<any> {
     if (this.socket.readyState !== WebSocket.OPEN) throw new Error('CDP socket is not open: ' + method);
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('CDP command timed out: ' + method)); }, commandTimeout);
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error('CDP command timed out: ' + method));
+      }, commandTimeout);
       this.pending.set(id, { resolve, reject, timer });
-      try { this.socket.send(JSON.stringify({ id, method, params })); }
-      catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error instanceof Error ? error : new Error(String(error))); }
+      try {
+        const message: Record<string, unknown> = { id, method, params };
+        if (sessionId) message.sessionId = sessionId;
+        this.socket.send(JSON.stringify(message));
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 }
@@ -84,6 +96,7 @@ function closeSocket(socket: WebSocket | undefined) {
 
 async function main() {
   if (!fs.existsSync(path.join(dist, 'manifest.json'))) throw new Error('dist/manifest.json is missing; run npm run build:extension first');
+
   const executable = findChromium();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'chromium-cloud-sync-smoke-'));
   const chromeArgs = [
@@ -99,14 +112,14 @@ async function main() {
 
   let browserErrors = '';
   let browserSocket: WebSocket | undefined;
-  let popupSocket: WebSocket | undefined;
-  let extensionId = '';
   const browser = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
   browser.stderr?.setEncoding('utf8');
   browser.stderr?.on('data', (chunk) => { browserErrors += String(chunk); });
 
   try {
-    const browserInfo = await waitFor(async () => { try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; } }, 15000);
+    const browserInfo = await waitFor(async () => {
+      try { return await getJson('http://127.0.0.1:' + port + '/json/version'); } catch { return null; }
+    }, 15000);
 
     browserSocket = new WebSocket(browserInfo.webSocketDebuggerUrl);
     await waitFor(async () => browserSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
@@ -115,61 +128,55 @@ async function main() {
 
     const workerTarget = await waitFor(async () => {
       const result = await browserCdp.command('Target.getTargets');
-      const target = result.targetInfos?.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js'));
-      return target || null;
+      return result.targetInfos?.find((item: any) => item.type === 'service_worker' && String(item.url).endsWith('/background.js')) || null;
     }, 15000);
-    extensionId = new URL(workerTarget.url).hostname;
+
+    const extensionId = new URL(workerTarget.url).hostname;
     if (!extensionId) throw new Error('Unable to determine extension ID from service worker target');
 
     const created = await browserCdp.command('Target.createTarget', {
       url: 'chrome-extension://' + extensionId + '/popup.html',
-      newWindow: false,
+      newWindow: true,
       background: false,
     });
     if (!created.targetId) throw new Error('Chromium did not create extension popup target');
 
-    const popupTarget = await waitFor(async () => {
+    await waitFor(async () => {
       const result = await browserCdp.command('Target.getTargets');
       return result.targetInfos?.find((item: any) => item.targetId === created.targetId && item.type === 'page') || null;
     }, 10000);
 
-    const popupHttpTarget = await waitFor(async () => {
-      const list = await getJson('http://127.0.0.1:' + port + '/json/list');
-      return list.find((item: any) => item.id === created.targetId && item.webSocketDebuggerUrl) || null;
-    }, 5000);
-    if (!popupTarget || !popupHttpTarget) throw new Error('Chromium created a popup target but did not expose its debugger endpoint');
+    const attached = await browserCdp.command('Target.attachToTarget', { targetId: created.targetId, flatten: true });
+    if (!attached.sessionId) throw new Error('Chromium did not provide a Popup CDP session');
+    const sessionId = attached.sessionId;
 
-    popupSocket = new WebSocket(popupHttpTarget.webSocketDebuggerUrl);
-    await waitFor(async () => popupSocket?.readyState === WebSocket.OPEN ? true : null, 5000);
-    const popup = new CdpClient(popupSocket);
-    await popup.command('Runtime.enable');
+    await browserCdp.command('Runtime.enable', {}, sessionId);
+    await browserCdp.command('Page.enable', {}, sessionId);
 
     const readiness = await waitFor(async () => {
-      const result = await popup.command('Runtime.evaluate', {
+      const result = await browserCdp.command('Runtime.evaluate', {
         expression: "(()=>({ready:document.readyState,href:location.href,bodyLength:document.body?.innerHTML.length||0,sync:!!document.getElementById('sync'),restore:!!document.getElementById('restore'),options:!!document.getElementById('options'),runtime:!!window.CCSyncRuntime,request:typeof window.CCSyncRuntime?.request==='function',i18n:!!window.CCSyncI18n,theme:!!window.CCSyncTheme,scripts:[...document.scripts].map(s=>s.src)}))()",
         returnByValue: true,
-      });
-      const value = result.result?.value;
-      return value?.sync ? value : null;
+      }, sessionId);
+      const value = result.result?.result?.value;
+      const required = ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme'];
+      return required.every((key) => value?.[key]) ? value : null;
     }, 10000);
 
-    const required = ['sync', 'restore', 'options', 'runtime', 'request', 'i18n', 'theme'];
-    const missing = required.filter((key) => !readiness[key]);
-    if (missing.length) throw new Error('Popup runtime incomplete: ' + JSON.stringify({ missing, readiness, target: popupTarget }));
-
-    const click = await popup.command('Runtime.evaluate', {
+    const click = await browserCdp.command('Runtime.evaluate', {
       expression: "(()=>{const b=document.getElementById('sync');b.click();return {disabled:b.disabled,busy:b.getAttribute('aria-busy')}})()",
       returnByValue: true,
-    });
-    const clickState = click.result?.value;
-    if (!clickState?.disabled || clickState.busy !== 'true') throw new Error('Popup bindAction handler did not run after clicking Sync: ' + JSON.stringify(clickState));
+    }, sessionId);
+    const clickState = click.result?.result?.value;
+    if (!clickState?.disabled || clickState.busy !== 'true') {
+      throw new Error('Popup bindAction handler did not run after clicking Sync: ' + JSON.stringify({ readiness, clickState }));
+    }
 
     console.log('Browser smoke test passed for extension ' + extensionId);
   } catch (error) {
     const detail = browserErrors.trim();
     throw detail ? new Error((error instanceof Error ? error.message : String(error)) + '\nChromium stderr:\n' + detail) : error;
   } finally {
-    closeSocket(popupSocket);
     closeSocket(browserSocket);
     browser.kill('SIGKILL');
     try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
