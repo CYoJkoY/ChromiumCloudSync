@@ -10,7 +10,8 @@
     "test": "tsx scripts/test-sync-core.ts",
     "build:extension": "tsx scripts/build.ts --prepare-only",
     "validate": "npm run version:sync && npm test && npm run build:extension && tsx scripts/validate.ts",
-    "build:zip": "npm run version:sync && tsx scripts/build.ts --zip"
+    "build:zip": "npm run version:sync && tsx scripts/build.ts --zip",
+    "postinstall": "npm run build:extension"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
