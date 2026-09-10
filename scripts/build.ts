@@ -12,13 +12,14 @@ const releaseVersion = String(process.env.RELEASE_VERSION || '').trim();
 const makeZip = process.argv.includes('--zip');
 
 const runtimeArtifacts = [
-  ['background.ts', 'background.js'],
-  ['browser-capabilities.ts', 'browser-capabilities.js'],
-  ['diagnostics.ts', 'diagnostics.js'],
-  ['schema.ts', 'schema.js'],
-  ['storage.ts', 'storage.js'],
-  ['legacy-crypto.ts', 'legacy-crypto.js'],
-  ['sync-core.ts', 'sync-core.js'],
+  ['src/runtime/background.ts', 'background.js'],
+  ['src/runtime/browser-capabilities.ts', 'browser-capabilities.js'],
+  ['src/runtime/diagnostics.ts', 'diagnostics.js'],
+  ['src/runtime/legacy-crypto.ts', 'legacy-crypto.js'],
+  ['src/runtime/schema.ts', 'schema.js'],
+  ['src/runtime/storage.ts', 'storage.js'],
+  ['src/runtime/sync-core.ts', 'sync-core.js'],
+  ['src/runtime/types.ts', 'types.js'],
   ['src/features/extension-storage-watch.ts', 'extension-storage-watch.js'],
   ['src/features/extension-storage.ts', 'extension-storage.js'],
   ['src/features/update.ts', 'update.js'],
@@ -34,26 +35,26 @@ const runtimeArtifacts = [
   ['src/ui/theme.ts', 'theme.js'],
 ] as const;
 
-const extensionFiles = [
-  'manifest.json',
-  'popup.html', 'options.html', 'history.html', 'guide.html', 'extensions.html',
-  'ui-overrides.css', 'ui-system.css', 'ui.css'
-];
+const pageArtifacts = [
+  ['src/ui/pages/popup.html', 'popup.html'],
+  ['src/ui/pages/options.html', 'options.html'],
+  ['src/ui/pages/history.html', 'history.html'],
+  ['src/ui/pages/guide.html', 'guide.html'],
+  ['src/ui/pages/extensions.html', 'extensions.html'],
+] as const;
 
-if (!/^\d+\.\d+\.\d+$/.test(baseVersion)) {
-  throw new Error(`Invalid manifest version: ${baseVersion}; expected X.Y.Z`);
-}
-if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) {
-  throw new Error(`Invalid manifest version_name: ${versionName}; expected X.Y.Z.devN`);
-}
-if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) {
-  throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`);
-}
+const styleArtifacts = [
+  ['src/ui/styles/ui.css', 'ui.css'],
+  ['src/ui/styles/ui-system.css', 'ui-system.css'],
+  ['src/ui/styles/ui-overrides.css', 'ui-overrides.css'],
+] as const;
+
+if (!/^\d+\.\d+\.\d+$/.test(baseVersion)) throw new Error(`Invalid manifest version: ${baseVersion}; expected X.Y.Z`);
+if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) throw new Error(`Invalid manifest version_name: ${versionName}; expected X.Y.Z.devN`);
+if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`);
 
 const version = releaseVersion || versionName || baseVersion;
-if (version !== baseVersion && version !== versionName) {
-  throw new Error(`Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName || '<empty>'}`);
-}
+if (version !== baseVersion && version !== versionName) throw new Error(`Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName || '<empty>'}`);
 
 fs.rmSync(compilerOut, { recursive: true, force: true });
 fs.rmSync(dist, { recursive: true, force: true });
@@ -65,16 +66,19 @@ execFileSync(tsc, ['-p', path.join(root, 'tsconfig.json')], { cwd: root, stdio: 
 for (const [sourceFile, outputFile] of runtimeArtifacts) {
   const compiled = path.join(compilerOut, sourceFile.replace(/\.ts$/, '.js'));
   if (!fs.existsSync(compiled)) throw new Error(`Missing compiled extension file: ${sourceFile} -> ${outputFile}`);
-
-  // TypeScript is the only source language. Compiled JavaScript exists only in
-  // dist because Chrome extension runtime files must be JavaScript at package time.
   fs.copyFileSync(compiled, path.join(dist, outputFile));
 }
 
-for (const file of extensionFiles) {
+for (const [sourceFile, outputFile] of [...pageArtifacts, ...styleArtifacts]) {
+  const source = path.join(root, sourceFile);
+  if (!fs.existsSync(source)) throw new Error(`Missing extension file: ${sourceFile}`);
+  fs.copyFileSync(source, path.join(dist, outputFile));
+}
+
+for (const file of ['manifest.json']) {
   const source = path.join(root, file);
   if (!fs.existsSync(source)) throw new Error(`Missing extension file: ${file}`);
-  fs.cpSync(source, path.join(dist, file), { recursive: true });
+  fs.copyFileSync(source, path.join(dist, file));
 }
 
 for (const directory of ['_locales', 'icons']) {

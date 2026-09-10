@@ -10,11 +10,11 @@
     "types": ["node", "chrome"]
   },
   "files": [
-    "types.ts",
-    "sync-core.ts",
-    "schema.ts",
-    "storage.ts",
-    "browser-capabilities.ts",
-    "diagnostics.ts"
+    "src/runtime/types.ts",
+    "src/runtime/sync-core.ts",
+    "src/runtime/schema.ts",
+    "src/runtime/storage.ts",
+    "src/runtime/browser-capabilities.ts",
+    "src/runtime/diagnostics.ts"
   ]
 }
