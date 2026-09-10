@@ -185,8 +185,6 @@ Automatic synchronization remains off until explicitly enabled.
 
 The project uses TypeScript for executable source and native HTML/CSS for the user interface. Generated browser JavaScript is produced in `dist/` and is intentionally excluded from source control.
 
-Current package version: **1.8.1** with development identifier **1.8.1.dev3**.
-
 ### Commands
 
 ```bash
