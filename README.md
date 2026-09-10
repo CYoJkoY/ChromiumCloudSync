@@ -54,7 +54,7 @@ Extension inventory is separate from extension package backup and installation r
 
 Local-only and remote-only changes can merge automatically. Deletions become tombstones so stale copies do not silently resurrect data.
 
-Revisions increase monotonically. Remote writes are read back and checked against revision and snapshot checksum before being accepted.
+Revisions increase monotonically. Remote writes are read back and checked against revision and snapshot checksum before being accepted. Verification failures trigger another merge attempt rather than being treated as a successful synchronization.
 
 ### Extension recovery
 
@@ -85,8 +85,6 @@ After changing any `.ts` source, run `npm run build` again before reloading the 
 
 Open **Chromium Cloud Sync → Settings**, validate a GitHub token, then create or bind a private sync Gist. Automatic synchronization is disabled by default.
 
-The current manifest declares stable version `1.8.0` with development identifier `1.8.0.dev4`.
-
 ## <img src="assets/readme/icons/development.svg" width="20" height="20" alt=""> Development & support
 
 The repository contains TypeScript source plus native HTML/CSS assets. Generated browser JavaScript exists only in ignored `dist/` build output and is never committed to Git.
@@ -95,13 +93,16 @@ Canonical commands:
 
 ```bash
 npm install
+npm run typecheck
+npm test
 npm run build
 npm run validate
-npm test
+npm run audit
+npm run smoke
 npm run build:zip
 ```
 
-`npm run build` is the canonical local command for producing a runnable extension. `npm run validate` rebuilds the extension and verifies that the source repository remains TypeScript-only while the generated `dist/` package contains every runtime file referenced by the HTML and Manifest.
+`npm run typecheck` strictly checks the shared domain, schema, storage, capability, and diagnostics layer. `npm run validate` additionally verifies the source/build contract. `npm run audit` checks the final `dist/` artifact for forbidden runtime constructs, unexpected permissions, remote scripts, source maps, and TypeScript files. `npm run smoke` loads the final `dist/` directory in real Chromium and verifies the MV3 service worker and popup runtime path.
 
 `manifest.json` is the source of truth for stable versioning; development suffixes remain in `version_name` and do not enter `package.json.version`.
 

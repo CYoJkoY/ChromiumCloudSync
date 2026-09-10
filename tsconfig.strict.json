@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noCheck": false,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "noEmit": true,
+    "types": ["node", "chrome"]
+  },
+  "files": [
+    "types.ts",
+    "sync-core.ts",
+    "schema.ts",
+    "storage.ts",
+    "browser-capabilities.ts",
+    "diagnostics.ts"
+  ]
+}

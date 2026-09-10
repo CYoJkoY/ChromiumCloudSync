@@ -1,107 +1,144 @@
 # Chromium Cloud Sync Architecture
 
-Chromium Cloud Sync is a Manifest V3 extension. The browser is the runtime; no embedded browser, local server, or database server is required.
+Chromium Cloud Sync is a Manifest V3 extension. Chromium is the runtime; no local server, embedded browser, or project-operated backend is required.
 
-## Runtime model
+## Layered architecture
 
 ```text
-Chromium
-└── Extension
-    ├── Content / page-facing work
-    ├── Background service worker
-    │   ├── sync orchestration
-    │   ├── Chromium privileged APIs
-    │   └── GitHub transport
-    ├── Popup
-    ├── Options
-    ├── History / Guide / Extensions pages
-    └── Shared domain modules
-        ├── sync-core
-        ├── snapshot normalization
-        └── storage / transport adapters
+Chromium APIs
+     │
+     ▼
+Platform adapters ─────────────── Browser capability detection
+     │
+     ▼
+Storage boundary ─────────────── Serialized local mutations
+     │
+     ▼
+Sync orchestration
+     │
+     ├──────────────► GitHub Gist transport
+     │
+     ▼
+Sync domain
+     ├── Snapshot model
+     ├── 3-way merge
+     ├── Tombstones
+     ├── Conflict handling
+     └── Revision/checksum consistency
+     │
+     ▼
+Schema boundary
+     ├── Runtime validation
+     └── Version migration
+     │
+     ▼
+UI / diagnostics
 ```
-
-The architecture deliberately keeps the browser extension runtime as the only always-on platform runtime. Go/Rust, a local HTTP service, SQLite, Electron, and other additional process boundaries are not required by the current product model.
 
 ## Responsibility boundaries
 
 ### UI
 
-Popup and settings pages own presentation, user interaction, accessibility semantics, locale selection, and theme state.
+Popup, options, history, guide, and recovery pages own presentation, locale/theme state, and user actions. They should not implement merge rules or direct GitHub transport.
 
-### Orchestration
+### Background service worker
 
-The background service worker coordinates snapshot collection, merge policy, persistence, GitHub reads/writes, alarms, and recovery flows.
+`background.ts` is the orchestration boundary. It coordinates browser collection, merge execution, remote reads/writes, alarms, and recovery operations. Mutable state that must survive worker termination belongs in extension storage rather than module globals. MV3 service workers are event-driven and can be terminated while idle, so lifecycle resilience is a hard requirement.
 
-### Domain logic
+### Domain
 
-`sync-core.ts` owns merge and conflict behavior. Domain functions do not depend on DOM APIs.
+`sync-core.ts` contains deterministic merge, tombstone, conflict, checksum, and entity operations. `types.ts` defines the shared domain contract so new synchronized resources can be introduced without re-defining object shapes in multiple modules.
 
-### Platform adapters
+### Schema
 
-Chromium APIs remain at the extension boundary: tabs, windows, tab groups, bookmarks, management, storage, alarms, and downloads.
+`schema.ts` is the trust boundary for cloud state. Incoming Gist data is migrated into the current schema and validated before business logic consumes it. Future schema versions are rejected explicitly rather than silently downgraded.
+
+### Storage
+
+`storage.ts` centralizes `chrome.storage.local` access and serializes mutations through a single promise queue. This prevents concurrent read-modify-write operations from overwriting each other across asynchronous code paths.
 
 ### Transport
 
-GitHub API access is an explicit adapter boundary. Authentication material is read from extension storage and is never embedded in UI markup.
+GitHub access remains an explicit adapter boundary. The sync protocol follows optimistic concurrency: fetch remote state, merge against the local base, write a new revision, then read the remote result back and verify revision plus snapshot checksum. A verification mismatch causes another merge attempt instead of treating an unverified write as success.
 
-### Persistence
+### Diagnostics
 
-`chrome.storage.local` is the primary settings and state persistence layer. The private Gist is the remote synchronization store. IndexedDB or SQLite should only be introduced when the workload demonstrates a real need for structured/local-scale data beyond extension storage.
+`diagnostics.ts` records the last sync outcome, revision context, changed counts, and categorized failures so users and maintainers can distinguish authentication, validation, network, and concurrency problems.
 
-## TypeScript build model
-
-The repository contains TypeScript source only for executable application and tooling code. Browser JavaScript is generated during the build and ignored by Git so the extension can still be loaded by Chromium and packaged for release.
+## Schema lifecycle
 
 ```text
-TypeScript source (*.ts)
-        │
-        ▼
-   TypeScript compiler
-        │
-        ├── .build/*.js  temporary compiler output
-        ▼
-   root runtime *.js   generated + ignored
-        │
-        ├── Chromium service worker
-        └── HTML script entrypoints
+Remote JSON
+    │
+    ▼
+Parse
+    │
+    ▼
+Detect schema version
+    │
+    ├── current ───────────────┐
+    └── supported legacy ──► migrate
+                              │
+                              ▼
+                         Current shape
+                              │
+                              ▼
+                         Validate
+                              │
+                              ▼
+                         Sync domain
 ```
 
-The generated root JavaScript preserves the existing filenames and execution order. This keeps the Manifest V3 runtime contract, global script boundaries, and storage/sync behavior unchanged while moving the editable source to TypeScript.
+The current schema version is defined once by `SCHEMA_VERSION`. Migration code must always move forward to that version and must never mutate the remote Gist implicitly without an explicit sync write.
 
-`npm run build:extension` prepares the ignored runtime files. `npm run build:zip` additionally packages the same runtime into a release ZIP.
+## Build model
 
-## Message contract
-
-New cross-context messages should follow a stable shape:
-
-```ts
-{
-  type: 'namespace.action',
-  requestId: 'uuid',
-  payload: {},
-  version: 1
-}
-```
-
-Responses should make success and failure explicit rather than relying on loosely structured ad-hoc objects.
-
-## Performance rules
-
-Content scripts and DOM-facing work must remain narrow. Prefer event-driven background work over polling. Avoid broad page observers and repeated full-tree scans. UI animation should use `transform` and `opacity`; theme changes must not animate the entire application tree.
-
-## Migration rule
-
-The TypeScript migration is source/build-only. It does not change the product runtime model, sync protocol, storage boundary, or UI framework.
+The repository is TypeScript-only for executable source code. Generated JavaScript is never committed and only exists under ignored `dist/` output.
 
 ```text
-existing JavaScript source
-        ↓
-same source logic as TypeScript
-        ↓
-compiler-generated browser JavaScript
-        ↓
-existing Manifest V3 entrypoints
+*.ts source
+   │
+   ▼
+TypeScript compiler
+   │
+   ▼
+dist/*.js
+   │
+   ├── load as unpacked extension
+   └── package into ZIP / CRX
 ```
 
-Future changes should use TypeScript for shared contracts and domain logic while keeping the browser-extension runtime narrow and native unless a concrete product requirement justifies additional framework or process complexity.
+The browser package therefore remains JavaScript-compatible while the editable source tree remains TypeScript-only.
+
+## Verification layers
+
+CI validates the project at four distinct boundaries:
+
+1. Source boundary: no tracked `.js` files and required TypeScript sources exist.
+2. Type boundary: strict type-checking covers the shared domain, schema, storage, capability, and diagnostics layer.
+3. Artifact boundary: generated JS is syntactically valid, the production artifact has only approved files, and forbidden remote-code/runtime constructs are rejected.
+4. Browser boundary: real Chromium loads `dist/`, registers the MV3 service worker, opens the popup, and receives a runtime ping.
+
+This separation is intentional: a successful TypeScript build cannot prove that a generated MV3 extension actually registers and runs inside Chromium.
+
+## Extension evolution rule
+
+New synchronized resources should be implemented in this order:
+
+```text
+Domain type
+   ↓
+Schema validation / migration
+   ↓
+Snapshot collection adapter
+   ↓
+Merge policy
+   ↓
+Persistence / tombstone behavior
+   ↓
+Tests
+   ↓
+UI
+```
+
+This prevents UI-first features from bypassing the sync protocol and creating resource-specific special cases in the background worker.

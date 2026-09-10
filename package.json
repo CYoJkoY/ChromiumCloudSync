@@ -7,14 +7,19 @@
     "build": "npm run build:extension",
     "dev": "npm run build:extension",
     "version:sync": "tsx scripts/sync-package-version.ts",
-    "test": "tsx scripts/test-sync-core.ts",
+    "typecheck": "tsc -p tsconfig.strict.json --noEmit",
+    "test": "tsx scripts/test-sync-core.ts && tsx scripts/test-sync-invariants.ts && tsx scripts/test-schema.ts && tsx scripts/test-storage.ts",
     "build:extension": "tsx scripts/build.ts --prepare-only",
-    "validate": "npm run version:sync && npm test && npm run build:extension && tsx scripts/validate.ts",
+    "validate": "npm run version:sync && npm run typecheck && npm test && npm run build:extension && tsx scripts/validate.ts && npm run audit",
+    "audit": "tsx scripts/audit.ts",
+    "smoke": "tsx scripts/smoke-test.ts",
     "build:zip": "npm run version:sync && tsx scripts/build.ts --zip",
     "postinstall": "npm run build:extension"
   },
   "devDependencies": {
+    "@types/chrome": "0.2.8",
     "@types/node": "^24.0.0",
+    "playwright": "1.63.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }

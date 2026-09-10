@@ -16,12 +16,13 @@ if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) throw new Erro
 if (pkg.version !== baseVersion) throw new Error(`package.json version ${pkg.version} is not synchronized with manifest.version ${baseVersion}`);
 if (manifest.background?.service_worker !== 'background.js') throw new Error('Manifest background service worker must remain background.js in the built extension');
 
-const sourceFiles = [
-  'background.ts', 'sync-core.ts', 'legacy-crypto.ts', 'options.ts', 'popup.ts', 'popup-i18n.ts',
-  'popup-fixes.ts', 'extension-storage.ts', 'extension-storage-watch.ts', 'history.ts', 'guide.ts',
-  'i18n.ts', 'runtime.ts', 'theme.ts', 'update.ts', 'extensions.ts'
+const requiredTypeScriptSources = [
+  'types.ts', 'sync-core.ts', 'schema.ts', 'storage.ts', 'browser-capabilities.ts', 'diagnostics.ts',
+  'background.ts', 'legacy-crypto.ts', 'options.ts', 'popup.ts', 'popup-i18n.ts', 'popup-fixes.ts',
+  'extension-storage.ts', 'extension-storage-watch.ts', 'history.ts', 'guide.ts', 'i18n.ts', 'runtime.ts', 'theme.ts', 'update.ts', 'extensions.ts',
 ];
-for (const file of sourceFiles) if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing TypeScript source ${file}`);
+for (const file of requiredTypeScriptSources) if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing TypeScript source ${file}`);
+if (!fs.existsSync(path.join(root, 'tsconfig.strict.json'))) throw new Error('Missing strict TypeScript configuration.');
 
 const trackedJs = execFileSync('git', ['ls-files', '-z', '--', '*.js'], { cwd: root, encoding: 'utf8' });
 if (trackedJs) {
@@ -49,7 +50,6 @@ const runtimeFiles = [
   'popup-fixes.js', 'extension-storage.js', 'extension-storage-watch.js', 'history.js', 'guide.js',
   'i18n.js', 'runtime.js', 'theme.js', 'update.js', 'extensions.js'
 ];
-
 for (const file of runtimeFiles) {
   const distTarget = path.join(dist, file);
   if (!fs.existsSync(distTarget)) throw new Error(`Missing generated dist runtime ${file}; run npm run build:extension first`);
@@ -67,7 +67,7 @@ for (const html of htmlFiles) {
 }
 
 const scanFiles = [
-  'background.ts', 'sync-core.ts', 'popup.ts', 'popup-fixes.ts', 'guide.ts', 'README.md', 'extensions.ts', 'extensions.html', 'options.html'
+  'background.ts', 'sync-core.ts', 'popup.ts', 'popup-fixes.ts', 'guide.ts', 'README.md', 'extensions.ts', 'extensions.html', 'options.html',
 ];
 for (const file of scanFiles) {
   const text = fs.readFileSync(path.join(root, file), 'utf8');
@@ -87,7 +87,7 @@ if (!optionsHtml.includes('id="extensionStoragePanelTitle"')) throw new Error('M
 if (!optionsHtml.includes('id="extensionStoragePanelDescription"')) throw new Error('Missing extension storage panel description anchor');
 
 const storage = fs.readFileSync(path.join(root, 'extension-storage.ts'), 'utf8');
-for (const required of ['extensionBackupGithubToken','extensionBackupSelectedIds','githubInfo','selection.json','ccsyncExtensionPackageInput','sameStorageConfig','ccsync-ext-hidden','refreshLanguage']) {
+for (const required of ['extensionBackupGithubToken', 'extensionBackupSelectedIds', 'githubInfo', 'selection.json', 'ccsyncExtensionPackageInput', 'sameStorageConfig', 'ccsync-ext-hidden', 'refreshLanguage']) {
   if (!storage.includes(required)) throw new Error(`Extension storage is missing ${required}`);
 }
 if (!storage.includes('setHidden(el,!gh)')) throw new Error('GitHub extension-backup fields do not use explicit dynamic visibility');
