@@ -58,10 +58,16 @@ const dict = {
   },
 };
 
-function lang() {
-  const value = document.documentElement.lang || navigator.language || 'en';
-  return /^zh(?:[-_]|$)/i.test(value) ? 'zh-CN' : 'en';
+let currentLanguage = 'en';
+
+function normalizeLanguage(value) {
+  return /^zh(?:[-_]|$)/i.test(String(value || '')) ? 'zh-CN' : 'en';
 }
+
+function lang() {
+  return currentLanguage;
+}
+
 function t(key, vars = {}) {
   const value = dict[lang()]?.[key] ?? dict.en[key] ?? key;
   return String(value).replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? '');
@@ -199,30 +205,63 @@ function setupChoiceSwitch(root, initialValue, onChange) {
 }
 
 function applyText() {
-  document.documentElement.lang = lang();
+  document.documentElement.lang = currentLanguage;
   document.querySelectorAll('[data-i18n]').forEach(node => {
     const key = node.dataset.i18n;
-    if (dict[lang()]?.[key]) node.textContent = dict[lang()][key];
+    if (dict[currentLanguage]?.[key]) node.textContent = dict[currentLanguage][key];
   });
   $('refresh')?.setAttribute('aria-label', t('refresh'));
 }
 
+async function syncLanguageFromStorage() {
+  let saved = {};
+  try {
+    saved = await storageGet(['language']);
+  } catch (error) {
+    console.warn('Could not read language preference', error);
+  }
+
+  const sharedLanguage = window.CCSyncI18n?.currentLanguage?.();
+  const storedLanguage = saved.language && saved.language !== 'auto' ? saved.language : '';
+  currentLanguage = normalizeLanguage(sharedLanguage || storedLanguage || navigator.language || 'en');
+  document.documentElement.lang = currentLanguage;
+  applyText();
+}
+
 (async () => {
   try {
-    const saved = await storageGet(['language']);
-    const language = saved.language && saved.language !== 'auto' ? saved.language : (navigator.language.startsWith('zh') ? 'zh-CN' : 'en');
+    if (window.CCSyncI18n?.initAndApply) {
+      try {
+        await window.CCSyncI18n.initAndApply();
+      } catch (error) {
+        console.warn('Could not initialize shared i18n', error);
+      }
+    }
+
+    await syncLanguageFromStorage();
+
     const languageRoot = $('language');
-    setupChoiceSwitch(languageRoot, language, async value => {
-      await storageSetSafe({ language: value });
-      document.documentElement.lang = value;
+    setupChoiceSwitch(languageRoot, currentLanguage, async value => {
+      currentLanguage = normalizeLanguage(value);
+      document.documentElement.lang = currentLanguage;
+      await storageSetSafe({ language: currentLanguage });
+      if (window.CCSyncI18n?.setLanguage && window.CCSyncI18n.currentLanguage?.() !== currentLanguage) {
+        try {
+          await window.CCSyncI18n.setLanguage(currentLanguage);
+        } catch (error) {
+          console.warn('Could not update shared language', error);
+        }
+      }
       applyText();
       await refresh();
     });
+
     if (window.CCSyncTheme) {
       await CCSyncTheme.initTheme();
       const current = await CCSyncTheme.getTheme();
       setupChoiceSwitch($('theme'), current === 'dark' || current === 'light' ? current : 'light', async value => CCSyncTheme.setTheme(value));
     }
+
     applyText();
     $('refresh')?.addEventListener('click', () => void refresh());
     $('openSettings')?.addEventListener('click', () => chrome.runtime.openOptionsPage());
