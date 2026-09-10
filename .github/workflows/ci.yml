@@ -24,6 +24,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify TypeScript-only source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          JS_FILES="$(git ls-files -- '*.js')"
+          if [[ -n "$JS_FILES" ]]; then
+            echo "JavaScript source files are forbidden in the repository:"
+            printf '%s\n' "$JS_FILES"
+            exit 1
+          fi
+          echo "No tracked .js source files found."
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:

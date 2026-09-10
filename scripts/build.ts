@@ -11,11 +11,24 @@ const versionName = String(manifest.version_name || '').trim();
 const releaseVersion = String(process.env.RELEASE_VERSION || '').trim();
 const makeZip = process.argv.includes('--zip');
 
-const runtimeFiles = [
-  'background.js', 'extension-storage-watch.js', 'extension-storage.js', 'extensions.js',
-  'guide.js', 'history.js', 'i18n.js', 'legacy-crypto.js', 'options.js', 'popup-fixes.js',
-  'popup-i18n.js', 'popup.js', 'runtime.js', 'sync-core.js', 'theme.js', 'update.js'
-];
+const runtimeArtifacts = [
+  ['background.ts', 'background.js'],
+  ['extension-storage-watch.ts', 'extension-storage-watch.js'],
+  ['extension-storage.ts', 'extension-storage.js'],
+  ['extensions.ts', 'extensions.js'],
+  ['guide.ts', 'guide.js'],
+  ['history.ts', 'history.js'],
+  ['i18n.ts', 'i18n.js'],
+  ['legacy-crypto.ts', 'legacy-crypto.js'],
+  ['options.ts', 'options.js'],
+  ['popup-fixes.ts', 'popup-fixes.js'],
+  ['popup-i18n.ts', 'popup-i18n.js'],
+  ['popup.ts', 'popup.js'],
+  ['runtime.ts', 'runtime.js'],
+  ['sync-core.ts', 'sync-core.js'],
+  ['theme.ts', 'theme.js'],
+  ['update.ts', 'update.js'],
+] as const;
 
 const extensionFiles = [
   'manifest.json',
@@ -45,15 +58,13 @@ fs.mkdirSync(dist, { recursive: true });
 const tsc = process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
 execFileSync(tsc, ['-p', path.join(root, 'tsconfig.json')], { cwd: root, stdio: 'inherit' });
 
-for (const file of runtimeFiles) {
-  const compiled = path.join(compilerOut, file);
-  if (!fs.existsSync(compiled)) throw new Error(`Missing compiled extension file: ${file}`);
+for (const [sourceFile, outputFile] of runtimeArtifacts) {
+  const compiled = path.join(compilerOut, outputFile);
+  if (!fs.existsSync(compiled)) throw new Error(`Missing compiled extension file: ${sourceFile} -> ${outputFile}`);
 
-  // Manifest and HTML entrypoints intentionally reference runtime files at the
-  // extension root. Keep those files available for `Load unpacked` while also
-  // copying the exact same build into dist for validation and packaging.
-  fs.copyFileSync(compiled, path.join(root, file));
-  fs.copyFileSync(compiled, path.join(dist, file));
+  // TypeScript is the only source language. Compiled JavaScript exists only in
+  // dist because Chrome extension runtime files must be JavaScript at package time.
+  fs.copyFileSync(compiled, path.join(dist, outputFile));
 }
 
 for (const file of extensionFiles) {
@@ -70,7 +81,7 @@ for (const directory of ['_locales', 'icons']) {
 
 if (!makeZip) {
   fs.rmSync(compilerOut, { recursive: true, force: true });
-  console.log(`Prepared runnable extension in ${dist} and repository root`);
+  console.log(`Prepared runnable extension in ${dist}`);
   process.exit(0);
 }
 
