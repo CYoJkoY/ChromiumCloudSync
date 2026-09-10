@@ -75,7 +75,7 @@ function migrateLegacyState(input: UnknownRecord, fromVersion: number): CloudSta
       conflicts: Array.isArray(current.conflicts) ? current.conflicts as ConflictRecord[] : [],
     };
   }
-  return current as CloudState;
+  return current as unknown as CloudState;
 }
 
 export function migrateCloudState(input: unknown): CloudState {

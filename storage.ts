@@ -25,7 +25,7 @@ let mutationTail: Promise<unknown> = Promise.resolve();
 export async function readLocal<T extends keyof SyncStorageState>(keys: readonly T[]): Promise<Pick<SyncStorageState, T>>;
 export async function readLocal(keys: string[]): Promise<Record<string, unknown>>;
 export async function readLocal(keys: readonly string[]): Promise<Record<string, unknown>> {
-  return chrome.storage.local.get(keys);
+  return chrome.storage.local.get([...keys]);
 }
 
 export async function writeLocal(values: Partial<SyncStorageState>): Promise<void> {
@@ -33,7 +33,7 @@ export async function writeLocal(values: Partial<SyncStorageState>): Promise<voi
 }
 
 export async function removeLocal(keys: readonly string[]): Promise<void> {
-  await enqueueMutation(() => chrome.storage.local.remove(keys));
+  await enqueueMutation(() => chrome.storage.local.remove([...keys]));
 }
 
 export async function updateLocal<T extends Record<string, unknown>>(mutator: (current: SyncStorageState) => T | Promise<T>): Promise<T> {
