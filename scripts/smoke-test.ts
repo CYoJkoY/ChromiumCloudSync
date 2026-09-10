@@ -35,29 +35,28 @@ try {
 
   const existingWorker = context.serviceWorkers().find((worker) => worker.url().startsWith('chrome-extension://'));
   const serviceWorker = existingWorker ?? await withTimeout(
-    context.waitForEvent('serviceworker'),
+    context.waitForEvent('serviceworker', { predicate: (worker) => worker.url().startsWith('chrome-extension://') }),
     STAGE_TIMEOUT,
     'MV3 service worker startup',
   );
   const workerUrl = serviceWorker.url();
-  if (!workerUrl.startsWith('chrome-extension://')) throw new Error(`Unexpected service worker URL: ${workerUrl}`);
   const extensionId = workerUrl.split('/')[2];
-  if (!extensionId) throw new Error('Could not resolve the extension ID from the service worker URL.');
+  if (!extensionId) throw new Error(`Could not resolve the extension ID from service worker URL: ${workerUrl}`);
 
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: 'commit', timeout: STAGE_TIMEOUT });
   await page.locator('.popup-shell').waitFor({ state: 'attached', timeout: STAGE_TIMEOUT });
 
   const response = await withTimeout(
-    page.evaluate(() => new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('runtime.sendMessage timed out.')), MESSAGE_TIMEOUT);
+    page.evaluate((messageTimeout) => new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`runtime.sendMessage timed out after ${messageTimeout} ms.`)), messageTimeout);
       chrome.runtime.sendMessage({ type: 'ping' }, (result) => {
         clearTimeout(timer);
         const error = chrome.runtime.lastError;
         if (error) reject(new Error(error.message));
         else resolve(result);
       });
-    })),
+    }), MESSAGE_TIMEOUT),
     MESSAGE_TIMEOUT,
     'Extension runtime message',
   ) as { ok?: boolean; version?: number; capabilities?: { storage?: boolean } } | null;
