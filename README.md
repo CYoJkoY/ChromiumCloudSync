@@ -13,10 +13,15 @@
   <p>
     <a href="#overview">Overview</a> ·
     <a href="#sync-scope">Sync scope</a> ·
-    <a href="#security--encryption">Security</a> ·
+    <a href="#merge--conflict-model">Merge &amp; conflict model</a> ·
+    <a href="#security--encryption">Security &amp; encryption</a> ·
+    <a href="#device-identity">Device identity</a> ·
     <a href="#extension-recovery">Extension recovery</a> ·
+    <a href="#history-revisions--rollback">History, revisions &amp; rollback</a> ·
+    <a href="#automatic-synchronization">Automatic synchronization</a> ·
     <a href="#installation">Installation</a> ·
-    <a href="#development">Development</a>
+    <a href="#development">Development</a> ·
+    <a href="#license">License</a>
   </p>
 </div>
 
