@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { migrateCloudState, parseAndValidateCloudState, SchemaValidationError, SUPPORTED_SCHEMA_VERSIONS } from '../schema.ts';
+import { migrateCloudState, parseAndValidateCloudState, SchemaValidationError, SUPPORTED_SCHEMA_VERSIONS } from '../src/runtime/schema.ts';
 
 const base = {
   schemaVersion: 10,

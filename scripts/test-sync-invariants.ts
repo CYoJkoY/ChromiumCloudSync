@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { applyTombstones, checksum, deriveTombstones, mergeSnapshots, mergeTombstones, stableEqual } from '../sync-core.ts';
-import type { Snapshot } from '../types.ts';
+import { applyTombstones, checksum, deriveTombstones, mergeSnapshots, mergeTombstones, stableEqual } from '../src/runtime/sync-core.ts';
+import type { Snapshot } from '../src/runtime/types.ts';
 
 function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {

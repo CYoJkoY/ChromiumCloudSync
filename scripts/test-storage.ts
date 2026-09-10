@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { enqueueMutation, resetMutationQueueForTests } from '../storage.ts';
+import { enqueueMutation, resetMutationQueueForTests } from '../src/runtime/storage.ts';
 
 let active = 0;
 let maxActive = 0;

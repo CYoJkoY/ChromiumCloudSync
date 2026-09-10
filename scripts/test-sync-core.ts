@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mergeSnapshots, deriveTombstones, applyTombstones, cleanConflicts } from '../sync-core.ts';
+import { mergeSnapshots, deriveTombstones, applyTombstones, cleanConflicts } from '../src/runtime/sync-core.ts';
 
 function snapshot(overrides: Record<string, unknown> = {}) {
   return {
