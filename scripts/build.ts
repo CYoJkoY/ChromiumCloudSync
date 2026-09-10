@@ -13,21 +13,25 @@ const makeZip = process.argv.includes('--zip');
 
 const runtimeArtifacts = [
   ['background.ts', 'background.js'],
-  ['extension-storage-watch.ts', 'extension-storage-watch.js'],
-  ['extension-storage.ts', 'extension-storage.js'],
-  ['extensions.ts', 'extensions.js'],
-  ['guide.ts', 'guide.js'],
-  ['history.ts', 'history.js'],
-  ['i18n.ts', 'i18n.js'],
+  ['browser-capabilities.ts', 'browser-capabilities.js'],
+  ['diagnostics.ts', 'diagnostics.js'],
+  ['schema.ts', 'schema.js'],
+  ['storage.ts', 'storage.js'],
   ['legacy-crypto.ts', 'legacy-crypto.js'],
-  ['options.ts', 'options.js'],
-  ['popup-fixes.ts', 'popup-fixes.js'],
-  ['popup-i18n.ts', 'popup-i18n.js'],
-  ['popup.ts', 'popup.js'],
-  ['runtime.ts', 'runtime.js'],
   ['sync-core.ts', 'sync-core.js'],
-  ['theme.ts', 'theme.js'],
-  ['update.ts', 'update.js'],
+  ['src/features/extension-storage-watch.ts', 'extension-storage-watch.js'],
+  ['src/features/extension-storage.ts', 'extension-storage.js'],
+  ['src/features/update.ts', 'update.js'],
+  ['src/ui/extensions.ts', 'extensions.js'],
+  ['src/ui/guide.ts', 'guide.js'],
+  ['src/ui/history.ts', 'history.js'],
+  ['src/ui/i18n.ts', 'i18n.js'],
+  ['src/ui/options.ts', 'options.js'],
+  ['src/ui/popup-fixes.ts', 'popup-fixes.js'],
+  ['src/ui/popup-i18n.ts', 'popup-i18n.js'],
+  ['src/ui/popup.ts', 'popup.js'],
+  ['src/ui/runtime.ts', 'runtime.js'],
+  ['src/ui/theme.ts', 'theme.js'],
 ] as const;
 
 const extensionFiles = [
@@ -59,7 +63,7 @@ const tsc = process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
 execFileSync(tsc, ['-p', path.join(root, 'tsconfig.json')], { cwd: root, stdio: 'inherit' });
 
 for (const [sourceFile, outputFile] of runtimeArtifacts) {
-  const compiled = path.join(compilerOut, outputFile);
+  const compiled = path.join(compilerOut, sourceFile.replace(/\.ts$/, '.js'));
   if (!fs.existsSync(compiled)) throw new Error(`Missing compiled extension file: ${sourceFile} -> ${outputFile}`);
 
   // TypeScript is the only source language. Compiled JavaScript exists only in

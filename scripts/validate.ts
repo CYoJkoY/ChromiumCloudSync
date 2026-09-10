@@ -18,8 +18,10 @@ if (manifest.background?.service_worker !== 'background.js') throw new Error('Ma
 
 const requiredTypeScriptSources = [
   'types.ts', 'sync-core.ts', 'schema.ts', 'storage.ts', 'browser-capabilities.ts', 'diagnostics.ts',
-  'background.ts', 'legacy-crypto.ts', 'options.ts', 'popup.ts', 'popup-i18n.ts', 'popup-fixes.ts',
-  'extension-storage.ts', 'extension-storage-watch.ts', 'history.ts', 'guide.ts', 'i18n.ts', 'runtime.ts', 'theme.ts', 'update.ts', 'extensions.ts',
+  'background.ts', 'legacy-crypto.ts',
+  'src/ui/options.ts', 'src/ui/popup.ts', 'src/ui/popup-i18n.ts', 'src/ui/popup-fixes.ts',
+  'src/features/extension-storage.ts', 'src/features/extension-storage-watch.ts',
+  'src/ui/history.ts', 'src/ui/guide.ts', 'src/ui/i18n.ts', 'src/ui/runtime.ts', 'src/ui/theme.ts', 'src/features/update.ts', 'src/ui/extensions.ts',
 ];
 for (const file of requiredTypeScriptSources) if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing TypeScript source ${file}`);
 if (!fs.existsSync(path.join(root, 'tsconfig.strict.json'))) throw new Error('Missing strict TypeScript configuration.');
@@ -46,9 +48,9 @@ for (const html of htmlFiles) {
 }
 
 const runtimeFiles = [
-  'background.js', 'legacy-crypto.js', 'sync-core.js', 'options.js', 'popup.js', 'popup-i18n.js',
-  'popup-fixes.js', 'extension-storage.js', 'extension-storage-watch.js', 'history.js', 'guide.js',
-  'i18n.js', 'runtime.js', 'theme.js', 'update.js', 'extensions.js'
+  'background.js', 'browser-capabilities.js', 'diagnostics.js', 'schema.js', 'storage.js', 'legacy-crypto.js', 'sync-core.js',
+  'options.js', 'popup.js', 'popup-i18n.js', 'popup-fixes.js', 'extension-storage.js', 'extension-storage-watch.js',
+  'history.js', 'guide.js', 'i18n.js', 'runtime.js', 'theme.js', 'update.js', 'extensions.js'
 ];
 for (const file of runtimeFiles) {
   const distTarget = path.join(dist, file);
@@ -67,7 +69,7 @@ for (const html of htmlFiles) {
 }
 
 const scanFiles = [
-  'background.ts', 'sync-core.ts', 'popup.ts', 'popup-fixes.ts', 'guide.ts', 'README.md', 'extensions.ts', 'extensions.html', 'options.html',
+  'background.ts', 'sync-core.ts', 'src/ui/popup.ts', 'src/ui/popup-fixes.ts', 'src/ui/guide.ts', 'README.md', 'src/ui/extensions.ts', 'extensions.html', 'options.html',
 ];
 for (const file of scanFiles) {
   const text = fs.readFileSync(path.join(root, file), 'utf8');
@@ -86,7 +88,7 @@ if (!optionsHtml.includes('id="extensionStorageNavLabel"')) throw new Error('Mis
 if (!optionsHtml.includes('id="extensionStoragePanelTitle"')) throw new Error('Missing extension storage panel title anchor');
 if (!optionsHtml.includes('id="extensionStoragePanelDescription"')) throw new Error('Missing extension storage panel description anchor');
 
-const storage = fs.readFileSync(path.join(root, 'extension-storage.ts'), 'utf8');
+const storage = fs.readFileSync(path.join(root, 'src/features/extension-storage.ts'), 'utf8');
 for (const required of ['extensionBackupGithubToken', 'extensionBackupSelectedIds', 'githubInfo', 'selection.json', 'ccsyncExtensionPackageInput', 'sameStorageConfig', 'ccsync-ext-hidden', 'refreshLanguage']) {
   if (!storage.includes(required)) throw new Error(`Extension storage is missing ${required}`);
 }
