@@ -70,10 +70,14 @@ jobs:
           ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
           test -f "$ZIP"
           unzip -t "$ZIP"
-          FILES="$(unzip -Z1 "$ZIP")"
+          FILES="$(unzip -Z1 "$ZIP" | sed '/\/$/d')"
           REQUIRED_FILES=(
             "manifest.json"
             "background.js"
+            "browser-capabilities.js"
+            "diagnostics.js"
+            "schema.js"
+            "storage.js"
             "legacy-crypto.js"
             "sync-core.js"
             "i18n.js"
@@ -84,6 +88,7 @@ jobs:
             "extension-storage-watch.js"
             "popup.html"
             "popup.js"
+            "popup-i18n.js"
             "options.html"
             "options.js"
             "history.html"
@@ -106,7 +111,7 @@ jobs:
 
           while IFS= read -r FILE; do
             case "$FILE" in
-              manifest.json|background.js|legacy-crypto.js|sync-core.js|i18n.js|theme.js|runtime.js|update.js|extension-storage.js|extension-storage-watch.js|popup.html|popup.js|options.html|options.js|history.html|history.js|guide.html|guide.js|extensions.html|extensions.js|popup-fixes.js|ui.css|ui-system.css|ui-overrides.css|_locales/en/messages.json|_locales/zh_CN/messages.json|icons/icon.svg|icons/icon16.png|icons/icon32.png|icons/icon48.png|icons/icon128.png|icons/icon256.png|icons/icon512.png) ;;
+              manifest.json|background.js|browser-capabilities.js|diagnostics.js|schema.js|storage.js|legacy-crypto.js|sync-core.js|i18n.js|theme.js|runtime.js|update.js|extension-storage.js|extension-storage-watch.js|popup.html|popup.js|popup-i18n.js|options.html|options.js|history.html|history.js|guide.html|guide.js|extensions.html|extensions.js|popup-fixes.js|ui.css|ui-system.css|ui-overrides.css|_locales/en/messages.json|_locales/zh_CN/messages.json|icons/icon.svg|icons/icon16.png|icons/icon32.png|icons/icon48.png|icons/icon128.png|icons/icon256.png|icons/icon512.png) ;;
               *) echo "Unexpected ZIP entry: $FILE"; exit 1 ;;
             esac
           done <<< "$FILES"
