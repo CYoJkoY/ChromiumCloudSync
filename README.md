@@ -8,22 +8,11 @@
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/releases"><img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?include_prereleases&style=flat-square&label=dev" alt="Development releases"></a>
     <a href="https://github.com/CYoJkoY/ChromiumCloudSync/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/CYoJkoY/ChromiumCloudSync/release.yml?style=flat-square&label=release" alt="Release workflow status"></a>
     <img src="https://img.shields.io/badge/Manifest-V3-7A8E8E?style=flat-square" alt="Manifest V3">
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-9E8F7E?style=flat-square" alt="MIT License"></a>
-  </p>
-  <p>
-    <a href="#overview">Overview</a> ·
-    <a href="#sync-scope">Sync scope</a> ·
-    <a href="#merge--conflict-model">Merge &amp; conflict model</a> ·
-    <a href="#security--encryption">Security &amp; encryption</a> ·
-    <a href="#device-identity">Device identity</a> ·
-    <a href="#extension-recovery">Extension recovery</a> ·
-    <a href="#history-revisions--rollback">History, revisions &amp; rollback</a> ·
-    <a href="#automatic-synchronization">Automatic synchronization</a> ·
-    <a href="#installation">Installation</a> ·
-    <a href="#development">Development</a> ·
-    <a href="#license">License</a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/CYoJkoY/ChromiumCloudSync?style=flat-square" alt="MIT License"></a>
   </p>
 </div>
+
+**Contents** · [Overview](#overview) · [Sync scope](#sync-scope) · [Merge & conflict model](#merge--conflict-model) · [Security & encryption](#security--encryption) · [Device identity](#device-identity) · [Extension recovery](#extension-recovery) · [History, revisions & rollback](#history-revisions--rollback) · [Automatic synchronization](#automatic-synchronization) · [Installation](#installation) · [Development](#development) · [License](#license)
 
 > **Storage boundary:** synchronized browser state is stored in your private GitHub Gist. Optional extension package backups use a separate private GitHub repository or WebDAV backend.
 
