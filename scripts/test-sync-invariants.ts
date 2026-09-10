@@ -12,6 +12,12 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   };
 }
 
+function withoutVolatileMetadata(value: Snapshot): Snapshot {
+  const copy = structuredClone(value);
+  delete copy.updatedAt;
+  return copy;
+}
+
 const base = snapshot({
   extensions: [{ syncId: 'extension-a', id: 'a', name: 'A', version: '1.0.0', enabled: true }],
   bookmarks: [{ syncId: 'bookmark-a', title: 'A', url: 'https://example.com', parentSyncId: 'root-bookmarks', index: 0 }],
@@ -25,7 +31,8 @@ const remote = base;
 const merged = mergeSnapshots(base, local, remote);
 assert.equal(merged.snapshot.extensions[0]?.enabled, false);
 assert.equal(merged.conflicts.length, 0);
-assert.equal(checksum(merged.snapshot), checksum(mergeSnapshots(base, local, remote).snapshot));
+const repeatedMerge = mergeSnapshots(base, local, remote);
+assert.equal(checksum(withoutVolatileMetadata(merged.snapshot)), checksum(withoutVolatileMetadata(repeatedMerge.snapshot)));
 
 const deleted = snapshot({ bookmarks: base.bookmarks });
 const tombstones = deriveTombstones(base, deleted, [], 2, '2026-09-10T00:00:00.000Z');
