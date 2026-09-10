@@ -6,7 +6,7 @@
     if (!meta) return;
 
     const text = meta.textContent || '';
-    const parts = text.split(/\s*·\s*/).map(part => part.trim()).filter(Boolean);
+    const parts = text.split(/(?:\r?\n|\s*·\s*)/).map(part => part.trim()).filter(Boolean);
     if (!parts.length) return;
 
     const current = parts.join('\n');
