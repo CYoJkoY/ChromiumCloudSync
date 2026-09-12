@@ -20,10 +20,10 @@ jobs:
   validate:
     name: Validate, test, and smoke-test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Verify TypeScript-only source tree
         shell: bash
@@ -38,13 +38,13 @@ jobs:
           echo "No tracked .js source files found."
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           package-manager-cache: false
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Type-check strict core
         run: npm run typecheck
