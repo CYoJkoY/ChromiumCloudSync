@@ -11,8 +11,8 @@ const baseVersion = String(manifest.version || '').trim();
 const versionName = String(manifest.version_name || '').trim();
 
 if (!/^\d+\.\d+\.\d+$/.test(baseVersion)) throw new Error(`invalid manifest version ${baseVersion}; expected X.Y.Z`);
-if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) throw new Error(`invalid manifest version_name ${versionName}; expected X.Y.Z.devN`);
-if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) throw new Error(`manifest version_name ${versionName} does not match manifest version ${baseVersion}`);
+if (versionName && !/^\d+\.\d+\.\d+-dev\d+$/.test(versionName)) throw new Error(`invalid manifest version_name ${versionName}; expected X.Y.Z-devN`);
+if (versionName && !versionName.startsWith(`${baseVersion}-dev`)) throw new Error(`manifest version_name ${versionName} does not match manifest version ${baseVersion}`);
 if (pkg.version !== baseVersion) throw new Error(`package.json version ${pkg.version} is not synchronized with manifest.version ${baseVersion}`);
 if (manifest.background?.service_worker !== 'background.js') throw new Error('Manifest background service worker must remain background.js in the built extension');
 
