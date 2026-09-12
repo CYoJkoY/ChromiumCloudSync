@@ -4,11 +4,11 @@ on:
   push:
     tags:
       - 'v*.*.*'
-      - 'v*.*.*.dev*'
+      - 'v*.*.*-dev*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to build (for example v1.7.8 or v1.7.8.dev1)'
+        description: 'Existing release tag to build (for example v1.7.8 or v1.7.8-dev1)'
         required: true
         type: string
 
@@ -71,7 +71,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then TAG="${{ inputs.tag }}"; fi
 
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev[0-9]+$ ]]; then
             echo "Invalid release tag: $TAG"
             exit 1
           fi
@@ -79,7 +79,7 @@ jobs:
           TAG_VERSION="${TAG#v}"
           IS_DEV="false"
           EFFECTIVE_VERSION="$VERSION"
-          if [[ "$TAG_VERSION" == *.dev[0-9]* ]]; then
+          if [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-dev[0-9]+$ ]]; then
             IS_DEV="true"
             if [[ -z "$VERSION_NAME" || "$TAG_VERSION" != "$VERSION_NAME" ]]; then
               echo "Development tag ($TAG_VERSION) does not match manifest.version_name ($VERSION_NAME)."
@@ -178,6 +178,17 @@ jobs:
             esac
           done <<< "$FILES"
           echo "ZIP contains only approved extension files."
+
+      - name: Verify packaged manifest version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          ACTUAL_VERSION_NAME="$(unzip -p "${{ steps.zip.outputs.path }}" manifest.json | node -e "let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>console.log(JSON.parse(s).version_name || JSON.parse(s).version))")"
+          if [[ "$ACTUAL_VERSION_NAME" != "$VERSION" && "$ACTUAL_VERSION_NAME" != "${VERSION%%-dev*}" ]]; then
+            echo "Packaged manifest version ($ACTUAL_VERSION_NAME) does not match release version ($VERSION)."
+            exit 1
+          fi
 
       - name: Install CRX3 packer
         run: npm install --global crx3@2.0.0

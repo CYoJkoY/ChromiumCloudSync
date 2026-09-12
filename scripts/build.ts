@@ -50,8 +50,8 @@ const styleArtifacts = [
 ] as const;
 
 if (!/^\d+\.\d+\.\d+$/.test(baseVersion)) throw new Error(`Invalid manifest version: ${baseVersion}; expected X.Y.Z`);
-if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) throw new Error(`Invalid manifest version_name: ${versionName}; expected X.Y.Z.devN`);
-if (versionName && !versionName.startsWith(`${baseVersion}.dev`)) throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`);
+if (versionName && !/^\d+\.\d+\.\d+-dev\d+$/.test(versionName)) throw new Error(`Invalid manifest version_name: ${versionName}; expected X.Y.Z-devN`);
+if (versionName && !versionName.startsWith(`${baseVersion}-dev`)) throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`);
 
 const version = releaseVersion || versionName || baseVersion;
 if (version !== baseVersion && version !== versionName) throw new Error(`Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName || '<empty>'}`);
