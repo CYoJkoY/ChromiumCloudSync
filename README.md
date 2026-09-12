@@ -243,7 +243,7 @@ Git tag
    └─ GitHub Release
 ```
 
-Stable tags use `vX.Y.Z`. Development tags use `vX.Y.Z.devN` and are published as prereleases.
+Stable tags use `vX.Y.Z`. Development tags use `vX.Y.Z-devN` and are published as prereleases. Development `version_name` values use the same `X.Y.Z-devN` format, while the Chrome-compatible numeric `manifest.version` remains `X.Y.Z`.
 
 <a name="readme-status"></a>
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Project status & roadmap
@@ -264,9 +264,9 @@ Never include GitHub Tokens, private credentials, or sensitive Gist contents in 
 
 Support helps fund compatibility testing, synchronization reliability work, documentation, and continued maintenance.
 
-[Support Chromium Cloud Sync on GitHub Sponsors](https://github.com/sponsors/CYoJkoY)
+[Support Chromium Cloud Sync](https://cyojkoy.github.io/Payment/)
 
-<a href="https://github.com/sponsors/CYoJkoY"><img src="assets/readme/support-cta.svg" alt="Support Chromium Cloud Sync on GitHub Sponsors" width="100%"></a>
+<a href="https://cyojkoy.github.io/Payment/"><img src="assets/readme/support-cta.svg" alt="Support Chromium Cloud Sync" width="100%"></a>
 
 <a name="readme-license"></a>
 ## <img src="assets/readme/icons/development.svg" width="24" height="24" alt=""> License

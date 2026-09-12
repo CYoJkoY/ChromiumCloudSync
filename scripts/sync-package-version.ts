@@ -16,11 +16,11 @@ if (!/^\d+\.\d+\.\d+$/.test(stableVersion)) {
   throw new Error(`Invalid manifest version: ${stableVersion}. Expected X.Y.Z.`);
 }
 
-if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) {
-  throw new Error(`Invalid manifest version_name: ${versionName}. Expected X.Y.Z.devN.`);
+if (versionName && !/^\d+\.\d+\.\d+-dev\d+$/.test(versionName)) {
+  throw new Error(`Invalid manifest version_name: ${versionName}. Expected X.Y.Z-devN.`);
 }
 
-if (versionName && !versionName.startsWith(`${stableVersion}.dev`)) {
+if (versionName && !versionName.startsWith(`${stableVersion}-dev`)) {
   throw new Error(`manifest.version_name (${versionName}) does not match manifest.version (${stableVersion}).`);
 }
 
