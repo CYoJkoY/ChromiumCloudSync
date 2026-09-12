@@ -23,10 +23,11 @@ jobs:
   release:
     name: Build and publish CRX + ZIP
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout tagged source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
@@ -43,13 +44,13 @@ jobs:
           fi
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           package-manager-cache: false
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Verify Node.js and npm
         shell: bash
@@ -183,10 +184,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
-          ACTUAL_VERSION_NAME="$(unzip -p "${{ steps.zip.outputs.path }}" manifest.json | node -e "let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>console.log(JSON.parse(s).version_name || JSON.parse(s).version))")"
-          if [[ "$ACTUAL_VERSION_NAME" != "$VERSION" && "$ACTUAL_VERSION_NAME" != "${VERSION%%-dev*}" ]]; then
-            echo "Packaged manifest version ($ACTUAL_VERSION_NAME) does not match release version ($VERSION)."
+          EXPECTED_STABLE="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")"
+          EXPECTED_NAME="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version_name || ''")"
+          EXPECTED_RELEASE="${{ steps.version.outputs.version }}"
+          ACTUAL_STABLE="$(unzip -p "${{ steps.zip.outputs.path }}" manifest.json | node -e "let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>console.log(JSON.parse(s).version))")"
+          ACTUAL_NAME="$(unzip -p "${{ steps.zip.outputs.path }}" manifest.json | node -e "let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>console.log(JSON.parse(s).version_name || ''))")"
+          if [[ "$ACTUAL_STABLE" != "$EXPECTED_STABLE" ]]; then
+            echo "Packaged manifest.version ($ACTUAL_STABLE) does not match source manifest.version ($EXPECTED_STABLE)."
+            exit 1
+          fi
+          if [[ "$EXPECTED_RELEASE" == *-dev* ]]; then
+            [[ "$ACTUAL_NAME" == "$EXPECTED_NAME" && "$ACTUAL_NAME" == "$EXPECTED_RELEASE" ]] || {
+              echo "Packaged manifest.version_name ($ACTUAL_NAME) does not match development release version ($EXPECTED_RELEASE)."
+              exit 1
+            }
+          elif [[ -n "$ACTUAL_NAME" ]]; then
+            echo "Stable release must not contain manifest.version_name ($ACTUAL_NAME)."
             exit 1
           fi
 
@@ -201,6 +214,7 @@ jobs:
           set -euo pipefail
           if [[ -z "${CRX_PRIVATE_KEY_B64:-}" ]]; then
             echo "Missing required repository secret: CRX_PRIVATE_KEY_B64"
+            echo "Add the base64-encoded CRX3 private key to the repository Actions secrets before creating a release."
             exit 1
           fi
           printf '%s' "$CRX_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/chromium-cloud-sync.pem"
