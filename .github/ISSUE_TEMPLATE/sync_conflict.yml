@@ -1,4 +1,4 @@
-name: "🔀 Sync conflict / merge result"
+name: "Sync conflict / merge result"
 description: Unresolved conflicts, duplicated or resurrected items, or a merge that does not converge.
 title: "[Conflict]: "
 labels:

@@ -1,4 +1,4 @@
-name: "🐛 Bug report"
+name: "Bug report"
 description: Sync, popup/status, options, package backup, or UI behaves incorrectly.
 title: "[Bug]: "
 labels:

@@ -1,4 +1,4 @@
-name: "🧬 Schema / data integrity"
+name: "Schema / data integrity"
 description: Migration failures (v7–v10), invalid current.json, checksum or invariant errors, history index issues.
 title: "[Schema]: "
 labels:
