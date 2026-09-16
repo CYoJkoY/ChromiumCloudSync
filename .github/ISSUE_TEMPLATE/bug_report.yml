@@ -1,0 +1,202 @@
+name: "🐛 Bug report"
+description: Sync, popup/status, options, package backup, or UI behaves incorrectly.
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report.
+
+        > [!CAUTION]
+        > **Never paste a GitHub Token, a Gist ID / Gist URL, a package-backup URL, or the raw contents of `current.json` here.**
+        > A sync snapshot contains your full tab, tab-group, bookmark, and extension inventory.
+        > Redact or summarise anything you are unsure about — including URLs and tab titles.
+
+        > [!TIP]
+        > Please search existing issues first, and confirm you can reproduce on the latest release.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which subsystem is misbehaving?
+      options:
+        - Tabs & windows sync
+        - Tab groups
+        - Bookmarks sync
+        - Extension inventory / Extension Recovery Center
+        - Package backup (CRX / ZIP, GitHub repo or WebDAV)
+        - Automatic sync / scheduling
+        - History & rollback
+        - Settings / token validation / Gist binding
+        - Popup, options, or other UI (incl. i18n & theme)
+        - Build / install / load-unpacked
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: extension_version
+    attributes:
+      label: Extension version
+      description: Shown on the extension card (e.g. `1.8.0`). Also visible in `manifest.json` → `version_name`.
+      placeholder: 1.8.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Chromium browser
+      options:
+        - Google Chrome
+        - Microsoft Edge
+        - Brave
+        - Vivaldi
+        - Opera
+        - Arc
+        - Chromium (open-source build)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser_version
+    attributes:
+      label: Browser version
+      description: Copy from `chrome://version` or your browser's equivalent.
+      placeholder: "e.g. 141.0.7390.55 (Official Build) (64-bit)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. Windows 11 23H2 / macOS 15.1 / Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation method
+      options:
+        - Release ZIP → Load unpacked
+        - Release CRX (signed CRX3)
+        - Built from source (`npm run build:zip`)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe the actual behaviour. Do not paste sync payloads or tokens.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect instead, and why?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, starting from a clean state if possible.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: regressed
+    attributes:
+      label: Did this start after an upgrade or a settings change?
+      options:
+        - "No — it never worked for me"
+        - "Yes — after upgrading the extension"
+        - "Yes — after changing token / Gist binding"
+        - "Yes — after enabling automatic sync"
+        - "Yes — after a rollback"
+        - Not sure
+    validations:
+      required: false
+
+  - type: input
+    id: previous_version
+    attributes:
+      label: Previous extension version (if applicable)
+      placeholder: "e.g. 1.7.2"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: auto_sync
+    attributes:
+      label: Automatic sync state
+      options:
+        - Disabled (default)
+        - Enabled — 5 minutes
+        - Enabled — 10 minutes
+        - Enabled — 15 minutes
+        - Enabled — 30 minutes
+        - Enabled — 60 minutes
+    validations:
+      required: false
+
+  - type: textarea
+    id: popup_status
+    attributes:
+      label: Popup status (redacted)
+      description: >
+        From the popup, report: Gist binding state, last sync time, revision,
+        conflict count, and automatic-sync state. **Do not include the Gist ID or URL.**
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostics / console output
+      description: >
+        If your build exposes a diagnostics export, attach it here after redacting tokens,
+        Gist IDs, URLs, and titles. Otherwise: open the extension's background/service-worker
+        DevTools (`chrome://extensions` → service worker link) and paste the relevant console
+        output.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings
+      description: Helpful for UI, popup, and status issues. Blur tab titles and URLs.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues (including closed ones).
+          required: true
+        - label: I removed all tokens, Gist IDs/URLs, credentials, and sync payload contents.
+          required: true
+        - label: I reproduced this on the latest release.
+          required: false
+        - label: I can reproduce this consistently.
+          required: false

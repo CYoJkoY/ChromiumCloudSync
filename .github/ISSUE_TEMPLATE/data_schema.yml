@@ -1,0 +1,92 @@
+name: "🧬 Schema / data integrity"
+description: Migration failures (v7–v10), invalid current.json, checksum or invariant errors, history index issues.
+title: "[Schema]: "
+labels:
+  - bug
+  - schema
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For `current.json` validation failures, schema migration errors between v7 / v8 / v9 / v10,
+        sync-invariant checksum mismatches, or local-history index problems.
+
+        > [!CAUTION]
+        > **Never paste the sync payload or the Gist ID.** A *minimal redacted* snippet
+        > (field names, types, a couple of placeholder values) is enough and is welcome.
+
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      placeholder: 1.8.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: schema_from
+    attributes:
+      label: Schema version you came from (if known)
+      options:
+        - v10
+        - v9
+        - v8
+        - v7
+        - Pre-v7 / encrypted legacy format
+        - Unknown
+    validations:
+      required: false
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: Symptom
+      options:
+        - Sync fails with a validation / schema error
+        - Checksum or sync-invariant error
+        - Migration produced missing or wrong data
+        - History index is empty, truncated, or out of order
+        - Rollback produced an invalid state
+        - Data written by an older version can no longer be read
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error message
+      description: Copy it verbatim, then redact any tokens, IDs, URLs, or titles.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: minimal_snippet
+    attributes:
+      label: Minimal redacted snippet (optional)
+      description: >
+        Only if it is safe: replace URLs, titles, and IDs with placeholders
+        (`https://example.com/a`, `title-a`, `group-1`).
+      render: json
+    validations:
+      required: false
+
+  - type: dropdown
+    id: local_reset
+    attributes:
+      label: Does clearing local state and re-pulling from the Gist resolve it?
+      options:
+        - "Yes — so the remote data is fine"
+        - "No — the remote snapshot itself seems broken"
+        - Not tried / I am afraid of losing data
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed all tokens, Gist IDs/URLs, and sensitive payload contents.
+          required: true

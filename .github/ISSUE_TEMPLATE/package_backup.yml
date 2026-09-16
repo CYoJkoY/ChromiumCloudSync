@@ -1,0 +1,86 @@
+name: "📦 Package backup (CRX / ZIP)"
+description: Issues with the separate CRX/ZIP backup path — GitHub private repo or WebDAV.
+title: "[Package backup]: "
+labels:
+  - bug
+  - area:package-backup
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Package backup is deliberately separate from browser-state sync
+        (browser state → private Gist, packages → GitHub private repo **or** WebDAV).
+
+        > [!CAUTION]
+        > **Do not paste backup URLs, repository names, WebDAV endpoints, or any credentials.**
+        > Package-backup credentials live only in your browser — keep it that way.
+
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      placeholder: 1.8.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: destination
+    attributes:
+      label: Backup destination
+      options:
+        - GitHub private repository (Contents API)
+        - WebDAV
+        - Both configured
+        - Not configured yet
+    validations:
+      required: true
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: Symptom
+      options:
+        - Upload fails with an API error
+        - File rejected for size (limit is 95 MiB on the GitHub Contents API path)
+        - SHA-256 checksum mismatch
+        - Index or selection state is wrong / lost
+        - Cannot find the installed CRX/ZIP to select (first backup needs manual selection)
+        - Restore / download failed
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: size
+    attributes:
+      label: Approximate package size
+      placeholder: "e.g. 12 MB / 120 MB"
+    validations:
+      required: false
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message (redacted)
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps taken
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed all credentials, repository names, and backup URLs.
+          required: true

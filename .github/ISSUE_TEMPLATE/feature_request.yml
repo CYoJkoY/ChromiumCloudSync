@@ -1,0 +1,79 @@
+name: "✨ Feature request"
+description: Suggest new sync coverage, UX, or reliability work.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The current scope is: windows & HTTP(S) tabs, tab groups, bookmarks, and
+        third-party extension metadata, plus extension recovery and package backup.
+        Browser-level settings and third-party extension settings are roadmap items —
+        requests for those are welcome, but please say how you'd want them handled.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Tabs & windows
+        - Tab groups
+        - Bookmarks
+        - Extension inventory / recovery
+        - Package backup
+        - Sync engine (merge, conflicts, scheduling)
+        - History & rollback
+        - Security / privacy (e.g. encryption of the payload)
+        - UI / i18n / theme
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Be concrete — what should the extension do, and where in the UI?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including workarounds you already use.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope_check
+    attributes:
+      label: Does this touch out-of-scope data today?
+      description: Helps set expectations — see "Data scope" in the README.
+      options:
+        - "No — it is within the current sync scope"
+        - "Yes — it needs extension private settings/storage"
+        - "Yes — it needs browser-level settings or credentials"
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Participation
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am willing to help test or implement this.
+          required: false
