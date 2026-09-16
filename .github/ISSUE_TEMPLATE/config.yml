@@ -1,15 +1,2 @@
 blank_issues_enabled: false
-contact_links:
-  - name: Security issue / leaked token
-    url: https://github.com/CYoJkoY/ChromiumCloudSync/security/advisories/new
-    about: >
-      Report a vulnerability or an accidentally exposed GitHub Token / Gist / WebDAV
-      credential privately. Never open a public issue for this.
-  - name: Sponsor the project
-    url: https://github.com/sponsors/CYoJkoY
-    about: Support compatibility testing, sync reliability work, and maintenance.
-  - name: Documentation & sync model
-    url: https://github.com/CYoJkoY/ChromiumCloudSync#readme
-    about: >
-      Read the sync model, data scope, and security notes before reporting — many
-      "missing data" reports are intentional exclusions (extension settings, passwords).
+
