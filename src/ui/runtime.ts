@@ -26,10 +26,12 @@
       };
 
       try {
-        chrome.runtime.sendMessage({ type, ...extra }, response => {
+        chrome.runtime.sendMessage({ type, ...extra }, (response) => {
           const lastError = chrome.runtime.lastError;
           if (lastError) {
-            finish(new Error(lastError.message || `Runtime request failed: ${type}`));
+            finish(
+              new Error(lastError.message || `Runtime request failed: ${type}`),
+            );
             return;
           }
           finish(null, response);
@@ -43,7 +45,7 @@
   function storageGet(keys) {
     return new Promise((resolve, reject) => {
       try {
-        chrome.storage.local.get(keys, value => {
+        chrome.storage.local.get(keys, (value) => {
           const lastError = chrome.runtime.lastError;
           if (lastError) reject(new Error(lastError.message));
           else resolve(value || {});
@@ -71,17 +73,19 @@
   function bindAction(id, handler) {
     const element = document.getElementById(id);
     if (!element) throw new Error(`UI contract violation: missing #${id}`);
-    element.type = 'button';
-    element.addEventListener('click', event => {
+    element.type = "button";
+    element.addEventListener("click", (event) => {
       // DOM event listeners do not await returned Promises. Always consume
       // handler rejections so API failures cannot become silent "dead buttons".
       Promise.resolve()
         .then(() => handler(event, element))
-        .catch(error => {
+        .catch((error) => {
           console.error(`[Chromium Cloud Sync] action failed: ${id}`, error);
-          window.dispatchEvent(new CustomEvent('ccsync:action-error', {
-            detail: { id, error }
-          }));
+          window.dispatchEvent(
+            new CustomEvent("ccsync:action-error", {
+              detail: { id, error },
+            }),
+          );
         });
     });
     return element;

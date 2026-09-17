@@ -1,12 +1,12 @@
 (() => {
-  const $ = id => document.getElementById(id);
+  const $ = (id) => document.getElementById(id);
 
   function openExtensionRecoveryCenter() {
-    chrome.tabs.create({ url: chrome.runtime.getURL('extensions.html') });
+    chrome.tabs.create({ url: chrome.runtime.getURL("extensions.html") });
   }
 
   function interceptExtensionButton(event) {
-    const button = event.target?.closest?.('#checkExtensions');
+    const button = event.target?.closest?.("#checkExtensions");
     if (!button) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -14,9 +14,10 @@
   }
 
   function init() {
-    document.addEventListener('click', interceptExtensionButton, true);
+    document.addEventListener("click", interceptExtensionButton, true);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", init, { once: true });
   else init();
 })();

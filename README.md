@@ -37,6 +37,7 @@
 ---
 
 <a name="readme-overview"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Overview
 
 **Chromium Cloud Sync** is a Manifest V3 browser extension that synchronizes Chromium browser state through a **private GitHub Gist**, without relying on a browser vendor's built-in sync service.
@@ -44,25 +45,27 @@
 The current implementation covers open windows and HTTP(S) tabs, tab groups, bookmarks, and installed third-party extension metadata. It also provides extension recovery and a separate CRX/ZIP package-backup path.
 
 <a name="readme-features"></a>
+
 ## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Features
 
-| Capability | Description |
-| :--- | :--- |
-| **Tabs & windows** | Sync normal windows and HTTP(S) tabs, including title, URL, pinning, active state, order, and group information. |
-| **Tab groups** | Preserve stable group identity, title, color, and collapsed state. |
-| **Bookmarks** | Sync bookmark titles, URLs, parent relationships, order, and stable IDs. |
-| **Extension inventory** | Track third-party extension ID, name, version, enabled state, installation type, update information, and store links. |
-| **Extension Recovery Center** | Detect missing extensions and surface available Chrome Web Store or Edge Add-ons installation links. |
-| **Three-way merge** | Merge base, local, and remote snapshots instead of blindly replacing one side. |
-| **Deletion tombstones** | Preserve deletions so stale devices do not silently recreate removed items. |
-| **Conflict visibility** | Keep unresolved field conflicts explicit for review. |
-| **Automatic sync** | Optional background synchronization with configurable intervals; disabled by default. |
-| **History & rollback** | Use Gist revision history and maintain a local index of up to 30 recent entries. |
-| **Package backup** | Store selected CRX/ZIP packages separately in a GitHub private repository or WebDAV. |
-| **Bilingual UI** | English and Simplified Chinese interfaces. |
-| **Light / dark themes** | Explicit theme controls for settings and auxiliary pages. |
+| Capability                    | Description                                                                                                           |
+| :---------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| **Tabs & windows**            | Sync normal windows and HTTP(S) tabs, including title, URL, pinning, active state, order, and group information.      |
+| **Tab groups**                | Preserve stable group identity, title, color, and collapsed state.                                                    |
+| **Bookmarks**                 | Sync bookmark titles, URLs, parent relationships, order, and stable IDs.                                              |
+| **Extension inventory**       | Track third-party extension ID, name, version, enabled state, installation type, update information, and store links. |
+| **Extension Recovery Center** | Detect missing extensions and surface available Chrome Web Store or Edge Add-ons installation links.                  |
+| **Three-way merge**           | Merge base, local, and remote snapshots instead of blindly replacing one side.                                        |
+| **Deletion tombstones**       | Preserve deletions so stale devices do not silently recreate removed items.                                           |
+| **Conflict visibility**       | Keep unresolved field conflicts explicit for review.                                                                  |
+| **Automatic sync**            | Optional background synchronization with configurable intervals; disabled by default.                                 |
+| **History & rollback**        | Use Gist revision history and maintain a local index of up to 30 recent entries.                                      |
+| **Package backup**            | Store selected CRX/ZIP packages separately in a GitHub private repository or WebDAV.                                  |
+| **Bilingual UI**              | English and Simplified Chinese interfaces.                                                                            |
+| **Light / dark themes**       | Explicit theme controls for settings and auxiliary pages.                                                             |
 
 <a name="readme-sync-model"></a>
+
 ## <img src="assets/readme/icons/architecture.svg" width="24" height="24" alt=""> Sync model
 
 Chromium Cloud Sync uses a **local-first three-way merge** rather than a simple latest-device-wins strategy.
@@ -91,6 +94,7 @@ The merge engine uses field-specific policies, including latest-value resolution
 The current cloud schema is **v10**, with migration support for schemas **7, 8, 9, and 10**.
 
 <a name="readme-data-scope"></a>
+
 ## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Data scope
 
 ### Synchronized
@@ -116,11 +120,13 @@ Browser-level settings
 Third-party extension settings are intentionally excluded because a generic Chromium extension cannot safely read or write another extension's private storage.
 
 <a name="readme-extension-recovery"></a>
+
 ## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Extension recovery
 
 The extension inventory stores enough metadata to identify missing third-party extensions. The **Extension Recovery Center** can show extensions present in the cloud inventory but absent locally and provide direct store links when available. Installation remains an explicit browser action.
 
 <a name="readme-package-backup"></a>
+
 ## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Third-party extension package backup
 
 Package backup is deliberately separated from browser-state synchronization.
@@ -133,6 +139,7 @@ CRX / ZIP      →  GitHub private repository OR WebDAV
 The package subsystem keeps an index, selection state, package metadata, and SHA-256 checksums. The current GitHub Contents API path rejects files larger than **95 MiB**. The first backup requires manual selection of a CRX or ZIP because another extension's installed package bytes are not directly exposed to the extension.
 
 <a name="readme-security"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Privacy & security
 
 New synchronization Gists are created as **private Gists**. The current synchronization payload is stored as normal JSON in `current.json`; it is **not end-to-end encrypted**. Access to the private Gist therefore grants access to the synchronized browser state.
@@ -142,6 +149,7 @@ The repository still contains compatibility handling for older encrypted synchro
 Use least-privilege credentials. Package-backup credentials are separate from the main Gist token and remain local to the browser.
 
 <a name="readme-installation"></a>
+
 ## <img src="assets/readme/icons/installation.svg" width="24" height="24" alt=""> Installation
 
 Open [Releases](https://github.com/CYoJkoY/ChromiumCloudSync/releases) and download the latest ZIP or CRX.
@@ -166,6 +174,7 @@ Open **Settings** and:
 4. Enable automatic synchronization when required.
 
 <a name="readme-usage"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Usage
 
 The popup provides the operational status of the connection and synchronization state, including Gist binding, last sync time, revision, conflict count, and automatic-sync state.
@@ -173,11 +182,13 @@ The popup provides the operational status of the connection and synchronization 
 Automatic synchronization is **off by default** and uses **5 minutes** as its default interval. Available intervals are 5, 10, 15, 30, and 60 minutes.
 
 <a name="readme-history"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> History & rollback
 
 GitHub Gist supplies remote revision history while the extension keeps a local index of up to **30 recent entries**. Rolling back creates a new current revision rather than destroying historical state.
 
 <a name="readme-architecture"></a>
+
 ## <img src="assets/readme/icons/architecture.svg" width="24" height="24" alt=""> Architecture
 
 ```text
@@ -205,6 +216,7 @@ Chromium Cloud Sync
 The runtime layer coordinates browser APIs, local storage, GitHub, diagnostics, schema migration, and synchronization. `sync-core.ts` contains merge and tombstone logic; `schema.ts` validates and migrates cloud state; the UI layer provides the operational surfaces.
 
 <a name="readme-development"></a>
+
 ## <img src="assets/readme/icons/development.svg" width="24" height="24" alt=""> Development
 
 ### Requirements
@@ -246,6 +258,7 @@ Git tag
 Stable tags use `vX.Y.Z`. Development tags use `vX.Y.Z.devN` and are published as prereleases.
 
 <a name="readme-status"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Project status & roadmap
 
 The current core is browser-state synchronization plus extension inventory/recovery and separate package backup.
@@ -253,6 +266,7 @@ The current core is browser-state synchronization plus extension inventory/recov
 Future work is expected to expand browser-state coverage carefully. **Extension settings** and **browser settings** are roadmap items, not synchronized data in the current release.
 
 <a name="readme-support"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Support & feedback
 
 Use [GitHub Issues](https://github.com/CYoJkoY/ChromiumCloudSync/issues) for bugs, compatibility problems, synchronization conflicts, schema issues, and feature requests.
@@ -260,6 +274,7 @@ Use [GitHub Issues](https://github.com/CYoJkoY/ChromiumCloudSync/issues) for bug
 Never include GitHub Tokens, private credentials, or sensitive Gist contents in an issue.
 
 <a name="readme-sponsorship"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Sponsorship
 
 Support helps fund compatibility testing, synchronization reliability work, documentation, and continued maintenance.
@@ -269,6 +284,7 @@ Support helps fund compatibility testing, synchronization reliability work, docu
 <a href="https://github.com/sponsors/CYoJkoY"><img src="assets/readme/support-cta.svg" alt="Support Chromium Cloud Sync on GitHub Sponsors" width="100%"></a>
 
 <a name="readme-license"></a>
+
 ## <img src="assets/readme/icons/development.svg" width="24" height="24" alt=""> License
 
 Chromium Cloud Sync is released under the **MIT License**. See [`LICENSE`](LICENSE) for the full license text.

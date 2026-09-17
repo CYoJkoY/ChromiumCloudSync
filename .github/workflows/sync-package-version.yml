@@ -5,9 +5,9 @@ on:
     branches:
       - main
     paths:
-      - 'manifest.json'
-      - 'package.json'
-      - 'scripts/sync-package-version.ts'
+      - "manifest.json"
+      - "package.json"
+      - "scripts/sync-package-version.ts"
   workflow_dispatch:
 
 permissions:

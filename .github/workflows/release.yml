@@ -3,12 +3,12 @@ name: Release Chromium Cloud Sync
 on:
   push:
     tags:
-      - 'v*.*.*'
-      - 'v*.*.*.dev*'
+      - "v*.*.*"
+      - "v*.*.*.dev*"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to build (for example v1.7.8 or v1.7.8.dev1)'
+        description: "Existing release tag to build (for example v1.7.8 or v1.7.8.dev1)"
         required: true
         type: string
 

@@ -1,6 +1,8 @@
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
-export interface JsonObject { [key: string]: JsonValue; }
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
 export type UnknownRecord = Record<string, unknown>;
 
 export interface ExtensionRecord extends UnknownRecord {
@@ -71,8 +73,8 @@ export interface ConflictRecord extends UnknownRecord {
   collection?: string;
   syncId?: string;
   field?: string;
-  status: 'resolved' | 'unresolved' | 'ignored' | string;
-  winner?: 'local' | 'remote' | string;
+  status: "resolved" | "unresolved" | "ignored" | string;
+  winner?: "local" | "remote" | string;
   strategy?: string;
 }
 
@@ -93,7 +95,14 @@ export interface MergeResult {
 export interface SyncDiagnostics {
   startedAt: string;
   finishedAt: string;
-  result: 'success' | 'conflict' | 'remote-changed' | 'network-error' | 'auth-error' | 'validation-error' | 'unknown';
+  result:
+    | "success"
+    | "conflict"
+    | "remote-changed"
+    | "network-error"
+    | "auth-error"
+    | "validation-error"
+    | "unknown";
   baseRevision: number;
   localRevision: number;
   remoteRevision: number;
