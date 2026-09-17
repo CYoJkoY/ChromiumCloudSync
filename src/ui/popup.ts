@@ -67,6 +67,7 @@ async function refresh() {
       .join("\n");
     setStatus(state, title, meta, "");
     ui.rev.textContent = `${i.t("revision")} ${r.syncRevision ?? 0} · ${i.t("conflictsLabel")} ${r.conflictCount ?? 0}`;
+    void renderCloudGroups();
   } catch (error) {
     setError(error);
   }
@@ -85,6 +86,56 @@ async function withButton(button, work) {
     button.disabled = false;
     button.removeAttribute("aria-busy");
     button.innerHTML = old;
+  }
+}
+
+async function renderCloudGroups() {
+  const card = $("cloudGroupsCard"),
+    list = $("cloudGroups");
+  if (!card || !list) return;
+  card.hidden = false;
+  list.innerHTML = `<div class="empty">${escapeHtml(i.t("loading"))}</div>`;
+  try {
+    const groups = await request("cloudGroups");
+    if (!groups.length) {
+      list.innerHTML = `<div class="empty">${escapeHtml(i.t("cloudGroupsEmpty"))}</div>`;
+      return;
+    }
+    list.replaceChildren();
+    for (const g of groups) {
+      const row = document.createElement("div");
+      row.className = "history-row";
+      const main = document.createElement("div");
+      main.className = "history-main";
+      const title = document.createElement("div");
+      title.className = "history-title";
+      title.textContent = g.title || i.t("unnamedGroup");
+      const meta = document.createElement("div");
+      meta.className = "history-meta";
+      meta.textContent = i.t("groupTabCount", { count: g.tabCount ?? 0 });
+      main.append(title, meta);
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "secondary";
+      open.textContent = i.t("restoreGroup");
+      open.addEventListener(
+        "click",
+        () =>
+          void withButton(open, async () => {
+            const r = await request("restoreGroup", { groupSyncId: g.syncId });
+            setStatus(
+              "ok",
+              i.t("groupRestoreDone"),
+              i.t("restoreSummary", { tabs: r.tabs, groups: r.groups }),
+              "",
+            );
+          }),
+      );
+      row.append(main, open);
+      list.append(row);
+    }
+  } catch (error) {
+    list.innerHTML = `<div class="empty error-copy">${escapeHtml(error?.message || String(error))}</div>`;
   }
 }
 
@@ -115,11 +166,14 @@ bindAction("sync", async (_event, button) =>
 bindAction("restore", async (_event, button) =>
   withButton(button, async () => {
     const s = await request("pull");
-    const r = await request("restoreTabs", { windows: s.windows || [] });
+    const r = await request("restoreTabs", {
+      windows: s.windows || [],
+      restoreGroupMode: "ondemand",
+    });
     setStatus(
       "ok",
       i.t("tabsRestoreDone"),
-      i.t("restoreSummary", { tabs: r.tabs, groups: r.groups }),
+      i.t("restoreSummaryDeferred", { tabs: r.tabs, groups: r.groups }),
       i.t("restoreCompletedDetail"),
     );
   }),
@@ -182,8 +236,17 @@ bindAction("checkExtensions", async (_event, button) =>
       meta.textContent = ext.id;
       main.append(title, meta);
       const a = document.createElement("a");
-      a.href =
-        ext.store?.source === "edge" ? ext.store.edgeUrl : ext.store.chromeUrl;
+      const edgeHost = /Edg\//.test(navigator.userAgent);
+      const useEdge = ext.store?.source === "edge" && edgeHost;
+      a.href = useEdge
+        ? ext.store.edgeUrl
+        : ext.store?.source === "chrome"
+          ? ext.store.chromeUrl
+          : ext.store?.crxsosoUrl || ext.store.chromeUrl;
+      a.textContent =
+        useEdge || ext.store?.source === "chrome"
+          ? i.t("openInstall")
+          : i.t("searchCrxsoso");
       a.target = "_blank";
       a.rel = "noreferrer";
       a.className = "secondary";

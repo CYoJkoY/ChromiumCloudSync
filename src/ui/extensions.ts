@@ -34,6 +34,15 @@ const dict = {
     version: "Cloud version",
     installType: "Cloud install type",
     packageHint: "A private package backup may be available in Settings.",
+    sourceLabel: "Source",
+    sourceChrome: "Chrome Web Store",
+    sourceEdge: "Edge Add-ons",
+    sourceUnknown: "Unknown source",
+    searchCrxsoso: "Search / download from crxsoso",
+    crxsosoConfirm:
+      "crxsoso is a third-party, non-official mirror. Downloaded CRX files are not verified by the browser vendor. Continue?",
+    crxsosoRisk:
+      "Third-party download source: verify the extension ID and version on the detail page before installing.",
   },
   "zh-CN": {
     extensionRecoveryTitle: "扩展恢复中心",
@@ -64,6 +73,14 @@ const dict = {
     version: "云端版本",
     installType: "云端安装类型",
     packageHint: "可以在“设置”中检查是否存在私人扩展包备份。",
+    sourceLabel: "来源",
+    sourceChrome: "Chrome 网上应用店",
+    sourceEdge: "Edge 加载项",
+    sourceUnknown: "未知来源",
+    searchCrxsoso: "从 crxsoso 搜索 / 下载",
+    crxsosoConfirm:
+      "crxsoso 是第三方非官方镜像站，下载的 CRX 不经过浏览器厂商校验。继续？",
+    crxsosoRisk: "第三方下载源：安装前请在详情页核对扩展 ID 与版本。",
   },
 };
 
@@ -116,6 +133,24 @@ function storeAction(ext) {
   return null;
 }
 
+function isEdgeBrowser() {
+  return /Edg\//.test(navigator.userAgent);
+}
+/** 当前浏览器能否直接使用该扩展的官方商店链接 */
+function storeReachable(ext) {
+  const source = ext?.store?.source;
+  if (source === "edge") return isEdgeBrowser();
+  if (source === "chrome") return !isEdgeBrowser() || true; // Edge 也能装 Chrome 商店扩展（需允许）
+  return false;
+}
+function crxsosoUrl(ext) {
+  return (
+    ext?.store?.crxsosoDetailUrl ||
+    ext?.store?.crxsosoUrl ||
+    `https://www.crxsoso.com/search?keyword=${encodeURIComponent(ext?.id || ext?.name || "")}&store=chrome`
+  );
+}
+
 function render(data) {
   const list = $("missingList");
   const summary = $("summary");
@@ -152,12 +187,34 @@ function render(data) {
     meta.className = "history-meta";
     meta.textContent = `${t("version")}: v${ext.version || "?"} · ${t("installType")}: ${ext.installType || "unknown"} · ${t("id")}: ${ext.id}`;
 
+    const src = document.createElement("div");
+    src.className = "history-meta";
+    src.textContent = `${t("sourceLabel")}: ${ext.store?.source === "edge" ? t("sourceEdge") : ext.store?.source === "chrome" ? t("sourceChrome") : t("sourceUnknown")}`;
+
+    main.append(src);
     main.append(title, meta);
 
     const actions = document.createElement("div");
     actions.className = "extension-recovery-actions";
 
     const install = storeAction(ext);
+    if (!install || !storeReachable(ext)) {
+      const search = document.createElement("a");
+      search.className = "secondary";
+      search.href = crxsosoUrl(ext);
+      search.target = "_blank";
+      search.rel = "noreferrer noopener";
+      search.textContent = t("searchCrxsoso");
+      search.addEventListener("click", (event) => {
+        if (!window.confirm(t("crxsosoConfirm"))) event.preventDefault();
+      });
+      actions.append(search);
+      const risk = document.createElement("span");
+      risk.className = "muted small";
+      risk.textContent = t("crxsosoRisk");
+      actions.append(risk);
+    }
+
     if (install) {
       const link = document.createElement("a");
       link.className = "secondary";

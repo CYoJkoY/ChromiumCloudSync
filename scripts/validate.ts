@@ -42,6 +42,8 @@ const sourceFiles = [
   "src/runtime/diagnostics.ts",
   "src/runtime/legacy-crypto.ts",
   "src/runtime/background.ts",
+  "src/runtime/cloud-gdrive.ts",
+  "src/runtime/cloud-webdav.ts",
   "src/features/extension-storage.ts",
   "src/features/extension-storage-watch.ts",
   "src/features/update.ts",
@@ -109,6 +111,8 @@ const runtimeFiles = [
   "popup-fixes.js",
   "runtime.js",
   "theme.js",
+  "cloud-gdrive.js",
+  "cloud-webdav.js",
 ];
 
 for (const file of sourceFiles)

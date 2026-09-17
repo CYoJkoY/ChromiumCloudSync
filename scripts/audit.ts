@@ -62,6 +62,7 @@ const allowedPermissions = new Set([
   "bookmarks",
   "tabGroups",
   "downloads",
+  "identity",
 ]);
 for (const permission of manifest.permissions ?? []) {
   if (!allowedPermissions.has(permission))
@@ -70,6 +71,8 @@ for (const permission of manifest.permissions ?? []) {
 const allowedHosts = new Set([
   "https://api.github.com/*",
   "https://gist.githubusercontent.com/*",
+  "https://www.googleapis.com/*",
+  "https://oauth2.googleapis.com/*",
 ]);
 for (const host of manifest.host_permissions ?? []) {
   if (!allowedHosts.has(host))

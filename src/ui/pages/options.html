@@ -189,6 +189,174 @@
             <div class="tab-panel" id="panel-sync" role="tabpanel">
               <section class="card sync-section">
                 <div class="card-title">
+                  <span data-i18n="providerTitle">Cloud sync provider</span>
+                </div>
+                <p class="card-desc" data-i18n="providerHelp">
+                  Choose where the browser state is stored. Credentials stay on
+                  this device.
+                </p>
+                <div class="sync-field-group">
+                  <label class="field-label">
+                    <span class="field-label-text" data-i18n="provider"
+                      >Provider</span
+                    >
+                    <select class="field" id="provider">
+                      <option value="gist" data-i18n="providerGist">
+                        GitHub Gist
+                      </option>
+                      <option value="gdrive" data-i18n="providerGdrive">
+                        Google Drive
+                      </option>
+                      <option value="webdav" data-i18n="providerWebdav">
+                        WebDAV
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <div class="subcard" id="gdriveCard" hidden>
+                  <div class="subcard-title" data-i18n="gdriveTitle">
+                    Google Drive
+                  </div>
+                  <div class="ccsync-ext-grid">
+                    <label class="field-label"
+                      ><span class="field-label-text" data-i18n="gdriveClientId"
+                        >OAuth Client ID</span
+                      ><input
+                        class="field"
+                        id="gdriveClientId"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="xxxxxxxx.apps.googleusercontent.com"
+                    /></label>
+                    <label class="field-label"
+                      ><span
+                        class="field-label-text"
+                        data-i18n="gdriveClientSecret"
+                        >Client Secret (optional)</span
+                      ><input
+                        class="field"
+                        id="gdriveClientSecret"
+                        type="password"
+                        autocomplete="off"
+                    /></label>
+                  </div>
+                  <div class="btn-row">
+                    <button
+                      class="primary"
+                      data-i18n="gdriveConnect"
+                      id="gdriveConnect"
+                      type="button"
+                    >
+                      Connect Google Drive
+                    </button>
+                    <button
+                      class="secondary"
+                      data-i18n="gdriveDisconnect"
+                      id="gdriveDisconnect"
+                      type="button"
+                    >
+                      Disconnect
+                    </button>
+                    <button
+                      class="secondary"
+                      data-i18n="testConnection"
+                      id="providerTest"
+                      type="button"
+                    >
+                      Test connection
+                    </button>
+                  </div>
+                </div>
+                <div class="subcard" id="webdavCard" hidden>
+                  <div class="subcard-title" data-i18n="webdavTitle">
+                    WebDAV
+                  </div>
+                  <div class="ccsync-ext-grid">
+                    <label class="field-label"
+                      ><span class="field-label-text" data-i18n="webdavUrl"
+                        >WebDAV URL</span
+                      ><input
+                        class="field"
+                        id="webdavSyncUrl"
+                        type="url"
+                        placeholder="https://nas.example.com/dav"
+                    /></label>
+                    <label class="field-label"
+                      ><span class="field-label-text" data-i18n="webdavFolder"
+                        >Remote folder</span
+                      ><input
+                        class="field"
+                        id="webdavSyncFolder"
+                        type="text"
+                        placeholder="/ChromiumCloudSync"
+                    /></label>
+                    <label class="field-label"
+                      ><span class="field-label-text" data-i18n="webdavUser"
+                        >Username</span
+                      ><input
+                        class="field"
+                        id="webdavSyncUsername"
+                        type="text"
+                        autocomplete="off"
+                    /></label>
+                    <label class="field-label"
+                      ><span class="field-label-text" data-i18n="webdavPass"
+                        >Password / app password</span
+                      ><input
+                        class="field"
+                        id="webdavSyncPassword"
+                        type="password"
+                        autocomplete="off"
+                    /></label>
+                  </div>
+                  <div class="btn-row">
+                    <button
+                      class="primary"
+                      data-i18n="saveWebdav"
+                      id="webdavSave"
+                      type="button"
+                    >
+                      Save WebDAV settings
+                    </button>
+                    <button
+                      class="secondary"
+                      data-i18n="testConnection"
+                      id="webdavTest"
+                      type="button"
+                    >
+                      Test connection
+                    </button>
+                  </div>
+                </div>
+                <div class="subcard auto-sync-card">
+                  <div class="subcard-title" data-i18n="restoreModeTitle">
+                    Restore mode
+                  </div>
+                  <label class="field-label"
+                    ><span class="field-label-text" data-i18n="restoreGroupMode"
+                      >Tab group restore</span
+                    >
+                    <select class="field" id="restoreGroupMode">
+                      <option value="ondemand" data-i18n="restoreOnDemand">
+                        On demand (do not expand groups)
+                      </option>
+                      <option value="expand" data-i18n="restoreExpand">
+                        Expand all groups immediately
+                      </option>
+                    </select>
+                  </label>
+                  <button
+                    class="secondary block-action"
+                    data-i18n="saveRestoreMode"
+                    id="saveRestoreMode"
+                    type="button"
+                  >
+                    Save restore mode
+                  </button>
+                </div>
+              </section>
+              <section class="card sync-section">
+                <div class="card-title">
                   <span data-i18n="githubConnection">GitHub connection</span>
                 </div>
                 <p class="card-desc" data-i18n="tokenHelp">

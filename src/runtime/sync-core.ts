@@ -6,7 +6,7 @@ import type {
   UnknownRecord,
 } from "./types.js";
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 export const HISTORY_LIMIT = 30;
 
 const emptySnapshot = (): Snapshot => ({
@@ -14,6 +14,7 @@ const emptySnapshot = (): Snapshot => ({
   extensions: [],
   windows: [],
   bookmarks: [],
+  groups: [],
 });
 export function clone<T>(value: T): T {
   return value == null ? value : (JSON.parse(JSON.stringify(value)) as T);
@@ -304,6 +305,7 @@ export function mergeSnapshots(
     extensions: [],
     windows: [],
     bookmarks: [],
+    groups: [],
   };
   const syncMeta = local.syncMeta ?? remote.syncMeta ?? base.syncMeta;
   if (syncMeta !== undefined) out.syncMeta = clone(syncMeta);
@@ -324,6 +326,13 @@ export function mergeSnapshots(
       strategy: "device-live-state",
     });
   }
+  out.groups = mergeArray(
+    base.groups ?? [],
+    local.groups ?? [],
+    remote.groups ?? [],
+    conflicts,
+    "groups",
+  ) as never;
   out.extensions = mergeArray(
     base.extensions,
     local.extensions,
@@ -357,6 +366,10 @@ export function extractEntities(
     for (const tab of window.tabs ?? []) {
       put("tabs", tab);
       if (tab.group?.syncId) put("groups", tab.group);
+    }
+    for (const group of snapshot.groups ?? []) {
+      put("groups", group);
+      for (const tab of group.tabs ?? []) put("tabs", tab);
     }
   }
   for (const bookmark of snapshot.bookmarks ?? []) put("bookmarks", bookmark);
@@ -416,6 +429,17 @@ export function applyTombstones(
   out.bookmarks = (out.bookmarks ?? []).filter(
     (b) => !deleted.has(`bookmarks:${objectId(b)}`),
   );
+  out.groups = (out.groups ?? []).filter(
+    (g) => !deleted.has(`groups:${objectId(g)}`),
+  );
+
+  for (const g of out.groups ?? []) {
+    if (Array.isArray(g.tabs)) {
+      g.tabs = (g.tabs as UnknownRecord[]).filter(
+        (t) => !deleted.has(`tabs:${objectId(t)}`),
+      );
+    }
+  }
   return out;
 }
 export function mergeDeviceStates(
@@ -435,11 +459,13 @@ export function mergeDeviceStates(
     extensions: [],
     bookmarks: [],
     windows: [],
+    groups: [],
   };
   const collections: Array<"extensions" | "bookmarks" | "windows"> = [
     "extensions",
     "bookmarks",
     "windows",
+    "groups",
   ];
   for (const collection of collections) {
     const map = new Map<string, { item: UnknownRecord; updatedAt: string }>();

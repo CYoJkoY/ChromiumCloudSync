@@ -21,6 +21,118 @@ import {
   getSyncDiagnostics,
   saveSyncDiagnostics,
 } from "./diagnostics.js";
+import {
+  connectGoogleDrive,
+  disconnectGoogleDrive,
+  gdriveTest,
+  gdriveLoad,
+  gdriveCreate,
+  gdriveSave,
+  gdriveRevisions,
+  gdriveLoadRevision,
+} from "./cloud-gdrive.js";
+import {
+  webdavTest,
+  webdavLoad,
+  webdavCreate,
+  webdavSave,
+  webdavRevisions,
+  webdavLoadRevision,
+} from "./cloud-webdav.js";
+
+async function activeProvider() {
+  const s = await getSettings();
+  return ["gdrive", "webdav"].includes(String(s[KEYS.PROVIDER] || ""))
+    ? String(s[KEYS.PROVIDER])
+    : "gist";
+}
+async function providerBound() {
+  const p = await activeProvider();
+  if (p === "gist") {
+    const s = await getSettings();
+    return !!(s[KEYS.GIST_ID] && String(s[KEYS.GITHUB_TOKEN] || "").trim());
+  }
+  if (p === "gdrive") {
+    const s = await readLocal(["gdriveTokens"]);
+    return !!s.gdriveTokens;
+  }
+  const s = await readLocal([KEYS.WEBDAV_URL]);
+  return !!String(s[KEYS.WEBDAV_URL] || "").trim();
+}
+async function readRemote() {
+  const p = await activeProvider();
+  if (p === "gist") {
+    const s = await getSettings();
+    if (!s[KEYS.GIST_ID]) throw Error("尚未绑定 GitHub Gist");
+    return loadRemote(s[KEYS.GIST_ID]);
+  }
+  const raw = p === "gdrive" ? await gdriveLoad() : await webdavLoad();
+  return {
+    state: validatedState(raw),
+    raw,
+    files: {},
+    manifest: {
+      schemaVersion: SCHEMA_VERSION,
+      format: `${p}-v1`,
+      currentFile: "current.json",
+      revision: Number(raw?.revision || 0),
+    },
+    updatedAt: String(raw?.updatedAt || ""),
+  };
+}
+async function writeRemote(state, priorRaw) {
+  const p = await activeProvider();
+  if (p === "gist") {
+    const s = await getSettings();
+    await updateGist(
+      s[KEYS.GIST_ID],
+      state,
+      (priorRaw && priorRaw.files) || {},
+    );
+    return { revision: Number(state.revision || 0) };
+  }
+  return p === "gdrive" ? gdriveSave(state) : webdavSave(state);
+}
+async function createRemote(state) {
+  const p = await activeProvider();
+  if (p === "gist") {
+    const g = await createGist(state);
+    return { location: g.id };
+  }
+  return p === "gdrive" ? gdriveCreate(state) : webdavCreate(state);
+}
+async function remoteRevisions() {
+  const p = await activeProvider();
+  if (p === "gist") {
+    const s = await getSettings();
+    const r = await github(
+      `/gists/${encodeURIComponent(s[KEYS.GIST_ID])}/commits?per_page=30`,
+    );
+    const loaded = await loadRemote(s[KEYS.GIST_ID]);
+    const cur = loaded.raw.gist?.history?.[0]?.version || "";
+    return (r.data || []).map((c, i) => ({
+      sha: c.version,
+      index: i,
+      createdAt: c.committed_at,
+      user: c.user?.login || "",
+      changes: c.change_status || {},
+      current: c.version === cur,
+    }));
+  }
+  return p === "gdrive" ? gdriveRevisions() : webdavRevisions();
+}
+async function remoteRevisionState(id) {
+  const p = await activeProvider();
+  if (p === "gist")
+    return revisionState(
+      await getGistRevision((await getSettings())[KEYS.GIST_ID], id),
+    );
+  return validatedState(
+    p === "gdrive"
+      ? await gdriveLoadRevision(id)
+      : await webdavLoadRevision(id),
+  );
+}
 
 const GITHUB_API = "https://api.github.com";
 const CURRENT_FILE = "current.json";
@@ -47,6 +159,13 @@ const KEYS = {
   BOOKMARK_SYNC_IDS: "bookmarkSyncIds",
   LAST_CONFLICTS: "lastSyncConflicts",
   LAST_SYNC_DIAGNOSTICS: "lastSyncDiagnostics",
+  PROVIDER: "syncProvider",
+  GDRIVE_FILE: "gdriveFileId",
+  WEBDAV_URL: "webdavSyncUrl",
+  WEBDAV_DIR: "webdavSyncFolder",
+  WEBDAV_USER: "webdavSyncUsername",
+  WEBDAV_PASS: "webdavSyncPassword",
+  RESTORE_GROUP_MODE: "restoreGroupMode",
 };
 const LEGACY_LOCAL_KEYS = [
   "deviceId",
@@ -176,9 +295,12 @@ function extensionStoreInfo(ext) {
   if (/edge\.microsoft\.com|microsoftedge/i.test(update + homepage))
     source = "edge";
   else if (/google\.com|chromewebstore/i.test(homepage)) source = "chrome";
+  const keyword = id || ext.name || "";
   return {
     chromeUrl: `https://chromewebstore.google.com/detail/${id}`,
     edgeUrl: `https://microsoftedge.microsoft.com/addons/detail/${id}`,
+    crxsosoUrl: `https://www.crxsoso.com/search?keyword=${encodeURIComponent(keyword)}&store=chrome`,
+    crxsosoDetailUrl: id ? `https://www.crxsoso.com/webstore/detail/${id}` : "",
     source,
   };
 }
@@ -205,19 +327,34 @@ function isRestrictedUrl(url) {
   if (!value) return true;
   return !/^https?:\/\//i.test(value);
 }
-async function collectTabGroups() {
+async function collectGroupSnapshots() {
   if (!chrome.tabGroups?.query) return [];
   const groups = await chrome.tabGroups.query({});
-  return Promise.all(
-    groups.map(async (g) => ({
+  const all = await chrome.tabs.query({});
+  const out = [];
+  for (const g of groups) {
+    const tabs = all
+      .filter((t) => t.groupId === g.id && !isRestrictedUrl(t.url))
+      .sort((a, b) => a.index - b.index);
+    out.push({
       syncId: await getStableLocalId("group", g.id, KEYS.GROUP_SYNC_IDS),
-      localId: g.id,
-      windowId: g.windowId,
       title: g.title || "",
       color: g.color || "grey",
       collapsed: !!g.collapsed,
-    })),
-  );
+      updatedAt: new Date().toISOString(),
+      tabs: await Promise.all(
+        tabs.map(async (t) => ({
+          syncId: await getStableLocalId("tab", t.id, KEYS.TAB_SYNC_IDS),
+          url: t.url,
+          title: t.title || "",
+          pinned: !!t.pinned,
+          active: !!t.active,
+          index: t.index,
+        })),
+      ),
+    });
+  }
+  return out;
 }
 async function collectTabs() {
   const windows = await chrome.windows.getAll({ populate: true }),
@@ -297,6 +434,7 @@ async function createSnapshot() {
     extensions: await collectExtensions(),
     windows: await collectTabs(),
     bookmarks: await collectBookmarks(),
+    groups: await collectGroupSnapshots(),
     syncMeta: { gistId: s[KEYS.GIST_ID] || null },
   };
 }
@@ -520,7 +658,7 @@ async function loadRemote(gistId) {
       legacy: true,
     };
   }
-  if (![7, 8, 9, 10].includes(Number(manifest.schemaVersion)))
+  if (![7, 8, 9, 10, 11].includes(Number(manifest.schemaVersion)))
     throw Error(`不支持的 Gist schema: ${manifest.schemaVersion}`);
   manifest.schemaVersion = SCHEMA_VERSION;
   const currentFile = manifest.currentFile || CURRENT_FILE;
@@ -693,7 +831,12 @@ async function pushSnapshot() {
   const localSnapshot = await createSnapshot();
   let settings = await getSettings(),
     gistId = settings[KEYS.GIST_ID] || "";
-  if (gistId && !(settings[KEYS.GITHUB_TOKEN] || "").trim())
+  let bound = await providerBound();
+  if (
+    !bound &&
+    (await activeProvider()) === "gist" &&
+    !(settings[KEYS.GITHUB_TOKEN] || "").trim()
+  )
     throw Error("未配置 GitHub Token");
   for (let attempt = 1; attempt <= MAX_PUSH_RETRIES; attempt++) {
     let remoteState = {
@@ -710,8 +853,8 @@ async function pushSnapshot() {
       },
       raw = null,
       legacyEncrypted = false;
-    if (gistId) {
-      const loaded = await loadRemote(gistId);
+    if (bound) {
+      const loaded = await readRemote();
       remoteState = loaded.state;
       raw = loaded.raw;
       legacyEncrypted = !!loaded.legacyEncrypted;
@@ -724,14 +867,14 @@ async function pushSnapshot() {
       remoteState,
       currentBase,
     );
-    if (!gistId) {
-      const created = await createGist(built.state);
-      gistId = created.id;
+    if (!bound) {
+      const created = await createRemote(built.state);
+      bound = true;
     } else {
-      await updateGist(gistId, built.state, raw.files || {});
+      await writeRemote(built.state, raw);
       if (legacyEncrypted) await cleanupLegacyLocalState();
     }
-    const verify = await loadRemote(gistId);
+    const verify = await readRemote();
     const remoteChecksum = checksum(verify.state.snapshot),
       builtChecksum = checksum(built.state.snapshot);
     if (
@@ -754,13 +897,14 @@ async function pushSnapshot() {
     });
     return {
       ok: true,
-      gistId,
+      gistId: (await getSettings())[KEYS.GIST_ID] || "",
+      provider: await activeProvider(),
       revision: built.revision,
       updatedAt: built.state.updatedAt,
       extensionCount: built.state.snapshot?.extensions?.length || 0,
       tabCount: countTabs(built.state.snapshot),
       bookmarkCount: countBookmarks(built.state.snapshot?.bookmarks),
-      groupCount: countGroups(built.state.snapshot?.windows),
+      groupCount: countGroups(built.state.snapshot),
       conflicts: built.conflicts.length,
     };
   }
@@ -771,30 +915,42 @@ function countTabs(s) {
 function countBookmarks(a) {
   return (a || []).filter((x) => x.url).length;
 }
-function countGroups(ws) {
-  const s = new Set();
-  for (const w of ws || [])
-    for (const t of w.tabs || []) if (t.group?.syncId) s.add(t.group.syncId);
-  return s.size;
+function countGroups(s) {
+  if (Array.isArray(s?.groups)) return s.groups.length;
+  const set = new Set();
+  for (const w of s?.windows || [])
+    for (const t of w.tabs || []) if (t.group?.syncId) set.add(t.group.syncId);
+  return set.size;
 }
 async function pullState() {
   const s = await getSettings();
-  if (!s[KEYS.GIST_ID]) throw Error("尚未绑定 GitHub Gist");
-  const loaded = await loadRemote(s[KEYS.GIST_ID]);
+  if (!(await providerBound())) throw Error("尚未配置云同步后端");
+  const loaded = await readRemote();
   await setSettings({
     [KEYS.LAST_REMOTE_UPDATED]: loaded.raw.updatedAt,
     [KEYS.ETAG]: loaded.raw.etag || "",
   });
   return loaded.state;
 }
-async function restoreTabs(windows) {
+async function restoreTabs(windows, options = {}) {
+  const mode = String(
+    options.restoreGroupMode ||
+      (await getSettings())[KEYS.RESTORE_GROUP_MODE] ||
+      "ondemand",
+  );
+  const includeGroups = options.includeGroups === true || mode === "expand";
   let wc = 0,
     tc = 0,
     gc = 0,
     skipped = 0;
   for (const source of windows || []) {
     const tabs = (source.tabs || [])
-      .filter((t) => t.url && !isRestrictedUrl(t.url))
+      .filter(
+        (t) =>
+          t.url &&
+          !isRestrictedUrl(t.url) &&
+          (includeGroups || !t.group?.syncId),
+      )
       .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
     if (!tabs.length) continue;
     const requestedState =
@@ -829,6 +985,7 @@ async function restoreTabs(windows) {
               })
             : await chrome.tabs.create(createData);
         restored.push({ source: t, tabId: c.id });
+        if (i > 0 && i % 10 === 0) await new Promise((r) => setTimeout(r, 0));
         tc++;
       } catch (e) {
         skipped++;
@@ -863,7 +1020,57 @@ async function restoreTabs(windows) {
       }
     }
   }
-  return { windows: wc, tabs: tc, groups: gc, skipped };
+  if (!includeGroups)
+    return { windows: wc, tabs: tc, groups: 0, skipped, groupsDeferred: true };
+}
+async function restoreGroup(groupSyncId) {
+  const state = await pullState();
+  const g = (state.snapshot?.groups || []).find(
+    (x) => x.syncId === groupSyncId,
+  );
+  if (!g) throw Error("云端没有这个标签组");
+  const tabs = (g.tabs || [])
+    .filter((t) => t.url && !isRestrictedUrl(t.url))
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  if (!tabs.length) throw Error("该标签组没有可恢复的标签页");
+  let w;
+  try {
+    w = await chrome.windows.create({ focused: true });
+  } catch (e) {
+    w = await chrome.windows.create({});
+  }
+  const placeholder = w.tabs?.[0],
+    ids = [];
+  for (let i = 0; i < tabs.length; i++) {
+    const t = tabs[i];
+    const c =
+      i === 0 && placeholder
+        ? await chrome.tabs.update(placeholder.id, {
+            url: t.url,
+            pinned: !!t.pinned,
+            active: true,
+          })
+        : await chrome.tabs.create({
+            windowId: w.id,
+            url: t.url,
+            active: false,
+            pinned: !!t.pinned,
+          });
+    ids.push(c.id);
+    if (i > 0 && i % 10 === 0) await new Promise((r) => setTimeout(r, 0));
+  }
+  const gid = await chrome.tabs.group({
+    tabIds: ids,
+    createProperties: { windowId: w.id },
+  });
+  try {
+    await chrome.tabGroups.update(gid, {
+      title: g.title || undefined,
+      color: g.color || "grey",
+      collapsed: !!g.collapsed,
+    });
+  } catch {}
+  return { tabs: ids.length, groups: 1, windowId: w.id };
 }
 async function restoreBookmarks(nodes) {
   const incoming = Array.isArray(nodes) ? nodes : [],
@@ -987,14 +1194,7 @@ async function historyData() {
   return {
     gistId: s[KEYS.GIST_ID],
     revision: Number(loaded.state?.revision || loaded.manifest?.revision || 0),
-    commits: (r.data || []).map((c, index) => ({
-      sha: c.version,
-      index,
-      createdAt: c.committed_at,
-      user: c.user?.login || "",
-      changes: c.change_status || {},
-      current: c.version === currentSha,
-    })),
+    commits: await remoteRevisions(),
     state: loaded.state,
   };
 }
@@ -1003,8 +1203,7 @@ async function rollbackHistory(revision) {
   if (!settings[KEYS.GIST_ID]) throw Error("尚未绑定 GitHub Gist");
   if (!revision) throw Error("缺少历史 Revision");
   const current = await loadRemote(settings[KEYS.GIST_ID]),
-    historicalGist = await getGistRevision(settings[KEYS.GIST_ID], revision),
-    historical = await revisionState(historicalGist),
+    historical = await remoteRevisionState(revision),
     now = new Date().toISOString(),
     next = {
       ...historical,
@@ -1049,7 +1248,7 @@ async function saveState(gistId, loaded, nextState) {
       snapshot: normalizeSnapshot(nextState.snapshot),
     };
   state.snapshot.updatedAt = now;
-  await updateGist(gistId, state, loaded.raw.files || {});
+  await writeRemote(state, loaded.raw);
   await setSettings({
     [KEYS.BASE_SNAPSHOT]: state.snapshot,
     [KEYS.BASE_REVISION]: revision,
@@ -1063,7 +1262,7 @@ async function saveState(gistId, loaded, nextState) {
 async function missingExtensions() {
   const local = await collectExtensions(),
     settings = await getSettings();
-  if (!settings[KEYS.GIST_ID])
+  if (!(await providerBound()))
     return {
       local,
       remote: [],
@@ -1169,7 +1368,7 @@ chrome.alarms.onAlarm.addListener(async (a) => {
     const cfg = await getAutoSyncSettings();
     if (!cfg.enabled) return;
     const s = await getSettings();
-    if (s[KEYS.GITHUB_TOKEN] && s[KEYS.GIST_ID]) await runSyncWithDiagnostics();
+    if (await providerBound()) await runSyncWithDiagnostics();
   } catch (e) {
     console.warn("Gist sync failed", e);
   }
@@ -1323,7 +1522,23 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
       case "pullState":
         return pullState();
       case "restoreTabs":
-        return restoreTabs(m.windows);
+        return restoreTabs(m.windows, {
+          includeGroups: m.includeGroups === true,
+          restoreGroupMode: m.restoreGroupMode,
+        });
+      case "cloudGroups": {
+        const s = await pullState();
+        return (s.snapshot?.groups || []).map((g) => ({
+          syncId: g.syncId,
+          title: g.title || "",
+          color: g.color || "grey",
+          collapsed: !!g.collapsed,
+          tabCount: (g.tabs || []).length,
+          updatedAt: g.updatedAt || "",
+        }));
+      }
+      case "restoreGroup":
+        return restoreGroup(m.groupSyncId);
       case "restoreBookmarks":
         return restoreBookmarks(m.bookmarks);
       case "missingExtensions":
@@ -1332,6 +1547,72 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         return rollbackHistory(m.revision);
       case "historyData":
         return historyData();
+      case "providerStatus": {
+        const s = await getSettings();
+        return {
+          provider: await activeProvider(),
+          bound: await providerBound(),
+          gistId: s[KEYS.GIST_ID] || "",
+          gdriveConnected: !!(await readLocal(["gdriveTokens"])).gdriveTokens,
+          webdavUrl: String(
+            (await readLocal([KEYS.WEBDAV_URL]))[KEYS.WEBDAV_URL] || "",
+          ),
+          restoreGroupMode: String(s[KEYS.RESTORE_GROUP_MODE] || "ondemand"),
+        };
+      }
+      case "setProvider": {
+        const value = ["gdrive", "webdav"].includes(String(m.provider))
+          ? String(m.provider)
+          : "gist";
+        await setSettings({ [KEYS.PROVIDER]: value });
+        await setupAlarms();
+        return { provider: value };
+      }
+      case "connectGdrive":
+        return connectGoogleDrive(
+          String(m.clientId || ""),
+          String(m.clientSecret || ""),
+        );
+      case "disconnectGdrive":
+        return disconnectGoogleDrive();
+      case "testProvider": {
+        const p = await activeProvider();
+        if (p === "gist") {
+          const s = await getSettings();
+          if (!String(s[KEYS.GITHUB_TOKEN] || "").trim())
+            throw Error("未配置 GitHub Token");
+          await github("/user", {});
+        } else if (p === "gdrive") await gdriveTest();
+        else await webdavTest();
+        return { ok: true, provider: p };
+      }
+      case "saveWebdav": {
+        const url = String(m.url || "").trim();
+        if (url) {
+          const origin = `${new URL(url).origin}/*`;
+          if (
+            chrome.permissions?.request &&
+            !(await chrome.permissions.contains({ origins: [origin] }))
+          ) {
+            if (!(await chrome.permissions.request({ origins: [origin] })))
+              throw Error("WebDAV 需要允许访问该服务器地址");
+          }
+        }
+        await setSettings({
+          [KEYS.WEBDAV_URL]: url,
+          [KEYS.WEBDAV_DIR]: String(m.folder || "").trim(),
+          [KEYS.WEBDAV_USER]: String(m.user || ""),
+          [KEYS.WEBDAV_PASS]: String(m.pass || ""),
+        });
+        return { ok: true };
+      }
+      case "setRestoreGroupMode": {
+        await setSettings({
+          [KEYS.RESTORE_GROUP_MODE]:
+            String(m.mode) === "expand" ? "expand" : "ondemand",
+        });
+        return { mode: String(m.mode) === "expand" ? "expand" : "ondemand" };
+      }
       default:
         throw Error(`Unknown message: ${m.type}`);
     }

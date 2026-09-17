@@ -8,6 +8,115 @@ const $ = (id) => document.getElementById(id),
   autoSyncEnabledEl = $("autoSyncEnabled"),
   syncIntervalEl = $("syncInterval"),
   appVersionEl = $("appVersion");
+const providerEl = $("provider"),
+  gdriveCard = $("gdriveCard"),
+  webdavCard = $("webdavCard"),
+  restoreModeEl = $("restoreGroupMode");
+
+function toggleProvider() {
+  const v = providerEl?.value || "gist";
+  if (gdriveCard) {
+    gdriveCard.hidden = v !== "gdrive";
+    gdriveCard.classList.toggle("ccsync-ext-hidden", v !== "gdrive");
+  }
+  if (webdavCard) {
+    webdavCard.hidden = v !== "webdav";
+    webdavCard.classList.toggle("ccsync-ext-hidden", v !== "webdav");
+  }
+  const gh = v === "gist";
+  for (const el of [
+    $("token")?.closest(".sync-field-group"),
+    $("gist")?.closest(".sync-field-group"),
+    $("create"),
+    $("save"),
+  ])
+    if (el) {
+      el.hidden = !gh;
+      el.classList.toggle("ccsync-ext-hidden", !gh);
+    }
+}
+providerEl?.addEventListener("change", async () => {
+  toggleProvider();
+  try {
+    await request("setProvider", { provider: providerEl.value });
+    showFeedback("success", i.t("providerSaved"), providerEl.value);
+  } catch (e) {
+    showError(e);
+  }
+});
+$("gdriveConnect")?.addEventListener("click", async () => {
+  try {
+    await request("connectGdrive", {
+      clientId: $("gdriveClientId")?.value || "",
+      clientSecret: $("gdriveClientSecret")?.value || "",
+    });
+    showFeedback("success", i.t("gdriveConnected"), "");
+    await refresh();
+  } catch (e) {
+    showError(e);
+  }
+});
+$("gdriveDisconnect")?.addEventListener("click", async () => {
+  try {
+    await request("disconnectGdrive");
+    showFeedback("success", i.t("gdriveDisconnected"), "");
+    await refresh();
+  } catch (e) {
+    showError(e);
+  }
+});
+$("webdavSave")?.addEventListener("click", async () => {
+  try {
+    await request("saveWebdav", {
+      url: $("webdavSyncUrl")?.value || "",
+      folder: $("webdavSyncFolder")?.value || "",
+      user: $("webdavSyncUsername")?.value || "",
+      pass: $("webdavSyncPassword")?.value || "",
+    });
+    showFeedback("success", i.t("providerSaved"), "WebDAV");
+    await refresh();
+  } catch (e) {
+    showError(e);
+  }
+});
+for (const id of ["providerTest", "webdavTest"])
+  $(id)?.addEventListener("click", async () => {
+    try {
+      await request("testProvider");
+      showFeedback("success", i.t("connectionOk"), "");
+    } catch (e) {
+      showError(e);
+    }
+  });
+$("saveRestoreMode")?.addEventListener("click", async () => {
+  try {
+    await request("setRestoreGroupMode", {
+      mode: restoreModeEl?.value || "ondemand",
+    });
+    showFeedback("success", i.t("restoreModeSaved"), "");
+  } catch (e) {
+    showError(e);
+  }
+});
+async function loadProvider() {
+  const r = await request("providerStatus");
+  if (providerEl) providerEl.value = r.provider;
+  if (restoreModeEl) restoreModeEl.value = r.restoreGroupMode || "ondemand";
+  const w = await storageGet([
+    "webdavSyncUrl",
+    "webdavSyncFolder",
+    "webdavSyncUsername",
+    "webdavSyncPassword",
+  ]);
+  if ($("webdavSyncUrl")) $("webdavSyncUrl").value = w.webdavSyncUrl || "";
+  if ($("webdavSyncFolder"))
+    $("webdavSyncFolder").value = w.webdavSyncFolder || "";
+  if ($("webdavSyncUsername"))
+    $("webdavSyncUsername").value = w.webdavSyncUsername || "";
+  if ($("webdavSyncPassword"))
+    $("webdavSyncPassword").value = w.webdavSyncPassword || "";
+  toggleProvider();
+}
 function renderVersion() {
   if (!appVersionEl) return;
   const version = chrome.runtime.getManifest()?.version || "";
@@ -84,7 +193,8 @@ function normalizeGistId(v) {
 }
 bindAction("validate", async (_e, b) => {
   const t = String(tokenEl?.value || "").trim();
-  if (!t) throw Error(i.t("needsToken"));
+  const p = String(providerEl?.value || "gist");
+  if (p === "gist" && !t) throw Error(i.t("needsToken"));
   const o = b.textContent;
   b.disabled = true;
   b.textContent = i.t("processing");
@@ -105,7 +215,8 @@ bindAction("validate", async (_e, b) => {
 bindAction("save", async (_e, b) => {
   const t = tokenEl.value.trim(),
     g = normalizeGistId(gistEl.value);
-  if (!t) throw Error(i.t("needsToken"));
+  const p = String(providerEl?.value || "gist");
+  if (p === "gist" && !t) throw Error(i.t("needsToken"));
   if (!g) throw Error(i.t("gistRequired"));
   const o = b.textContent;
   b.disabled = true;
@@ -123,7 +234,8 @@ bindAction("save", async (_e, b) => {
 });
 bindAction("create", async (_e, b) => {
   const t = tokenEl.value.trim();
-  if (!t) throw Error(i.t("needsToken"));
+  const p = String(providerEl?.value || "gist");
+  if (p === "gist" && !t) throw Error(i.t("needsToken"));
   await storageSet({ githubToken: t });
   const o = b.textContent;
   b.disabled = true;

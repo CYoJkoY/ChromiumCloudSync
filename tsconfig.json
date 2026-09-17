@@ -23,6 +23,8 @@
     "src/runtime/storage.ts",
     "src/runtime/sync-core.ts",
     "src/runtime/types.ts",
+    "src/runtime/cloud-gdrive.ts",
+    "src/runtime/cloud-webdav.ts",
     "src/features/extension-storage-watch.ts",
     "src/features/extension-storage.ts",
     "src/features/update.ts",

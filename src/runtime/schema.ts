@@ -12,7 +12,7 @@ import type {
 } from "./types.js";
 import { SCHEMA_VERSION, mergeDeviceStates } from "./sync-core.js";
 
-export const SUPPORTED_SCHEMA_VERSIONS = [7, 8, 9, 10] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [7, 8, 9, 10, 11] as const;
 export type SupportedSchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 
 export class SchemaValidationError extends Error {
@@ -61,6 +61,42 @@ function flattenLegacyBookmarks(
     flattenLegacyBookmarks(node.children, syncId, out);
   }
   return out;
+}
+
+function deriveGroupsFromWindows(windows: unknown): TabGroupRecord[] {
+  const out = new Map<string, TabGroupRecord>();
+  if (!Array.isArray(windows)) return [];
+  for (const win of windows) {
+    if (!isRecord(win)) continue;
+    for (const raw of Array.isArray(win.tabs) ? win.tabs : []) {
+      if (!isRecord(raw) || !isRecord(raw.group)) continue;
+      const g = raw.group as unknown as TabGroupRecord;
+      if (!isNonEmptyString(g.syncId)) continue;
+      const entry = out.get(g.syncId) ?? {
+        syncId: g.syncId,
+        title: typeof g.title === "string" ? g.title : "",
+        color: isNonEmptyString(g.color) ? g.color : "grey",
+        collapsed: g.collapsed === true,
+        tabs: [] as TabRecord[],
+      };
+      if (Array.isArray(g.tabs)) {
+        out.set(g.syncId, g);
+        continue;
+      }
+      if (typeof raw.url === "string" && /^https?:\/\//i.test(raw.url)) {
+        (entry.tabs as TabRecord[]).push({
+          syncId: String(raw.syncId ?? ""),
+          url: raw.url,
+          title: typeof raw.title === "string" ? raw.title : "",
+          pinned: raw.pinned === true,
+          active: raw.active === true,
+          index: isFiniteNumber(raw.index) ? raw.index : 0,
+        });
+      }
+      out.set(g.syncId, entry);
+    }
+  }
+  return [...out.values()];
 }
 
 function normalizeSnapshotShape(input: unknown): Snapshot {
@@ -226,6 +262,13 @@ function validateTabGroup(
     );
   if (typeof value.collapsed !== "boolean")
     throw new SchemaValidationError(`${path}.collapsed must be boolean.`);
+  if (value.tabs !== undefined) {
+    if (!Array.isArray(value.tabs))
+      throw new SchemaValidationError(
+        `${path}.tabs must be an array when present.`,
+      );
+    value.tabs.forEach((tab, i) => validateTab(tab, `${path}.tabs[${i}]`));
+  }
 }
 
 function validateTab(value: unknown, path: string): asserts value is TabRecord {
@@ -378,6 +421,11 @@ export function validateCloudState(state: CloudState): CloudState {
     throw new SchemaValidationError("snapshot.windows must be an array.");
   if (!Array.isArray(state.snapshot.bookmarks))
     throw new SchemaValidationError("snapshot.bookmarks must be an array.");
+  if (!Array.isArray(state.snapshot.groups))
+    throw new SchemaValidationError("snapshot.groups must be an array.");
+  state.snapshot.groups.forEach((item, index) =>
+    validateTabGroup(item, `snapshot.groups[${index}]`),
+  );
   state.snapshot.extensions.forEach((item, index) =>
     validateExtension(item, index),
   );
@@ -392,7 +440,12 @@ export function validateCloudState(state: CloudState): CloudState {
   state.tombstones.forEach((item, index) => validateTombstone(item, index));
   state.conflicts.forEach((item, index) => validateConflict(item, index));
   const seen = new Set<string>();
-  for (const collection of ["extensions", "windows", "bookmarks"] as const)
+  for (const collection of [
+    "extensions",
+    "windows",
+    "bookmarks",
+    "groups",
+  ] as const)
     for (const item of state.snapshot[collection]) {
       const syncId = item.syncId;
       const key = `${collection}:${syncId}`;

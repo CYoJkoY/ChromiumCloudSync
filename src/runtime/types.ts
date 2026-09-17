@@ -24,6 +24,8 @@ export interface TabGroupRecord extends UnknownRecord {
   title: string;
   color: string;
   collapsed: boolean;
+  updatedAt?: string;
+  tabs?: TabRecord[];
 }
 
 export interface TabRecord extends UnknownRecord {
@@ -59,6 +61,7 @@ export interface Snapshot extends UnknownRecord {
   bookmarks: BookmarkRecord[];
   syncMeta?: UnknownRecord;
   device?: UnknownRecord;
+  groups?: TabGroupRecord[];
 }
 
 export interface Tombstone extends UnknownRecord {
