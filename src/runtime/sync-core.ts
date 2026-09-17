@@ -1,9 +1,14 @@
 import type {
+  BookmarkRecord,
   ConflictRecord,
+  ExtensionRecord,
   MergeResult,
   Snapshot,
+  TabGroupRecord,
+  TabRecord,
   Tombstone,
   UnknownRecord,
+  WindowRecord,
 } from "./types.js";
 
 export const SCHEMA_VERSION = 11;
@@ -218,17 +223,18 @@ export function mergeEntity(
   return out;
 }
 
-function mergeArray(
+function mergeArray<T extends UnknownRecord = UnknownRecord>(
   base: unknown,
   local: unknown[],
   remote: unknown[],
   conflicts: ConflictRecord[],
   path: string,
-): UnknownRecord[] {
+): T[] {
   const B = Array.isArray(base) ? base : [];
-  if (stableEqual(local, remote)) return clone(local) as UnknownRecord[];
-  if (stableEqual(local, B)) return clone(remote) as UnknownRecord[];
-  if (stableEqual(remote, B)) return clone(local) as UnknownRecord[];
+  if (stableEqual(local, remote)) return clone(local) as T[];
+  if (stableEqual(local, B)) return clone(remote) as T[];
+  if (stableEqual(remote, B)) return clone(local) as T[];
+
   const BObjects = B.filter(
     (x): x is UnknownRecord =>
       !!x && typeof x === "object" && !Array.isArray(x),
@@ -241,6 +247,7 @@ function mergeArray(
     (x): x is UnknownRecord =>
       !!x && typeof x === "object" && !Array.isArray(x),
   );
+
   if ([...BObjects, ...LObjects, ...RObjects].some((x) => !objectId(x))) {
     conflicts.push({
       type: "array-conflict",
@@ -252,17 +259,19 @@ function mergeArray(
       local: clone(local) as never,
       remote: clone(remote) as never,
     });
-    return clone(local) as UnknownRecord[];
+    return clone(local) as T[];
   }
+
   const bm = new Map(BObjects.map((x) => [String(objectId(x)), x]));
   const lm = new Map(LObjects.map((x) => [String(objectId(x)), x]));
   const rm = new Map(RObjects.map((x) => [String(objectId(x)), x]));
-  const out: UnknownRecord[] = [];
+  const out: T[] = [];
+
   for (const id of new Set([...bm.keys(), ...lm.keys(), ...rm.keys()])) {
-    const b = bm.get(id),
-      l = lm.get(id),
-      r = rm.get(id),
-      type = path.split(".")[0] || "objects";
+    const b = bm.get(id);
+    const l = lm.get(id);
+    const r = rm.get(id);
+    const type = path.split(".")[0] || "objects";
     if (!l && !r) continue;
     if (l && !r) {
       if (b && !stableEqual(l, b))
@@ -273,7 +282,7 @@ function mergeArray(
           status: "unresolved",
           winner: "local",
         });
-      out.push(clone(l));
+      out.push(clone(l) as T);
       continue;
     }
     if (!l && r) {
@@ -285,11 +294,14 @@ function mergeArray(
           status: "unresolved",
           winner: "remote",
         });
-      out.push(clone(r));
+      out.push(clone(r) as T);
       continue;
     }
-    out.push(mergeEntity(b ?? {}, l!, r!, type, conflicts, `${type}.${id}`));
+    out.push(
+      mergeEntity(b ?? {}, l!, r!, type, conflicts, `${type}.${id}`) as T,
+    );
   }
+
   out.sort((a, b) => Number(a.index ?? 0) - Number(b.index ?? 0));
   return out;
 }
@@ -326,27 +338,27 @@ export function mergeSnapshots(
       strategy: "device-live-state",
     });
   }
-  out.groups = mergeArray(
+  out.groups = mergeArray<TabGroupRecord>(
     base.groups ?? [],
     local.groups ?? [],
     remote.groups ?? [],
     conflicts,
     "groups",
-  ) as never;
-  out.extensions = mergeArray(
+  );
+  out.extensions = mergeArray<ExtensionRecord>(
     base.extensions,
     local.extensions,
     remote.extensions,
     conflicts,
     "extensions",
-  ) as never;
-  out.bookmarks = mergeArray(
+  );
+  out.bookmarks = mergeArray<BookmarkRecord>(
     base.bookmarks,
     local.bookmarks,
     remote.bookmarks,
     conflicts,
     "bookmarks",
-  ) as never;
+  );
   out.updatedAt = new Date().toISOString();
   return { snapshot: out, conflicts };
 }
@@ -367,10 +379,10 @@ export function extractEntities(
       put("tabs", tab);
       if (tab.group?.syncId) put("groups", tab.group);
     }
-    for (const group of snapshot.groups ?? []) {
-      put("groups", group);
-      for (const tab of group.tabs ?? []) put("tabs", tab);
-    }
+  }
+  for (const group of snapshot.groups ?? []) {
+    put("groups", group);
+    for (const tab of group.tabs ?? []) put("tabs", tab);
   }
   for (const bookmark of snapshot.bookmarks ?? []) put("bookmarks", bookmark);
   return result;
@@ -435,7 +447,7 @@ export function applyTombstones(
 
   for (const g of out.groups ?? []) {
     if (Array.isArray(g.tabs)) {
-      g.tabs = (g.tabs as UnknownRecord[]).filter(
+      g.tabs = (g.tabs as TabRecord[]).filter(
         (t) => !deleted.has(`tabs:${objectId(t)}`),
       );
     }
@@ -461,12 +473,8 @@ export function mergeDeviceStates(
     windows: [],
     groups: [],
   };
-  const collections: Array<"extensions" | "bookmarks" | "windows"> = [
-    "extensions",
-    "bookmarks",
-    "windows",
-    "groups",
-  ];
+  const collections: Array<"extensions" | "bookmarks" | "windows" | "groups"> =
+    ["extensions", "bookmarks", "windows", "groups"];
   for (const collection of collections) {
     const map = new Map<string, { item: UnknownRecord; updatedAt: string }>();
     for (const entry of entries) {

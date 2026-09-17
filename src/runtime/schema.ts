@@ -446,7 +446,7 @@ export function validateCloudState(state: CloudState): CloudState {
     "bookmarks",
     "groups",
   ] as const)
-    for (const item of state.snapshot[collection]) {
+    for (const item of state.snapshot[collection] ?? []) {
       const syncId = item.syncId;
       const key = `${collection}:${syncId}`;
       if (seen.has(key))
