@@ -379,7 +379,7 @@ export function reorderTabGroupBlocks(
   if (orderedGroups.every((id, index) => id === encounteredGroups[index]))
     return false;
 
-  const groupSlots = new Map<string, number>();
+  const renderedGroups = new Set<string>();
   const output: TabRecord[] = [];
   let nextGroup = 0;
   for (const tab of tabs) {
@@ -388,10 +388,14 @@ export function reorderTabGroupBlocks(
       output.push(clone(tab));
       continue;
     }
-    if (groupSlots.has(groupId)) continue;
-    groupSlots.set(groupId, output.length);
-    const replacement = groupBlocks.get(orderedGroups[nextGroup]);
+    if (renderedGroups.has(groupId)) continue;
+    renderedGroups.add(groupId);
+
+    const replacementId = orderedGroups[nextGroup];
+    if (!replacementId) return false;
+    const replacement = groupBlocks.get(replacementId);
     if (!replacement) return false;
+
     output.push(...replacement.map((item) => clone(item)));
     nextGroup += 1;
   }
