@@ -5,6 +5,7 @@ import {
   deriveTombstones,
   applyTombstones,
   cleanConflicts,
+  extractEntities,
   SCHEMA_VERSION,
 } from "./sync-core.js";
 import {
@@ -140,11 +141,13 @@ const LEGACY_ENCRYPTED_FILE = "current.enc.json";
 const MANIFEST_FILE = "manifest.json";
 const AUTO_SYNC_MINUTES = 5;
 const DEFAULT_AUTO_SYNC_ENABLED = false;
+const DEFAULT_TAB_SYNC_MODE = "overwrite";
 const MAX_PUSH_RETRIES = 5;
 const GITHUB_API_RETRIES = 2;
 const KEYS = {
   AUTO_SYNC_ENABLED: "autoSyncEnabled",
   AUTO_SYNC_INTERVAL_MINUTES: "autoSyncIntervalMinutes",
+  TAB_SYNC_MODE: "tabSyncMode",
   SYNC_REVISION: "syncRevision",
   GITHUB_TOKEN: "githubToken",
   GIST_ID: "gistId",
@@ -330,112 +333,45 @@ function isRestrictedUrl(url) {
 async function collectGroupSnapshots(groups) {
   const meta = Array.isArray(groups) ? groups : await collectTabGroups();
   if (!meta.length) return [];
+
   const all = await chrome.tabs.query({});
+
   return Promise.all(
-    meta.map(async (g) => ({
-      syncId: g.syncId,
-      title: g.title,
-      color: g.color,
-      collapsed: g.collapsed,
-      updatedAt: new Date().toISOString(),
-      tabs: await Promise.all(
+    meta.map(async (g) => {
+      const tabs = await Promise.all(
         all
-          .filter((t) => t.groupId === g.localId && !isRestrictedUrl(t.url))
+          .filter(
+            (t) =>
+              t.groupId === g.localId &&
+              !isRestrictedUrl(t.url),
+          )
           .sort((a, b) => a.index - b.index)
           .map(async (t) => ({
-            syncId: await getStableLocalId("tab", t.id, KEYS.TAB_SYNC_IDS),
+            syncId: await getStableLocalId(
+              "tab",
+              t.id,
+              KEYS.TAB_SYNC_IDS,
+            ),
             url: t.url,
             title: t.title || "",
             pinned: !!t.pinned,
             active: !!t.active,
             index: t.index,
           })),
-      ),
-    })),
-  );
-}
-async function collectTabs(groups) {
-  const windows = await chrome.windows.getAll({ populate: true }),
-    meta = Array.isArray(groups) ? groups : await collectTabGroups(),
-    gm = new Map(meta.map((g) => [g.localId, g])),
-    out = [];
-  for (const win of windows.filter((w) => w.type === "normal")) {
-    const windowSyncId = await getStableLocalId(
-        "window",
-        win.id,
-        KEYS.WINDOW_SYNC_IDS,
-      ),
-      tabs = [];
-    for (const tab of (win.tabs || []).filter((t) => !isRestrictedUrl(t.url))) {
-      const g = gm.get(tab.groupId);
-      tabs.push({
-        syncId: await getStableLocalId("tab", tab.id, KEYS.TAB_SYNC_IDS),
-        url: tab.url,
-        title: tab.title || "",
-        pinned: !!tab.pinned,
-        active: !!tab.active,
-        index: tab.index,
-        group: g
-          ? {
-              syncId: g.syncId,
-              title: g.title,
-              color: g.color,
-              collapsed: g.collapsed,
-            }
-          : null,
-      });
-    }
-    out.push({
-      syncId: windowSyncId,
-      state: ["fullscreen", "maximized", "minimized", "normal"].includes(
-        win.state,
-      )
-        ? win.state
-        : "normal",
-      focused: !!win.focused,
-      tabs,
-    });
-  }
-  return out;
-}
-async function collectBookmarks() {
-  const tree = await chrome.bookmarks.getTree(),
-    map = await getObjectMap(KEYS.BOOKMARK_SYNC_IDS),
-    flat = [];
-  let changed = false;
-  async function walk(node, parentSyncId = null, index = 0) {
-    let syncId = node.id === "0" ? "root-bookmarks" : map[String(node.id)];
-    if (!syncId) {
-      syncId = `bookmark-${crypto.randomUUID()}`;
-      map[String(node.id)] = syncId;
-      changed = true;
-    }
-    flat.push({
-      syncId,
-      parentSyncId,
-      index,
-      title: node.title || "",
-      ...(node.url ? { url: node.url } : {}),
-    });
-    for (let i = 0; i < (node.children || []).length; i++)
-      await walk(node.children[i], syncId, i);
-  }
-  for (const r of tree) await walk(r, null, 0);
-  if (changed) await setSettings({ [KEYS.BOOKMARK_SYNC_IDS]: map });
-  return flat;
-}
-async function collectTabGroups() {
-  if (!chrome.tabGroups?.query) return [];
-  const groups = await chrome.tabGroups.query({});
-  return Promise.all(
-    groups.map(async (g) => ({
-      localId: g.id,
-      windowId: g.windowId,
-      syncId: await getStableLocalId("group", g.id, KEYS.GROUP_SYNC_IDS),
-      title: g.title || "",
-      color: g.color || "grey",
-      collapsed: !!g.collapsed,
-    })),
+      );
+
+      return {
+        syncId: g.syncId,
+        localId: g.localId,
+        windowId: g.windowId,
+        index: tabs[0]?.index ?? 0,
+        title: g.title,
+        color: g.color,
+        collapsed: g.collapsed,
+        updatedAt: new Date().toISOString(),
+        tabs,
+      };
+    }),
   );
 }
 async function createSnapshot() {
@@ -881,8 +817,12 @@ async function pushSnapshot() {
       currentBase,
     );
     if (!bound) {
-      const created = await createRemote(built.state);
+      await createRemote(built.state);
       bound = true;
+      settings = await getSettings();
+      gistId =
+        settings[KEYS.GIST_ID] ||
+        gistId;
     } else {
       await writeRemote(built.state, raw);
       if (legacyEncrypted) await cleanupLegacyLocalState();
@@ -899,7 +839,9 @@ async function pushSnapshot() {
       continue;
     }
     await setSettings({
-      [KEYS.GIST_ID]: gistId,
+      [KEYS.GIST_ID]:
+        (await getSettings())[KEYS.GIST_ID] ||
+        gistId,
       [KEYS.LAST_SYNC]: built.state.updatedAt,
       [KEYS.LAST_REMOTE_UPDATED]: verify.raw.updatedAt || built.state.updatedAt,
       [KEYS.ETAG]: verify.raw.etag || "",
@@ -1272,6 +1214,161 @@ async function saveState(gistId, loaded, nextState) {
   });
   return { revision };
 }
+async function updateManagedCloudState(mutator) {
+  if (!(await providerBound()))
+    throw Error("尚未配置云同步后端");
+
+  for (
+    let attempt = 1;
+    attempt <= MAX_PUSH_RETRIES;
+    attempt++
+  ) {
+    const loaded = await readRemote();
+    const settings = await getSettings();
+    const state = JSON.parse(JSON.stringify(loaded.state));
+    const revision =
+      Math.max(
+        Number(loaded.state.revision || 0),
+        Number(settings[KEYS.SYNC_REVISION] || 0),
+        Number(settings[KEYS.BASE_REVISION] || 0),
+      ) + 1;
+    const now = new Date().toISOString();
+    const changed = await mutator(state, revision, now);
+    if (!changed)
+      return {
+        ok: true,
+        changed: false,
+        revision: loaded.state.revision,
+      };
+
+    state.schemaVersion = SCHEMA_VERSION;
+    state.revision = revision;
+    state.updatedAt = now;
+    state.snapshot = normalizeSnapshot(state.snapshot);
+    state.snapshot.updatedAt = now;
+    state.tombstones = Array.isArray(state.tombstones)
+      ? state.tombstones
+      : [];
+    state.conflicts = cleanConflicts(state.conflicts || []);
+    state.snapshot = applyTombstones(
+      state.snapshot,
+      state.tombstones,
+    );
+
+    await writeRemote(state, loaded.raw);
+    const verify = await readRemote();
+
+    if (
+      Number(verify.state.revision) === revision &&
+      checksum(verify.state) === checksum(state)
+    ) {
+      await setSettings({
+        [KEYS.BASE_SNAPSHOT]: verify.state.snapshot,
+        [KEYS.BASE_REVISION]: verify.state.revision,
+        [KEYS.SYNC_REVISION]: verify.state.revision,
+        [KEYS.LAST_SYNC]: now,
+        [KEYS.LAST_REMOTE_UPDATED]:
+          verify.raw.updatedAt || now,
+        [KEYS.ETAG]: verify.raw.etag || "",
+        [KEYS.LAST_CONFLICTS]:
+          verify.state.conflicts || [],
+      });
+      return {
+        ok: true,
+        changed: true,
+        revision,
+      };
+    }
+  }
+
+  throw Error(
+    "云端并发修改过于频繁，已停止重试；请再次操作",
+  );
+}
+
+function findCloudTab(snapshot, syncId) {
+  const id = String(syncId || "");
+  for (const window of snapshot.windows || []) {
+    const tab = (window.tabs || []).find(
+      (x) => x.syncId === id,
+    );
+    if (tab)
+      return { tab, window };
+  }
+  for (const group of snapshot.groups || []) {
+    const tab = (group.tabs || []).find(
+      (x) => x.syncId === id,
+    );
+    if (tab)
+      return { tab, group };
+  }
+  return null;
+}
+
+function moveItemById(list, syncId, direction) {
+  const index = list.findIndex(
+    (item) => item.syncId === syncId,
+  );
+  if (index < 0)
+    return false;
+  const target =
+    direction === "up"
+      ? index - 1
+      : index + 1;
+  if (
+    target < 0 ||
+    target >= list.length
+  )
+    return false;
+  [list[index], list[target]] = [
+    list[target],
+    list[index],
+  ];
+  list.forEach((item, index) => {
+    item.index = index;
+  });
+  return true;
+}
+
+function moveTabWithinWindow(window, syncId, direction) {
+  const tabs = window.tabs || [];
+  const index = tabs.findIndex(
+    (tab) => tab.syncId === syncId,
+  );
+  if (index < 0)
+    return false;
+  const currentGroup =
+    tabs[index].group?.syncId || null;
+  const peers = tabs
+    .map((tab, index) => ({ tab, index }))
+    .filter(
+      ({ tab }) =>
+        (tab.group?.syncId || null) === currentGroup,
+    );
+  const peerIndex = peers.findIndex(
+    (item) => item.index === index,
+  );
+  const targetPeer =
+    direction === "up"
+      ? peerIndex - 1
+      : peerIndex + 1;
+  if (
+    peerIndex < 0 ||
+    targetPeer < 0 ||
+    targetPeer >= peers.length
+  )
+    return false;
+  const target = peers[targetPeer].index;
+  [tabs[index], tabs[target]] = [
+    tabs[target],
+    tabs[index],
+  ];
+  tabs.forEach((tab, index) => {
+    tab.index = index;
+  });
+  return true;
+}
+
 async function missingExtensions() {
   const local = await collectExtensions(),
     settings = await getSettings();
@@ -1302,6 +1399,12 @@ async function missingExtensions() {
       errorMessage: error?.message || String(error),
     };
   }
+}
+async function getTabSyncMode(): Promise<"overwrite" | "incremental"> {
+  const s = await getSettings();
+  return s[KEYS.TAB_SYNC_MODE] === "incremental"
+    ? "incremental"
+    : "overwrite";
 }
 async function getAutoSyncSettings() {
   const s = await getSettings();
@@ -1376,14 +1479,16 @@ async function runSyncWithDiagnostics() {
   }
 }
 chrome.alarms.onAlarm.addListener(async (a) => {
-  if (a.name !== "cloud-sync") return;
+  if (a.name !== "cloud-sync")
+    return;
   try {
     const cfg = await getAutoSyncSettings();
-    if (!cfg.enabled) return;
-    const s = await getSettings();
-    if (await providerBound()) await runSyncWithDiagnostics();
+    if (!cfg.enabled)
+      return;
+    if (await providerBound())
+      await runSyncWithDiagnostics();
   } catch (e) {
-    console.warn("Gist sync failed", e);
+    console.warn("Automatic sync failed", e);
   }
 });
 chrome.runtime.onInstalled.addListener(async () => {
@@ -1391,7 +1496,16 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (typeof s[KEYS.AUTO_SYNC_ENABLED] !== "boolean")
     await setSettings({ [KEYS.AUTO_SYNC_ENABLED]: DEFAULT_AUTO_SYNC_ENABLED });
   if (!s[KEYS.AUTO_SYNC_INTERVAL_MINUTES])
-    await setSettings({ [KEYS.AUTO_SYNC_INTERVAL_MINUTES]: AUTO_SYNC_MINUTES });
+    await setSettings({
+      [KEYS.AUTO_SYNC_INTERVAL_MINUTES]: AUTO_SYNC_MINUTES,
+    });
+  if (
+    s[KEYS.TAB_SYNC_MODE] !== "overwrite" &&
+    s[KEYS.TAB_SYNC_MODE] !== "incremental"
+  )
+    await setSettings({
+      [KEYS.TAB_SYNC_MODE]: DEFAULT_TAB_SYNC_MODE,
+    });
   await setupAlarms();
 });
 chrome.runtime.onStartup.addListener(async () => {
@@ -1401,7 +1515,13 @@ chrome.runtime.onStartup.addListener(async () => {
     patch[KEYS.AUTO_SYNC_ENABLED] = DEFAULT_AUTO_SYNC_ENABLED;
   if (!s[KEYS.AUTO_SYNC_INTERVAL_MINUTES])
     patch[KEYS.AUTO_SYNC_INTERVAL_MINUTES] = AUTO_SYNC_MINUTES;
-  if (Object.keys(patch).length) await setSettings(patch);
+  if (
+    s[KEYS.TAB_SYNC_MODE] !== "overwrite" &&
+    s[KEYS.TAB_SYNC_MODE] !== "incremental"
+  )
+    patch[KEYS.TAB_SYNC_MODE] = DEFAULT_TAB_SYNC_MODE;
+  if (Object.keys(patch).length)
+    await setSettings(patch);
   await setupAlarms();
 });
 for (const ev of [
@@ -1430,12 +1550,12 @@ function debounceAutoSync() {
   syncTimer = setTimeout(async () => {
     try {
       const cfg = await getAutoSyncSettings();
-      if (!cfg.enabled) return;
-      const s = await getSettings();
-      if (s[KEYS.GITHUB_TOKEN] && s[KEYS.GIST_ID])
+      if (!cfg.enabled)
+        return;
+      if (await providerBound())
         await runSyncWithDiagnostics();
     } catch (e) {
-      console.warn("Event sync failed", e);
+      console.warn("Automatic sync failed", e);
     }
   }, 5000);
 }
@@ -1456,21 +1576,54 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         return getAutoSyncSettings();
       case "setAutoSyncSettings":
         return setAutoSyncSettings(m.enabled, m.intervalMinutes);
+      case "getTabSyncSettings":
+        return { mode: await getTabSyncMode() };
+      case "setTabSyncMode": {
+        const mode =
+          String(m.mode) === "incremental"
+            ? "incremental"
+            : "overwrite";
+        await setSettings({
+          [KEYS.TAB_SYNC_MODE]: mode,
+        });
+        return { mode };
+      }
       case "status": {
         const s = await getSettings();
+        const provider = await activeProvider();
+        const bound = await providerBound();
         return {
-          authenticated: !!s[KEYS.GITHUB_TOKEN],
-          gistConfigured: !!s[KEYS.GIST_ID],
+          provider,
+          bound,
+          authenticated:
+            provider === "gist" &&
+            !!s[KEYS.GITHUB_TOKEN],
+          gistConfigured:
+            provider === "gist" &&
+            !!s[KEYS.GIST_ID],
           gistId: s[KEYS.GIST_ID] || "",
           lastSyncAt: s[KEYS.LAST_SYNC] || "",
-          syncRevision: Number(s[KEYS.SYNC_REVISION] || 0),
-          conflictCount: cleanConflicts(s[KEYS.LAST_CONFLICTS] || []).length,
-          autoSyncEnabled: s[KEYS.AUTO_SYNC_ENABLED] === true,
+          syncRevision:
+            Number(s[KEYS.SYNC_REVISION] || 0),
+          conflictCount:
+            cleanConflicts(
+              s[KEYS.LAST_CONFLICTS] || [],
+            ).length,
+          autoSyncEnabled:
+            s[KEYS.AUTO_SYNC_ENABLED] === true,
           autoSyncIntervalMinutes:
-            Number(s[KEYS.AUTO_SYNC_INTERVAL_MINUTES] || AUTO_SYNC_MINUTES) ||
-            AUTO_SYNC_MINUTES,
-          diagnostics: s[KEYS.LAST_SYNC_DIAGNOSTICS] || null,
-          capabilities: detectBrowserCapabilities(),
+            Number(
+              s[KEYS.AUTO_SYNC_INTERVAL_MINUTES] ||
+                AUTO_SYNC_MINUTES,
+            ) || AUTO_SYNC_MINUTES,
+          tabSyncMode:
+            s[KEYS.TAB_SYNC_MODE] === "incremental"
+              ? "incremental"
+              : "overwrite",
+          diagnostics:
+            s[KEYS.LAST_SYNC_DIAGNOSTICS] || null,
+          capabilities:
+            detectBrowserCapabilities(),
         };
       }
       case "validateToken": {
@@ -1552,6 +1705,281 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
       }
       case "restoreGroup":
         return restoreGroup(m.groupSyncId);
+      case "cloudTabState": {
+        const state = await pullState();
+        const local = await createSnapshot();
+        const localEntities = extractEntities(local);
+        return {
+          mode: await getTabSyncMode(),
+          snapshot: state.snapshot,
+          tombstones: state.tombstones || [],
+          localTabIds: [...localEntities.keys()]
+            .filter((key) => key.startsWith("tabs:"))
+            .map((key) => key.slice("tabs:".length)),
+        };
+      }
+      case "addCurrentTabsToCloud": {
+        const local = await createSnapshot();
+        const settings = await getSettings();
+        const base = settings[KEYS.BASE_SNAPSHOT] || {};
+        return updateManagedCloudState((state) => {
+          const merged = mergeSnapshots(
+            base,
+            {
+              ...state.snapshot,
+              windows: local.windows,
+              groups: local.groups,
+            },
+            state.snapshot,
+            { tabSyncMode: "incremental" },
+          );
+          state.snapshot.windows = merged.snapshot.windows;
+          state.snapshot.groups = merged.snapshot.groups;
+
+          const localEntities = extractEntities(local);
+          state.tombstones =
+            (state.tombstones || []).filter((t) => {
+              if (
+                !["windows", "tabs", "groups"].includes(
+                  t.collection,
+                )
+              )
+                return true;
+              return !localEntities.has(
+                t.collection + ":" + t.syncId,
+              );
+            });
+
+          return true;
+        });
+      }
+      case "restoreCloudTab": {
+        const state = await pullState();
+        const found = findCloudTab(
+          state.snapshot,
+          m.syncId,
+        );
+        if (!found)
+          throw Error("云端没有这个标签页");
+
+        let window =
+          await chrome.windows.getLastFocused({
+            windowTypes: ["normal"],
+          });
+
+        if (!window?.id)
+          window = await chrome.windows.create({
+            focused: true,
+          });
+
+        const tab = await chrome.tabs.create({
+          windowId: window.id,
+          url: found.tab.url,
+          active: true,
+          pinned: !!found.tab.pinned,
+        });
+
+        return {
+          ok: true,
+          tabId: tab.id,
+        };
+      }
+      case "deleteCloudTab":
+        return updateManagedCloudState(
+          (state, revision, now) => {
+            const id = String(m.syncId || "");
+            if (!id)
+              throw Error("缺少 Tab syncId");
+            if (!findCloudTab(state.snapshot, id))
+              return false;
+
+            for (const window of state.snapshot.windows || [])
+              window.tabs =
+                (window.tabs || []).filter(
+                  (tab) => tab.syncId !== id,
+                );
+
+            for (const group of state.snapshot.groups || [])
+              group.tabs =
+                (group.tabs || []).filter(
+                  (tab) => tab.syncId !== id,
+                );
+
+            state.tombstones = [
+              ...(state.tombstones || []).filter(
+                (t) =>
+                  !(
+                    t.collection === "tabs" &&
+                    t.syncId === id
+                  ),
+              ),
+              {
+                collection: "tabs",
+                syncId: id,
+                deletedAt: now,
+                revision,
+              },
+            ];
+            return true;
+          },
+        );
+      case "deleteCloudGroup":
+        return updateManagedCloudState(
+          (state, revision, now) => {
+            const id = String(m.syncId || "");
+            const group = (
+              state.snapshot.groups || []
+            ).find((g) => g.syncId === id);
+            if (!group)
+              return false;
+
+            const tabIds = new Set(
+              (group.tabs || []).map(
+                (tab) => tab.syncId,
+              ),
+            );
+
+            state.snapshot.groups =
+              (state.snapshot.groups || []).filter(
+                (g) => g.syncId !== id,
+              );
+
+            for (const window of state.snapshot.windows || [])
+              window.tabs =
+                (window.tabs || []).filter(
+                  (tab) =>
+                    !(
+                      tab.group?.syncId === id ||
+                      tabIds.has(tab.syncId)
+                    ),
+                );
+
+            state.tombstones = [
+              ...(state.tombstones || []).filter(
+                (t) =>
+                  !(
+                    (t.collection === "groups" &&
+                      t.syncId === id) ||
+                    (t.collection === "tabs" &&
+                      tabIds.has(t.syncId))
+                  ),
+              ),
+              {
+                collection: "groups",
+                syncId: id,
+                deletedAt: now,
+                revision,
+              },
+              ...[...tabIds].map((syncId) => ({
+                collection: "tabs",
+                syncId,
+                deletedAt: now,
+                revision,
+              })),
+            ];
+            return true;
+          },
+        );
+      case "moveCloudTab":
+        return updateManagedCloudState(
+          (state) => {
+            const id = String(m.syncId || "");
+            const direction =
+              m.direction === "up"
+                ? "up"
+                : "down";
+
+            if (m.containerType === "group") {
+              const group = (
+                state.snapshot.groups || []
+              ).find(
+                (g) =>
+                  g.syncId ===
+                  String(m.containerSyncId || ""),
+              );
+              if (!group)
+                return false;
+
+              return moveItemById(
+                group.tabs || [],
+                id,
+                direction,
+              );
+            }
+
+            const window = (
+              state.snapshot.windows || []
+            ).find(
+              (w) =>
+                w.syncId ===
+                String(m.containerSyncId || ""),
+            );
+            if (!window)
+              return false;
+
+            return moveTabWithinWindow(
+              window,
+              id,
+              direction,
+            );
+          },
+        );
+      case "moveCloudGroup":
+        return updateManagedCloudState(
+          (state) => {
+            const id = String(m.syncId || "");
+            const groups =
+              state.snapshot.groups || [];
+            const current = groups.find(
+              (g) => g.syncId === id,
+            );
+            if (!current)
+              return false;
+
+            const peers = groups
+              .filter(
+                (g) =>
+                  (g.windowId ?? null) ===
+                  (current.windowId ?? null),
+              )
+              .sort(
+                (a, bb) =>
+                  Number(a.index ?? 0) -
+                  Number(bb.index ?? 0),
+              );
+
+            const index = peers.findIndex(
+              (g) => g.syncId === id,
+            );
+            const target =
+              m.direction === "up"
+                ? index - 1
+                : index + 1;
+
+            if (
+              index < 0 ||
+              target < 0 ||
+              target >= peers.length
+            )
+              return false;
+
+            const a = groups.indexOf(peers[index]);
+            const bb = groups.indexOf(peers[target]);
+
+            [groups[a], groups[bb]] = [
+              groups[bb],
+              groups[a],
+            ];
+
+            peers.forEach(
+              (group, index) => {
+                group.index = index;
+              },
+            );
+
+            return true;
+          },
+        );
       case "restoreBookmarks":
         return restoreBookmarks(m.bookmarks);
       case "missingExtensions":

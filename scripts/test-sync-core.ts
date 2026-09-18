@@ -124,3 +124,148 @@ const base = snapshot({
 }
 
 console.log("sync-core tests: OK");
+
+
+{
+  const tabA = {
+    syncId: "tab-a",
+    url: "https://a.example",
+    title: "A",
+    pinned: false,
+    active: false,
+    index: 0,
+  };
+  const tabB = {
+    syncId: "tab-b",
+    url: "https://b.example",
+    title: "B",
+    pinned: false,
+    active: false,
+    index: 1,
+  };
+  const base = snapshot({
+    windows: [
+      {
+        syncId: "window-a",
+        state: "normal",
+        focused: true,
+        tabs: [tabA, tabB],
+      },
+    ],
+  });
+  const local = snapshot({
+    windows: [
+      {
+        syncId: "window-a",
+        state: "normal",
+        focused: true,
+        tabs: [tabA],
+      },
+    ],
+  });
+  const merged = mergeSnapshots(
+    base,
+    local,
+    base,
+    { tabSyncMode: "incremental" },
+  );
+  assert.equal(
+    merged.snapshot.windows[0].tabs.length,
+    2,
+    "incremental mode must preserve cloud-only tabs",
+  );
+}
+
+{
+  const base = snapshot({
+    windows: [
+      {
+        syncId: "window-a",
+        state: "normal",
+        focused: true,
+        tabs: [
+          {
+            syncId: "tab-a",
+            url: "https://a.example",
+            title: "A",
+            pinned: false,
+            active: false,
+            index: 0,
+          },
+        ],
+      },
+    ],
+  });
+  const local = snapshot({ windows: [] });
+  const tombstones = deriveTombstones(
+    base,
+    local,
+    [],
+    2,
+    "2026-09-18T00:00:00.000Z",
+    true,
+  );
+  assert.equal(
+    tombstones.some(
+      (t) =>
+        t.collection === "tabs" &&
+        t.syncId === "tab-a",
+    ),
+    false,
+  );
+  assert.equal(
+    tombstones.some(
+      (t) =>
+        t.collection === "windows" &&
+        t.syncId === "window-a",
+    ),
+    false,
+  );
+}
+
+{
+  const base = snapshot({
+    windows: [
+      {
+        syncId: "window-a",
+        state: "normal",
+        focused: true,
+        tabs: [
+          {
+            syncId: "tab-a",
+            url: "https://a.example",
+            title: "A",
+            pinned: false,
+            active: false,
+            index: 0,
+          },
+        ],
+      },
+    ],
+  });
+  const local = base;
+  const prior = [
+    {
+      collection: "tabs",
+      syncId: "tab-a",
+      deletedAt: "2026-09-18T00:00:00.000Z",
+      revision: 10,
+    },
+  ];
+  const tombstones = deriveTombstones(
+    base,
+    local,
+    prior,
+    11,
+    "2026-09-18T00:01:00.000Z",
+    true,
+  );
+  assert.equal(
+    tombstones.some(
+      (t) =>
+        t.collection === "tabs" &&
+        t.syncId === "tab-a",
+    ),
+    true,
+  );
+}

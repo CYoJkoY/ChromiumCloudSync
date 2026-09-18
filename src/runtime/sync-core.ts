@@ -58,10 +58,21 @@ const MERGE_POLICIES: Record<
     updateUrl: "latest",
     installType: "latest",
   },
-  groups: { title: "latest", color: "latest", collapsed: "latest" },
+  groups: {
+    title: "latest",
+    color: "latest",
+    collapsed: "latest",
+    index: "latest",
+    updatedAt: "latest",
+  },
   windows: { state: "latest", focused: "latest" },
   default: {},
 };
+
+export interface MergeOptions {
+  tabSyncMode?: "overwrite" | "incremental";
+}
+
 function timeOf(value: UnknownRecord | null | undefined): string {
   return String(value?.updatedAt ?? value?.modifiedAt ?? "");
 }
@@ -271,7 +282,9 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
     const b = bm.get(id);
     const l = lm.get(id);
     const r = rm.get(id);
-    const type = path.split(".")[0] || "objects";
+    const type = path.endsWith(".tabs")
+    ? "tabs"
+    : path.split(".")[0] || "objects";
     if (!l && !r) continue;
     if (l && !r) {
       if (b && !stableEqual(l, b))
@@ -310,6 +323,7 @@ export function mergeSnapshots(
   base: Snapshot = emptySnapshot(),
   local: Snapshot = emptySnapshot(),
   remote: Snapshot = emptySnapshot(),
+  options: MergeOptions = {},
 ): MergeResult {
   const conflicts: ConflictRecord[] = [];
   const out: Snapshot = {
@@ -325,10 +339,21 @@ export function mergeSnapshots(
   const BWin = base.windows ?? [],
     LWin = local.windows ?? [],
     RWin = remote.windows ?? [];
-  if (stableEqual(LWin, RWin)) out.windows = clone(LWin);
-  else if (stableEqual(LWin, BWin)) out.windows = clone(RWin);
-  else if (stableEqual(RWin, BWin)) out.windows = clone(LWin);
-  else {
+  if (options.tabSyncMode === "incremental") {
+    out.windows = mergeArray<WindowRecord>(
+      BWin,
+      LWin,
+      RWin,
+      conflicts,
+      "windows",
+    );
+  } else if (stableEqual(LWin, RWin)) {
+    out.windows = clone(LWin);
+  } else if (stableEqual(LWin, BWin)) {
+    out.windows = clone(RWin);
+  } else if (stableEqual(RWin, BWin)) {
+    out.windows = clone(LWin);
+  } else {
     out.windows = clone(LWin);
     conflicts.push({
       type: "collection-auto-resolved",
@@ -394,19 +419,48 @@ export function deriveTombstones(
   prior: Tombstone[] = [],
   revision = 0,
   updatedAt = new Date().toISOString(),
+  preserveLiveCollections = false,
 ): Tombstone[] {
   const bm = extractEntities(base),
     lm = extractEntities(local);
+  const preservedCollections = new Set([
+    "windows",
+    "tabs",
+    "groups",
+  ]);
   const map = new Map<string, Tombstone>(
-    (prior ?? []).map((t) => [`${t.collection}:${t.syncId}`, clone(t)]),
+    (prior ?? []).map((t) => [
+      t.collection + ":" + t.syncId,
+      clone(t),
+    ]),
   );
-  for (const key of bm.keys())
-    if (!lm.has(key)) {
-      const [collection, syncId] = key.split(/:(.+)/);
-      if (collection && syncId)
-        map.set(key, { collection, syncId, deletedAt: updatedAt, revision });
-    }
-  for (const key of lm.keys()) map.delete(key);
+  for (const key of bm.keys()) {
+    if (lm.has(key)) continue;
+    const parts = key.split(/:(.+)/);
+    const collection = parts[0];
+    const syncId = parts[1];
+    if (
+      preserveLiveCollections &&
+      preservedCollections.has(collection)
+    )
+      continue;
+    if (collection && syncId)
+      map.set(key, {
+        collection,
+        syncId,
+        deletedAt: updatedAt,
+        revision,
+      });
+  }
+  for (const key of lm.keys()) {
+    const collection = key.split(/:(.+)/)[0];
+    if (
+      preserveLiveCollections &&
+      preservedCollections.has(collection)
+    )
+      continue;
+    map.delete(key);
+  }
   return [...map.values()];
 }
 export function mergeTombstones(...sources: Tombstone[][]): Tombstone[] {
