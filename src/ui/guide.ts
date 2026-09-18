@@ -1,21 +1,21 @@
 const DICT = {
   en: {
     title: "User Guide",
-    subtitle: "A local-first Chromium sync tool backed by your GitHub Gist.",
+    subtitle: "A local-first Chromium sync tool that supports GitHub Gist, Google Drive, and WebDAV.",
     quickTitle: "Quick start",
     quickBody:
-      "Open Settings, enter your GitHub Token, validate it, then create a private Gist or bind an existing Chromium Cloud Sync Gist. After setup, use Sync now or enable automatic synchronization.",
+      "Open Settings → Sync and select a storage provider. GitHub Gist uses a GitHub Token and a compatible Gist ID; leave the Gist ID blank to create a new private sync Gist. Google Drive uses OAuth authorization. WebDAV uses the configured server URL, folder, and optional credentials. After the backend is ready, use Sync now or enable automatic synchronization.",
     popupTitle: "Popup overview",
     popupBody:
-      "The popup shows GitHub readiness, the current Gist, last successful sync time, automatic-sync status, revision and conflict counts, plus quick actions for syncing, restoring data, and opening the Extension Recovery Center.",
+      "The Popup shows the active storage provider, synchronization status, last successful sync time, automatic-sync status, revision and conflict counts, and quick actions. User Guide and Settings are available at the top. The Tabs restore action handles ungrouped tabs, while cloud tab groups use their separate Restore action.",
     storageTitle: "What is synchronized",
     storageBody:
       "The cloud snapshot contains browser-state data: open windows and HTTP(S) tabs, tab groups, bookmarks, and installed third-party extension metadata. Extension metadata is used to detect missing extensions; it does not contain third-party extension settings.",
     storageNote:
       "Third-party extension settings are intentionally outside the synchronization scope. Chromium Cloud Sync cannot generically read or write another extension’s private storage.",
-    deviceTitle: "Device identity",
+    deviceTitle: "Storage providers",
     deviceBody:
-      "Device identity is intentionally lightweight. The synchronization model does not depend on copying credentials or third-party extension storage between browsers. Keep the same logical device configuration on each browser when using multi-device synchronization.",
+      "GitHub Gist, Google Drive, and WebDAV are supported storage backends. The selected backend stores the synchronized browser-state snapshot; provider credentials remain local to the browser.",
     syncTitle: "Sync model",
     syncBody:
       "The sync engine keeps a local base snapshot and performs a three-way merge between base, local, and remote state. Stable synchronization IDs are used for tabs, windows, tab groups, and bookmarks. Deletions are represented by tombstones so stale devices do not silently recreate removed items. Conflicting field changes remain visible as conflicts instead of being silently discarded.",
@@ -33,37 +33,37 @@ const DICT = {
       "CRX and ZIP backups are separate from browser-state synchronization. Open Settings → Third-party extensions, choose GitHub private repository or WebDAV, enter the required credentials, test and save the backend, then select which installed extensions should have package backups. For each selected extension, choose its CRX or ZIP file to upload. The package index and selection are stored in the configured backend; credentials remain local to the browser. Package installation remains manual.",
     historyTitle: "History and rollback",
     historyBody:
-      "GitHub Gist provides revision history for the synchronized state. The extension also keeps a local index of up to 30 recent entries. The History page can inspect revisions and create a new current revision by rolling back to a selected version.",
-    settingsTitle: "Settings pages",
+      "History depends on the selected provider: GitHub Gist uses Gist revisions, Google Drive uses file revisions, and WebDAV archives previous current-state files in its history area. The History page can inspect revisions and create a new current revision by rolling back to a selected version.",
+    settingsTitle: "Settings workflow",
     settingsBody:
-      "Settings separates synchronization configuration from extension package storage. The main GitHub Token is used for Gist synchronization. Package-backup credentials are separate: a GitHub private-repository backend uses its own GitHub Token with repository Contents write access, while WebDAV uses its own URL and optional username/password. These package credentials are local-only and never placed into the browser-state snapshot.",
+      "Settings is organized by synchronization function. The Sync panel selects GitHub Gist, Google Drive, or WebDAV and exposes the backend-specific connection controls. GitHub Gist uses one Gist ID field: enter a compatible ID to use it, or leave it blank to create a new synchronization Gist. Google Drive uses OAuth. WebDAV uses the configured URL, folder, and optional username/password. The same panel contains automatic-sync controls, restore behavior, and the tab synchronization mode. Settings → Cloud tabs provides hierarchical cloud-tab management in Incremental mode.",
     privacyTitle: "Privacy and security",
     privacyBody:
       "New sync Gists created by the extension are private. The current synchronization payload is normal JSON in the Gist and is not end-to-end encrypted. Treat access to the private Gist as access to the synchronized browser data. For package backups, use a private GitHub repository or a trusted WebDAV server and a least-privilege credential.",
     troubleTitle: "Troubleshooting",
     troubleBody:
       "If synchronization fails, first open the popup and read the detailed status message. Then verify the GitHub Token and Gist binding in Settings. For package backups, verify the selected backend, its credentials, repository or WebDAV path, and the saved extension selection. Remember that the browser cannot expose another extension’s installed CRX bytes automatically, so the first package backup requires manual file selection.",
-    scopeTitle: "Important scope decision",
+    scopeTitle: "Synchronization scope",
     scopeBody:
-      "Chromium Cloud Sync does not synchronize third-party extension settings. This is intentional: extension settings are private to each extension, vary widely in format, and cannot be safely handled by a generic Chromium extension. The project therefore synchronizes extension inventory and provides a separate package-backup and recovery path.",
+      "Chromium Cloud Sync synchronizes windows, HTTP(S) tabs, tab groups, bookmarks, and third-party extension metadata. It does not synchronize third-party extension settings or private extension storage. Extension package backup is handled separately through the package-backup and recovery workflow.",
   },
   "zh-CN": {
     title: "用户指南",
-    subtitle: "基于你自己的 GitHub Gist 的本地优先 Chromium 同步工具。",
+    subtitle: "本地优先的 Chromium 同步工具，支持 GitHub Gist、Google Drive 和 WebDAV。",
     quickTitle: "快速开始",
     quickBody:
-      "打开“设置”，填写 GitHub Token 并验证，然后创建新的私有 Gist 或绑定已有的 Chromium Cloud Sync Gist。完成后可以点击“立即同步”，也可以开启自动同步。",
+      "打开“设置 → 同步”并选择存储后端。GitHub Gist 使用 GitHub Token 和兼容的 Gist ID；留空 Gist ID 会创建新的私有同步 Gist。Google Drive 使用 OAuth 授权。WebDAV 使用配置的服务器地址、目录以及可选凭据。后端准备完成后，可以点击“立即同步”，也可以开启自动同步。",
     popupTitle: "Popup 界面",
     popupBody:
-      "Popup 会显示 GitHub 连接状态、当前 Gist、最后一次成功同步时间、自动同步状态、Revision 和冲突数量，并提供同步、恢复数据以及打开“扩展恢复中心”的快捷操作。",
+      "Popup 会显示当前存储后端、同步状态、最后一次成功同步时间、自动同步状态、Revision 和冲突数量，并提供主要快捷操作。“用户指南”和“设置”位于 Popup 顶部。“标签页”恢复操作处理未分组标签页；云端标签组使用独立的“恢复”操作。",
     storageTitle: "同步哪些内容",
     storageBody:
       "云端快照包含浏览器状态数据：打开的窗口和 HTTP(S) 标签页、标签组、书签，以及已安装第三方扩展的元数据。扩展元数据用于检测缺失扩展，不包含第三方扩展的内部设置。",
     storageNote:
       "第三方扩展设置被明确排除在同步范围之外。Chromium Cloud Sync 无法通用地读取或修改其他扩展的私有存储。",
-    deviceTitle: "设备身份",
+    deviceTitle: "存储后端",
     deviceBody:
-      "设备身份保持为轻量设计。同步模型不会依赖复制凭据或第三方扩展存储。多设备使用时，应为每台浏览器保持一致的逻辑设备配置。",
+      "当前支持 GitHub Gist、Google Drive 和 WebDAV。选中的后端负责保存同步的浏览器状态快照；后端凭据只保存在当前浏览器本地。",
     syncTitle: "同步模型",
     syncBody:
       "同步引擎保存本地基准快照，并在“基准 + 本地 + 远程”之间执行三方合并。标签页、窗口、标签组和书签使用稳定同步 ID。删除会记录为 tombstone，避免旧设备重新生成已经删除的项目；字段级冲突会明确保留，而不是静默丢弃。",
@@ -81,19 +81,19 @@ const DICT = {
       "CRX / ZIP 备份与浏览器状态同步完全分离。打开“设置 → 第三方扩展”，选择“GitHub 私有仓库”或 WebDAV，填写对应凭据，测试并保存后，再选择需要备份的已安装扩展。对于已选择的扩展，点击“备份 CRX / ZIP”并手动选择对应文件上传。扩展包索引和选择结果保存在所选后端；凭据只保存在当前浏览器本地。扩展安装仍然需要手动完成。",
     historyTitle: "历史与回滚",
     historyBody:
-      "GitHub Gist 保存同步状态的 Revision 历史。插件还会在本地维护最多 30 条历史索引记录。“历史”页面可以查看版本，并将指定版本回滚成新的当前 Revision。",
-    settingsTitle: "设置页面",
+      "历史记录取决于所选择的存储后端：GitHub Gist 使用 Gist Revision，Google Drive 使用文件修订历史，WebDAV 会归档之前的当前状态文件并维护 history 索引。“历史”页面可以查看版本，并通过回滚操作创建新的当前 Revision。",
+    settingsTitle: "设置工作流",
     settingsBody:
-      "设置页面将同步配置与第三方扩展包存储分开。主 GitHub Token 用于 Gist 同步；第三方扩展包存储使用独立凭据：GitHub 私有仓库需要单独的 GitHub Token，并且只需给目标仓库 Contents 写权限；WebDAV 则使用独立的地址和可选的用户名/密码。这些扩展包凭据只保存在当前浏览器本地，不会进入浏览器状态同步快照。",
+      "设置页面按照同步功能组织。“同步”面板可选择 GitHub Gist、Google Drive 或 WebDAV，并显示对应后端配置。GitHub Gist 使用一个 Gist ID 输入框：输入兼容 ID 就使用该 Gist，留空则创建新的同步 Gist。Google Drive 使用 OAuth。WebDAV 使用服务器地址、目录及可选用户名/密码。该面板同时提供自动同步、恢复方式和标签页同步模式设置；“云端标签页”页在增量模式下提供层级化管理。",
     privacyTitle: "隐私与安全",
     privacyBody:
       "插件创建的同步 Gist 默认是私有的。当前同步载荷以普通 JSON 保存在 Gist 中，并不是端到端加密。应将能够访问这个私有 Gist 视为能够访问同步的浏览器数据。扩展包备份建议使用私有 GitHub 仓库或可信的 WebDAV 服务，并坚持最小权限原则。",
     troubleTitle: "故障排查",
     troubleBody:
       "同步失败时，先打开 Popup 查看详细状态信息，然后在设置中检查 GitHub Token 和 Gist 绑定。扩展包备份失败时，检查所选后端、凭据、仓库或 WebDAV 路径，以及已保存的扩展选择。浏览器不能自动向另一个扩展暴露其已安装 CRX 的原始字节，因此首次备份扩展包需要手动选择文件。",
-    scopeTitle: "重要的功能边界",
+    scopeTitle: "同步范围",
     scopeBody:
-      "Chromium Cloud Sync 不同步第三方扩展设置。这是有意的设计：扩展设置属于各自扩展的私有存储，格式差异很大，Chromium 扩展也无法安全地通用处理其他扩展的内部数据。因此项目只同步扩展清单，并提供独立的扩展包备份与恢复路径。",
+      "Chromium Cloud Sync 同步窗口、HTTP(S) 标签页、标签组、书签以及第三方扩展元数据。它不会同步第三方扩展设置或其他扩展的私有存储。扩展安装包通过独立的备份和恢复流程处理。",
   },
 };
 function detect() {
