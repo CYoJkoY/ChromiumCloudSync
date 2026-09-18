@@ -76,53 +76,126 @@ async function withButton(button, work) {
   }
 }
 
+function createPopupCloudTabRow(tab) {
+  const row = document.createElement("div");
+  row.className = "popup-cloud-tab";
+
+  const title = document.createElement("div");
+  title.className = "popup-cloud-tab-title";
+  title.textContent = tab.title || tab.url || "";
+
+  const url = document.createElement("div");
+  url.className = "popup-cloud-tab-url";
+  url.textContent = tab.url || "";
+  url.hidden = !tab.url;
+
+  row.append(title, url);
+  return row;
+}
+
 async function renderCloudGroups() {
-  const card = $("cloudGroupsCard"),
-    list = $("cloudGroups");
+  const card = $("cloudGroupsCard");
+  const list = $("cloudGroups");
+
   if (!card || !list) return;
+
   card.hidden = false;
-  list.innerHTML = `<div class="empty">${escapeHtml(i.t("loading"))}</div>`;
+  list.innerHTML =
+    `<div class="empty">${escapeHtml(i.t("loading"))}</div>`;
+
   try {
     const groups = await request("cloudGroups");
+
     if (!groups.length) {
-      list.innerHTML = `<div class="empty">${escapeHtml(i.t("cloudGroupsEmpty"))}</div>`;
+      list.innerHTML =
+        `<div class="empty">${escapeHtml(i.t("cloudGroupsEmpty"))}</div>`;
       return;
     }
+
     list.replaceChildren();
+
     for (const g of groups) {
-      const row = document.createElement("div");
-      row.className = "history-row";
+      const tabs = Array.isArray(g.tabs) ? g.tabs : [];
+      const details = document.createElement("details");
+      details.className = "popup-cloud-group";
+      details.open = false;
+
+      const summary = document.createElement("summary");
+      summary.className = "popup-cloud-group-summary";
+
       const main = document.createElement("div");
       main.className = "history-main";
+
       const title = document.createElement("div");
       title.className = "history-title";
       title.textContent = g.title || i.t("unnamedGroup");
+
       const meta = document.createElement("div");
       meta.className = "history-meta";
-      meta.textContent = i.t("groupTabCount", { count: g.tabCount ?? 0 });
+      meta.textContent = i.t("groupTabCount", {
+        count: g.tabCount ?? tabs.length,
+      });
+
       main.append(title, meta);
-      const open = document.createElement("button");
-      open.type = "button";
-      open.className = "secondary";
-      open.textContent = i.t("restoreGroup");
-      open.addEventListener(
-        "click",
-        () =>
-          void withButton(open, async () => {
-            const r = await request("restoreGroup", { groupSyncId: g.syncId });
-            setStatus(
-              "ok",
-              i.t("groupRestoreDone"),
-              i.t("restoreSummary", { tabs: r.tabs, groups: r.groups }),
-              "",
-            );
-          }),
-      );
-      row.append(main, open);
-      list.append(row);
+
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "secondary";
+      restore.textContent = i.t("restoreGroup");
+      restore.disabled = tabs.length === 0;
+
+      restore.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        void withButton(restore, async () => {
+          const r = await request("restoreGroup", {
+            groupSyncId: g.syncId,
+          });
+
+          setStatus(
+            "ok",
+            i.t("groupRestoreDone"),
+            i.t("restoreSummary", {
+              tabs: r.tabs,
+              groups: r.groups,
+            }),
+            "",
+          );
+        });
+      });
+
+      const indicator = document.createElement("span");
+      indicator.className = "cloud-disclosure-indicator";
+      indicator.setAttribute("aria-hidden", "true");
+      indicator.textContent = "›";
+
+      summary.append(main, restore, indicator);
+
+      const content = document.createElement("div");
+      content.className = "popup-cloud-group-content";
+
+      if (!tabs.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = i.t("cloudGroupEmpty");
+        content.append(empty);
+      } else {
+        const tabList = document.createElement("div");
+        tabList.className = "popup-cloud-tab-list";
+
+        for (const tab of tabs)
+          tabList.append(createPopupCloudTabRow(tab));
+
+        content.append(tabList);
+      }
+
+      details.append(summary, content);
+      list.append(details);
     }
   } catch (error) {
-    list.innerHTML = `<div class="empty error-copy">${escapeHtml(error?.message || String(error))}</div>`;
+    list.innerHTML =
+      `<div class="empty error-copy">${escapeHtml(error?.message || String(error))}</div>`;
   }
 }
 
