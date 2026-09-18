@@ -1987,11 +1987,61 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
               if (!group)
                 return false;
 
-              return moveItemById(
-                group.tabs || [],
-                id,
-                direction,
+              const tabs = group.tabs || [];
+              const index = tabs.findIndex(
+                (tab) => tab.syncId === id,
               );
+              if (index < 0)
+                return false;
+
+              const target =
+                direction === "up"
+                  ? index - 1
+                  : index + 1;
+              if (
+                target < 0 ||
+                target >= tabs.length
+              )
+                return false;
+
+              const movedId = tabs[index].syncId;
+              const targetId = tabs[target].syncId;
+
+              [tabs[index], tabs[target]] = [
+                tabs[target],
+                tabs[index],
+              ];
+              tabs.forEach((tab, tabIndex) => {
+                tab.index = tabIndex;
+              });
+
+              let updatedWindow = false;
+              for (
+                const window of
+                state.snapshot.windows || []
+              ) {
+                const a = window.tabs.findIndex(
+                  (tab) => tab.syncId === movedId,
+                );
+                const b = window.tabs.findIndex(
+                  (tab) => tab.syncId === targetId,
+                );
+                if (a < 0 || b < 0)
+                  continue;
+
+                [window.tabs[a], window.tabs[b]] = [
+                  window.tabs[b],
+                  window.tabs[a],
+                ];
+                window.tabs.forEach(
+                  (tab, tabIndex) => {
+                    tab.index = tabIndex;
+                  },
+                );
+                updatedWindow = true;
+              }
+
+              return updatedWindow;
             }
 
             const window = (
