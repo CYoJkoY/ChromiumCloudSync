@@ -116,6 +116,11 @@
         </div>
       </header>
 
+      <nav class="popup-navigation" aria-label="Primary">
+        <button type="button" id="guide" class="secondary footer-action" data-i18n="guide">User guide</button>
+        <button type="button" id="options" class="secondary footer-action" data-i18n="settings">Settings</button>
+      </nav>
+
       <section id="updateCard" class="card update-card" hidden>
         <div class="update-card-main">
           <div class="update-icon">
@@ -205,8 +210,7 @@
                 <path d="M12 16v4" /></svg></span
             ><span class="action-copy"
               ><span class="action-name" data-i18n="tabs">Tabs</span
-              ><span class="action-desc" data-i18n="windowsGroups"
-                >Windows + groups</span
+              ><span class="action-desc" data-i18n="tabsOnly">Tabs only</span
               ></span
             ></button
           ><button type="button" id="restoreBookmarks" class="action-tile">
@@ -251,28 +255,11 @@
 
       <section class="card" id="cloudGroupsCard" hidden>
         <p class="section-label" data-i18n="cloudGroups">Cloud tab groups</p>
-        <div id="cloudGroups" class="missing-list"></div>
+        <div id="cloudGroups" class="cloud-group-list"></div>
       </section>
 
       <footer class="split small muted popup-footer">
-        <span id="revision">Revision 0</span
-        ><span class="popup-footer-actions"
-          ><button
-            type="button"
-            id="guide"
-            class="secondary footer-action"
-            data-i18n="guide"
-          >
-            User guide</button
-          ><button
-            type="button"
-            id="options"
-            class="secondary footer-action"
-            data-i18n="settings"
-          >
-            Settings
-          </button></span
-        >
+        <span id="revision">Revision 0</span>
       </footer>
     </main>
     <script src="runtime.js"></script>
