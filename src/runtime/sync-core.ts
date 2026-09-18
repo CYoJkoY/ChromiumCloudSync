@@ -437,8 +437,8 @@ export function deriveTombstones(
   for (const key of bm.keys()) {
     if (lm.has(key)) continue;
     const parts = key.split(/:(.+)/);
-    const collection = parts[0];
-    const syncId = parts[1];
+    const collection = parts[0] || "";
+    const syncId = parts[1] || "";
     if (
       preserveLiveCollections &&
       preservedCollections.has(collection)
@@ -453,7 +453,7 @@ export function deriveTombstones(
       });
   }
   for (const key of lm.keys()) {
-    const collection = key.split(/:(.+)/)[0];
+    const collection = key.split(/:(.+)/)[0] || "";
     if (
       preserveLiveCollections &&
       preservedCollections.has(collection)
