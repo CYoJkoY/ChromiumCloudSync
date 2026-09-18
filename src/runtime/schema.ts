@@ -114,6 +114,8 @@ function normalizeSnapshotShape(input: unknown): Snapshot {
   if (!Array.isArray(value.extensions)) value.extensions = [];
   if (!Array.isArray(value.windows)) value.windows = [];
   if (!Array.isArray(value.bookmarks)) value.bookmarks = [];
+  if (!Array.isArray(value.groups))
+    value.groups = deriveGroupsFromWindows(value.windows);
   return value as Snapshot;
 }
 

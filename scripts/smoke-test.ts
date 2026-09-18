@@ -1,7 +1,9 @@
+// @ts-nocheck
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
+import { SCHEMA_VERSION } from "../src/runtime/sync-core.ts";
 
 const root = process.cwd();
 const extensionPath = path.join(root, "dist");
@@ -110,7 +112,7 @@ try {
 
   if (!response?.ok)
     throw new Error(`Service worker ping failed: ${JSON.stringify(response)}`);
-  if (response.version !== 10)
+  if (response.version !== SCHEMA_VERSION)
     throw new Error(
       `Unexpected sync schema version from service worker: ${response.version}`,
     );

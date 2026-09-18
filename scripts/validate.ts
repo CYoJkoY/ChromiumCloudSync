@@ -1,3 +1,4 @@
+// @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -32,6 +33,9 @@ if (manifest.background?.service_worker !== "background.js")
   throw new Error(
     "Manifest background service worker must remain background.js in the built extension",
   );
+
+const compactSource = (text: string): string =>
+  text.replace(/\s+/g, "").replace(/"/g, "'").replace(/`/g, "'");
 
 const sourceFiles = [
   "src/runtime/types.ts",
@@ -211,13 +215,14 @@ const bg = fs.readFileSync(
   path.join(root, "src/runtime/background.ts"),
   "utf8",
 );
-if (bg.includes(`[LEGACY_ENCRYPTED_FILE]:{content:null}`))
+const bgCompact = compactSource(bg);
+if (bgCompact.includes(`[LEGACY_ENCRYPTED_FILE]:{content:null}`))
   throw new Error(
     "Invalid Gist PATCH payload: legacy encrypted file must be deleted with a null file value, not null content",
   );
 if (
-  !bg.includes(
-    "if(Object.prototype.hasOwnProperty.call(existingFiles||{},LEGACY_ENCRYPTED_FILE))files[LEGACY_ENCRYPTED_FILE]=null;",
+  !/if\(Object\.prototype\.hasOwnProperty\.call\(existingFiles\|\|\{\},LEGACY_ENCRYPTED_FILE,?\)\)files\[LEGACY_ENCRYPTED_FILE\]=null;/.test(
+    bgCompact,
   )
 )
   throw new Error("Missing legacy encrypted file cleanup guard");
@@ -239,6 +244,7 @@ const storage = fs.readFileSync(
   path.join(root, "src/features/extension-storage.ts"),
   "utf8",
 );
+const storageCompact = compactSource(storage);
 for (const required of [
   "extensionBackupGithubToken",
   "extensionBackupSelectedIds",
@@ -249,35 +255,37 @@ for (const required of [
   "ccsync-ext-hidden",
   "refreshLanguage",
 ])
-  if (!storage.includes(required))
+  if (!storageCompact.includes(required))
     throw new Error(`Extension storage is missing ${required}`);
-if (!storage.includes("setHidden(el,!gh)"))
+if (!storageCompact.includes("setHidden(el,!gh)"))
   throw new Error(
     "GitHub extension-backup fields do not use explicit dynamic visibility",
   );
-if (!storage.includes("setHidden(el,!dv)"))
+if (!storageCompact.includes("setHidden(el,!dv)"))
   throw new Error(
     "WebDAV extension-backup fields do not use explicit dynamic visibility",
   );
-if (!storage.includes("if(!d.private)throw Error(t('privateRepo'))"))
+if (!storageCompact.includes("if(!d.private)throwError(t('privateRepo'))"))
   throw new Error(
     "GitHub extension-backup storage does not enforce private repositories",
   );
 if (
-  !storage.includes(
-    "if(d.permissions&&!d.permissions.push)throw Error(t('notWritable'))",
+  !storageCompact.includes(
+    "if(d.permissions&&!d.permissions.push)throwError(t('notWritable'))",
   )
 )
   throw new Error(
     "GitHub extension-backup storage does not enforce write access",
   );
 if (
-  !storage.includes("String(a.token||'').trim()===String(b.token||'').trim()")
+  !storageCompact.includes(
+    "String(a.token||'').trim()===String(b.token||'').trim()",
+  )
 )
   throw new Error(
     "GitHub extension-backup selection matching does not include the Token",
   );
-if (!storage.includes("String(a.davPass||'')===String(b.davPass||'')"))
+if (!storageCompact.includes("String(a.davPass||'')===String(b.davPass||'')"))
   throw new Error(
     "WebDAV extension-backup selection matching does not include the password",
   );

@@ -91,7 +91,7 @@ Chromium Cloud Sync uses a **local-first three-way merge** rather than a simple 
 
 The merge engine uses field-specific policies, including latest-value resolution for ordinary metadata, version comparison for extension versions, and manual conflicts when fields such as URLs are independently changed. Deletions are represented by tombstones.
 
-The current cloud schema is **v10**, with migration support for schemas **7, 8, 9, and 10**.
+The current cloud schema is **v11**, with migration support for schemas **7, 8, 9, 10 and 11**.
 
 <a name="readme-data-scope"></a>
 
