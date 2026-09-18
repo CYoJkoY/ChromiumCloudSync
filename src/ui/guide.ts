@@ -16,6 +16,12 @@ const DICT = {
     providerTitle: "Storage providers",
     providerBody:
       "GitHub Gist, Google Drive, and WebDAV are supported storage backends. The selected backend stores the synchronized browser-state snapshot; provider credentials remain local to the browser.",
+    restoreTitle: "Restore behavior",
+    restoreBody:
+      "The Popup's Tabs action restores ungrouped HTTP(S) tabs and does not automatically create or restore tab groups. Use the separate Restore action on a cloud tab group to restore its restorable tabs in a new browser window and apply the group's metadata.",
+    cloudTabsTitle: "Cloud tabs",
+    cloudTabsBody:
+      "Settings → Cloud tabs is available in Incremental mode. It provides a hierarchical view of cloud windows, tab groups, and ungrouped tabs. Add current browser tabs to cloud merges the current browser's tabs, windows, and groups into the persistent cloud collection; it does not replace the browser's current state.",
     syncTitle: "Sync model",
     syncBody:
       "The sync engine keeps a local base snapshot and performs a three-way merge between base, local, and remote state. Stable synchronization IDs are used for tabs, windows, tab groups, and bookmarks. Deletions are represented by tombstones so stale devices do not silently recreate removed items. Conflicting field changes remain visible as conflicts instead of being silently discarded.",
@@ -64,6 +70,12 @@ const DICT = {
     providerTitle: "存储后端",
     providerBody:
       "当前支持 GitHub Gist、Google Drive 和 WebDAV。选中的后端负责保存同步的浏览器状态快照；后端凭据只保存在当前浏览器本地。",
+    restoreTitle: "恢复行为",
+    restoreBody:
+      "Popup 中的“标签页”操作只恢复未加入标签组的 HTTP(S) 标签页，不会自动创建或恢复标签组。需要恢复标签组时，请使用云端标签组单独提供的“恢复”操作；该操作会在新的浏览器窗口中恢复可恢复的标签页并应用标签组元数据。",
+    cloudTabsTitle: "云端标签页",
+    cloudTabsBody:
+      "“设置 → 云端标签页”仅在“增量”模式下可用。页面按照窗口、标签组和未分组标签页进行层级展示。“将当前浏览器标签页加入云端集合”会把当前浏览器的标签页、窗口和标签组合并到持久化云端集合，不会替换当前浏览器状态。",
     syncTitle: "同步模型",
     syncBody:
       "同步引擎保存本地基准快照，并在“基准 + 本地 + 远程”之间执行三方合并。标签页、窗口、标签组和书签使用稳定同步 ID。删除会记录为 tombstone，避免旧设备重新生成已经删除的项目；字段级冲突会明确保留，而不是静默丢弃。",
