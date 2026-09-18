@@ -329,6 +329,7 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
         (r?.tabs as unknown[]) ?? [],
         conflicts,
         "tabs",
+        true,
       );
     }
 
