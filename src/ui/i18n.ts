@@ -59,7 +59,7 @@
       syncCompletedDetail:
         "Cloud state committed at revision {revision}. Unresolved conflicts: {conflicts}.",
       restoreCompletedDetail:
-        "Remote tabs and groups have been restored to this browser.",
+        "Ungrouped cloud tabs have been restored. Cloud tab groups are restored separately.",
       bookmarkCompletedDetail:
         "Remote bookmarks were merged with the local bookmark tree.",
       allExtensionsInstalled:
@@ -81,7 +81,6 @@
       gistId: "Gist ID",
       gistPlaceholder: "Leave blank to create a new sync Gist",
       gistAction: "Use Gist / create if blank",
-      gistInvalid: "Gist ID contains invalid characters",
       gistCreateFailed: "Gist creation did not return a Gist ID",
       bindGist: "Bind Gist",
       encryptionMethod: "Encryption method",
@@ -355,7 +354,7 @@
     remoteExtNeedGist: "请先绑定 GitHub Gist，再检查云端扩展。",
     syncCompletedDetail:
       "云端状态已提交到 Revision {revision}。未解决冲突：{conflicts}。",
-    restoreCompletedDetail: "云端标签页和标签组已恢复到当前浏览器。",
+    restoreCompletedDetail: "未分组的云端标签页已恢复；云端标签组需要单独使用“恢复”操作。",
     bookmarkCompletedDetail: "云端书签已与当前浏览器的书签树完成合并。",
     allExtensionsInstalled: "当前浏览器没有缺失云端扩展。",
     installMissingHint:
@@ -375,7 +374,6 @@
     gistId: "Gist ID",
     gistPlaceholder: "留空可创建新的同步 Gist",
     gistAction: "使用 Gist / 留空则创建",
-    gistInvalid: "Gist ID 格式无效",
     gistCreateFailed: "创建 Gist 后未返回 Gist ID",
     bindGist: "绑定 Gist",
     encryptionMethod: "加密方式",
