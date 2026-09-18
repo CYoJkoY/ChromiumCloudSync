@@ -13,8 +13,8 @@ const DICT = {
       "The cloud snapshot contains browser-state data: open windows and HTTP(S) tabs, tab groups, bookmarks, and installed third-party extension metadata. Extension metadata is used to detect missing extensions; it does not contain third-party extension settings.",
     storageNote:
       "Third-party extension settings are intentionally outside the synchronization scope. Chromium Cloud Sync cannot generically read or write another extension’s private storage.",
-    deviceTitle: "Storage providers",
-    deviceBody:
+    providerTitle: "Storage providers",
+    providerBody:
       "GitHub Gist, Google Drive, and WebDAV are supported storage backends. The selected backend stores the synchronized browser-state snapshot; provider credentials remain local to the browser.",
     syncTitle: "Sync model",
     syncBody:
@@ -61,8 +61,8 @@ const DICT = {
       "云端快照包含浏览器状态数据：打开的窗口和 HTTP(S) 标签页、标签组、书签，以及已安装第三方扩展的元数据。扩展元数据用于检测缺失扩展，不包含第三方扩展的内部设置。",
     storageNote:
       "第三方扩展设置被明确排除在同步范围之外。Chromium Cloud Sync 无法通用地读取或修改其他扩展的私有存储。",
-    deviceTitle: "存储后端",
-    deviceBody:
+    providerTitle: "存储后端",
+    providerBody:
       "当前支持 GitHub Gist、Google Drive 和 WebDAV。选中的后端负责保存同步的浏览器状态快照；后端凭据只保存在当前浏览器本地。",
     syncTitle: "同步模型",
     syncBody:
