@@ -4,6 +4,7 @@ import {
   deriveTombstones,
   applyTombstones,
   cleanConflicts,
+  reorderTabGroupBlocks,
 } from "../src/runtime/sync-core.ts";
 
 function snapshot(overrides: Record<string, unknown> = {}) {
@@ -329,5 +330,90 @@ console.log("sync-core tests: OK");
     merged.snapshot.windows[0].tabs.map((tab) => tab.syncId),
     ["tab-a", "tab-b"],
     "incremental mode must preserve remote tab order",
+  );
+}
+
+
+{
+  const window = {
+    syncId: "window-a",
+    state: "normal",
+    focused: true,
+    tabs: [
+      {
+        syncId: "tab-u",
+        url: "https://u.example",
+        title: "U",
+        pinned: false,
+        active: false,
+        index: 0,
+        group: null,
+      },
+      {
+        syncId: "tab-a1",
+        url: "https://a1.example",
+        title: "A1",
+        pinned: false,
+        active: false,
+        index: 1,
+        group: { syncId: "group-a" },
+      },
+      {
+        syncId: "tab-a2",
+        url: "https://a2.example",
+        title: "A2",
+        pinned: false,
+        active: false,
+        index: 2,
+        group: { syncId: "group-a" },
+      },
+      {
+        syncId: "tab-v",
+        url: "https://v.example",
+        title: "V",
+        pinned: false,
+        active: false,
+        index: 3,
+        group: null,
+      },
+      {
+        syncId: "tab-b1",
+        url: "https://b1.example",
+        title: "B1",
+        pinned: false,
+        active: false,
+        index: 4,
+        group: { syncId: "group-b" },
+      },
+      {
+        syncId: "tab-b2",
+        url: "https://b2.example",
+        title: "B2",
+        pinned: false,
+        active: false,
+        index: 5,
+        group: { syncId: "group-b" },
+      },
+    ],
+  };
+  assert.equal(
+    reorderTabGroupBlocks(window, ["group-b", "group-a"]),
+    true,
+    "moving a group must change its window block order",
+  );
+  assert.deepEqual(
+    window.tabs.map((tab) => tab.syncId),
+    ["tab-u", "tab-b1", "tab-b2", "tab-v", "tab-a1", "tab-a2"],
+    "group reordering must persist the new block order in the window",
+  );
+  assert.deepEqual(
+    window.tabs.map((tab) => tab.index),
+    [0, 1, 2, 3, 4, 5],
+    "group reordering must normalize window tab indexes",
+  );
+  assert.equal(
+    reorderTabGroupBlocks(window, ["group-b", "group-a"]),
+    false,
+    "reapplying the same order must be a no-op",
   );
 }
