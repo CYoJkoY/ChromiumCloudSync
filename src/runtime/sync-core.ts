@@ -244,8 +244,10 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
 ): T[] {
   const B = Array.isArray(base) ? base : [];
   if (stableEqual(local, remote)) return clone(local) as T[];
-  if (stableEqual(local, B)) return clone(remote) as T[];
-  if (stableEqual(remote, B)) return clone(local) as T[];
+  if (!preserveNestedTabs && stableEqual(local, B))
+    return clone(remote) as T[];
+  if (!preserveNestedTabs && stableEqual(remote, B))
+    return clone(local) as T[];
 
   const BObjects = B.filter(
     (x): x is UnknownRecord =>
