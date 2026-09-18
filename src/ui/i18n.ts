@@ -571,7 +571,7 @@
     tabSyncModeSaved: "标签页同步模式已保存",
     cloudTabs: "云端标签页",
     cloudTabsTitle: "云端标签页集合",
-    cloudTabsHelp: "管理持久化的云端标签页和标签组，无需一次性恢复整个浏览器状态。",
+    cloudTabsHelp: "管理持久化云端标签页和标签组。“将当前浏览器标签页加入云端集合”会把当前浏览器的标签页、窗口和标签组合并到持久化云端集合，不会替换当前浏览器状态。",
     addCurrentTabs: "将当前浏览器标签页加入云端集合",
     ungroupedTabs: "未分组标签页",
     cloudGroupEmpty: "该标签组中没有可恢复的标签页。",
