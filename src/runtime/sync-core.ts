@@ -396,6 +396,7 @@ export function mergeSnapshots(
       RWin,
       conflicts,
       "windows",
+      true,
     );
   } else if (stableEqual(LWin, RWin)) {
     out.windows = clone(LWin);
