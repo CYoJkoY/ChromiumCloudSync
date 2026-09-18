@@ -122,6 +122,50 @@ try {
   )
     throw new Error("Capability detection payload is missing.");
 
+  const probe = (await withTimeout(
+    page.evaluate(
+      (messageTimeout) =>
+        new Promise<unknown>((resolve, reject) => {
+          const timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `snapshot probe timed out after ${messageTimeout} ms.`,
+                ),
+              ),
+            messageTimeout,
+          );
+          chrome.runtime.sendMessage({ type: "snapshot" }, (result) => {
+            clearTimeout(timer);
+            const error = chrome.runtime.lastError;
+            if (error) reject(new Error(error.message));
+            else resolve(result);
+          });
+        }),
+      STAGE_TIMEOUT,
+    ),
+    STAGE_TIMEOUT,
+    "Snapshot collection probe",
+  )) as {
+    error?: string;
+    schemaVersion?: number;
+    windows?: unknown[];
+    groups?: unknown[];
+  } | null;
+
+  if (probe?.error)
+    throw new Error(`Local snapshot collection failed: ${probe.error}`);
+  if (!Array.isArray(probe?.windows))
+    throw new Error("Snapshot probe did not return a windows array.");
+  if (!Array.isArray(probe?.groups))
+    throw new Error("Snapshot probe did not return a groups array.");
+  for (const group of probe.groups)
+    if (!group || typeof (group as { syncId?: unknown }).syncId !== "string")
+      throw new Error("Snapshot probe returned a group without a syncId.");
+  for (const window of probe.windows)
+    if (!window || !Array.isArray((window as { tabs?: unknown }).tabs))
+      throw new Error("Snapshot probe returned a window without a tabs array.");
+
   console.log(
     `Extension smoke test passed for ${manifest.version_name || manifest.version}.`,
   );

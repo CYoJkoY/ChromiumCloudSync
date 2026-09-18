@@ -327,39 +327,37 @@ function isRestrictedUrl(url) {
   if (!value) return true;
   return !/^https?:\/\//i.test(value);
 }
-async function collectGroupSnapshots() {
-  if (!chrome.tabGroups?.query) return [];
-  const groups = await chrome.tabGroups.query({});
+async function collectGroupSnapshots(groups) {
+  const meta = Array.isArray(groups) ? groups : await collectTabGroups();
+  if (!meta.length) return [];
   const all = await chrome.tabs.query({});
-  const out = [];
-  for (const g of groups) {
-    const tabs = all
-      .filter((t) => t.groupId === g.id && !isRestrictedUrl(t.url))
-      .sort((a, b) => a.index - b.index);
-    out.push({
-      syncId: await getStableLocalId("group", g.id, KEYS.GROUP_SYNC_IDS),
-      title: g.title || "",
-      color: g.color || "grey",
-      collapsed: !!g.collapsed,
+  return Promise.all(
+    meta.map(async (g) => ({
+      syncId: g.syncId,
+      title: g.title,
+      color: g.color,
+      collapsed: g.collapsed,
       updatedAt: new Date().toISOString(),
       tabs: await Promise.all(
-        tabs.map(async (t) => ({
-          syncId: await getStableLocalId("tab", t.id, KEYS.TAB_SYNC_IDS),
-          url: t.url,
-          title: t.title || "",
-          pinned: !!t.pinned,
-          active: !!t.active,
-          index: t.index,
-        })),
+        all
+          .filter((t) => t.groupId === g.localId && !isRestrictedUrl(t.url))
+          .sort((a, b) => a.index - b.index)
+          .map(async (t) => ({
+            syncId: await getStableLocalId("tab", t.id, KEYS.TAB_SYNC_IDS),
+            url: t.url,
+            title: t.title || "",
+            pinned: !!t.pinned,
+            active: !!t.active,
+            index: t.index,
+          })),
       ),
-    });
-  }
-  return out;
+    })),
+  );
 }
-async function collectTabs() {
+async function collectTabs(groups) {
   const windows = await chrome.windows.getAll({ populate: true }),
-    groups = await collectTabGroups(),
-    gm = new Map(groups.map((g) => [g.localId, g])),
+    meta = Array.isArray(groups) ? groups : await collectTabGroups(),
+    gm = new Map(meta.map((g) => [g.localId, g])),
     out = [];
   for (const win of windows.filter((w) => w.type === "normal")) {
     const windowSyncId = await getStableLocalId(
@@ -426,15 +424,30 @@ async function collectBookmarks() {
   if (changed) await setSettings({ [KEYS.BOOKMARK_SYNC_IDS]: map });
   return flat;
 }
+async function collectTabGroups() {
+  if (!chrome.tabGroups?.query) return [];
+  const groups = await chrome.tabGroups.query({});
+  return Promise.all(
+    groups.map(async (g) => ({
+      localId: g.id,
+      windowId: g.windowId,
+      syncId: await getStableLocalId("group", g.id, KEYS.GROUP_SYNC_IDS),
+      title: g.title || "",
+      color: g.color || "grey",
+      collapsed: !!g.collapsed,
+    })),
+  );
+}
 async function createSnapshot() {
-  const s = await getSettings();
+  const s = await getSettings(),
+    groups = await collectTabGroups();
   return {
     schemaVersion: SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     extensions: await collectExtensions(),
-    windows: await collectTabs(),
+    windows: await collectTabs(groups),
     bookmarks: await collectBookmarks(),
-    groups: await collectGroupSnapshots(),
+    groups: await collectGroupSnapshots(groups),
     syncMeta: { gistId: s[KEYS.GIST_ID] || null },
   };
 }
