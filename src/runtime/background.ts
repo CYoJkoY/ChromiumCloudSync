@@ -6,6 +6,7 @@ import {
   applyTombstones,
   cleanConflicts,
   extractEntities,
+  reorderTabGroupBlocks,
   SCHEMA_VERSION,
 } from "./sync-core.js";
 import {
@@ -821,10 +822,12 @@ async function buildLocalState(localSnapshot, remoteState, currentBase) {
         Number(remoteState.revision || 0),
       ) + 1,
     now = new Date().toISOString(),
+    tabSyncMode = await getTabSyncMode(),
     { snapshot, conflicts } = mergeSnapshots(
       base,
       localSnapshot,
       remoteState.snapshot || {},
+      { tabSyncMode },
     );
   snapshot.schemaVersion = SCHEMA_VERSION;
   snapshot.updatedAt = now;
@@ -834,6 +837,7 @@ async function buildLocalState(localSnapshot, remoteState, currentBase) {
     remoteState.tombstones || [],
     revision,
     now,
+    tabSyncMode === "incremental",
   );
   const clean = cleanConflicts([
     ...(remoteState.conflicts || []),
@@ -2065,29 +2069,30 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         return updateManagedCloudState(
           (state) => {
             const id = String(m.syncId || "");
-            const groups =
-              state.snapshot.groups || [];
+            const groups = state.snapshot.groups || [];
             const current = groups.find(
               (g) => g.syncId === id,
             );
             if (!current)
               return false;
 
-            const peers = groups
-              .filter(
-                (g) =>
-                  (g.windowId ?? null) ===
-                  (current.windowId ?? null),
-              )
-              .sort(
-                (a, bb) =>
-                  Number(a.index ?? 0) -
-                  Number(bb.index ?? 0),
-              );
-
-            const index = peers.findIndex(
-              (g) => g.syncId === id,
+            const window = (state.snapshot.windows || []).find(
+              (candidate) =>
+                (candidate.tabs || []).some(
+                  (tab) => tab.group?.syncId === id,
+                ),
             );
+            if (!window)
+              return false;
+
+            const groupOrder = [];
+            for (const tab of window.tabs || []) {
+              const groupId = tab.group?.syncId;
+              if (groupId && !groupOrder.includes(groupId))
+                groupOrder.push(groupId);
+            }
+
+            const index = groupOrder.indexOf(id);
             const target =
               m.direction === "up"
                 ? index - 1
@@ -2096,23 +2101,30 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             if (
               index < 0 ||
               target < 0 ||
-              target >= peers.length
+              target >= groupOrder.length
             )
               return false;
 
-            const a = groups.indexOf(peers[index]);
-            const bb = groups.indexOf(peers[target]);
-
-            [groups[a], groups[bb]] = [
-              groups[bb],
-              groups[a],
+            [groupOrder[index], groupOrder[target]] = [
+              groupOrder[target],
+              groupOrder[index],
             ];
 
-            peers.forEach(
-              (group, index) => {
-                group.index = index;
-              },
-            );
+            if (!reorderTabGroupBlocks(window, groupOrder))
+              return false;
+
+            const firstIndexes = new Map();
+            for (let tabIndex = 0; tabIndex < window.tabs.length; tabIndex += 1) {
+              const groupId = window.tabs[tabIndex].group?.syncId;
+              if (groupId && !firstIndexes.has(groupId))
+                firstIndexes.set(groupId, tabIndex);
+            }
+
+            for (const group of groups) {
+              const firstIndex = firstIndexes.get(group.syncId);
+              if (firstIndex !== undefined)
+                group.index = firstIndex;
+            }
 
             return true;
           },
