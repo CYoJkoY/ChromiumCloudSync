@@ -240,6 +240,7 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
   remote: unknown[],
   conflicts: ConflictRecord[],
   path: string,
+  preserveNestedTabs = false,
 ): T[] {
   const B = Array.isArray(base) ? base : [];
   if (stableEqual(local, remote)) return clone(local) as T[];
@@ -310,9 +311,26 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
       out.push(clone(r) as T);
       continue;
     }
-    out.push(
-      mergeEntity(b ?? {}, l!, r!, type, conflicts, `${type}.${id}`) as T,
-    );
+    const merged = mergeEntity(
+      b ?? {},
+      l!,
+      r!,
+      type,
+      conflicts,
+      `${type}.${id}`,
+    ) as T;
+
+    if (preserveNestedTabs && (type === "windows" || type === "groups")) {
+      (merged as UnknownRecord).tabs = mergeArray(
+        (b?.tabs as unknown[]) ?? [],
+        (l?.tabs as unknown[]) ?? [],
+        (r?.tabs as unknown[]) ?? [],
+        conflicts,
+        "tabs",
+      );
+    }
+
+    out.push(merged);
   }
 
   out.sort((a, b) => Number(a.index ?? 0) - Number(b.index ?? 0));
@@ -401,6 +419,7 @@ export function mergeSnapshots(
     remote.groups ?? [],
     conflicts,
     "groups",
+    true,
   );
   if (options.tabSyncMode === "incremental")
     out.groups = preserveRemoteOrder(

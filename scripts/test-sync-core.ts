@@ -172,7 +172,14 @@ console.log("sync-core tests: OK");
   assert.equal(
     merged.snapshot.windows[0].tabs.length,
     2,
-    "incremental mode must preserve cloud-only tabs",
+    "incremental mode must merge remote-only tabs",
+  );
+  assert.equal(
+    merged.snapshot.windows[0].tabs.some(
+      (tab) => tab.syncId === "tab-b",
+    ),
+    true,
+    "remote-only tab must remain in the merged window",
   );
 }
 
