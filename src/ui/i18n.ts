@@ -51,11 +51,11 @@
       checkFailed: "Extension check failed",
       extensionsReady: "Extension check complete",
       checkedCloudExtensions:
-        "Checked {count} cloud extensions from the shared Gist.",
+        "Checked {count} extensions from the active cloud provider.",
       missingCount: "Missing extensions ({count})",
       missingFound: "Missing extensions found: {count}",
       sourceDevices: "seen on {count} device(s)",
-      remoteExtNeedGist: "Bind a GitHub Gist before checking cloud extensions.",
+      remoteExtNeedGist: "Configure a cloud storage provider before checking cloud extensions.",
       syncCompletedDetail:
         "Cloud state committed at revision {revision}. Unresolved conflicts: {conflicts}.",
       restoreCompletedDetail:
@@ -347,11 +347,11 @@
       "暂时无法读取云端扩展清单，请先解锁云端数据或检查 Gist 连接。",
     checkFailed: "扩展检查失败",
     extensionsReady: "扩展检查完成",
-    checkedCloudExtensions: "已检查 Gist 中的 {count} 个云端扩展。",
+    checkedCloudExtensions: "已从当前云端存储后端检查 {count} 个扩展。",
     missingCount: "缺失扩展（{count}）",
     missingFound: "发现缺失扩展：{count}",
     sourceDevices: "见于 {count} 台设备",
-    remoteExtNeedGist: "请先绑定 GitHub Gist，再检查云端扩展。",
+    remoteExtNeedGist: "请先配置云端存储后端，再检查云端扩展。",
     syncCompletedDetail:
       "云端状态已提交到 Revision {revision}。未解决冲突：{conflicts}。",
     restoreCompletedDetail: "未分组的云端标签页已恢复；云端标签组需要单独使用“恢复”操作。",
