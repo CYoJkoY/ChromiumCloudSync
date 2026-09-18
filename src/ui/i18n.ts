@@ -578,7 +578,7 @@
     tabsAddedToCloud: "当前标签页已添加到云端集合",
     gdriveHelp: "将同步状态保存到私有 Google Drive 文件。",
     webdavHelp: "将同步状态保存到兼容 WebDAV 的服务器。",
-    restoreModeHelp: "选择标签组的恢复方式；不会改变云端同步语义。"
+    restoreModeHelp: "选择标签组的恢复方式；不会改变云端同步语义。",
     restoreModeSaved: "恢复方式已保存",
     restoreSummaryDeferred: "已恢复未分组标签页；云端标签组保持按需打开。",
     plainStorageNote:
