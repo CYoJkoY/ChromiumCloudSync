@@ -1800,6 +1800,9 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           localTabIds: [...localEntities.keys()]
             .filter((key) => key.startsWith("tabs:"))
             .map((key) => key.slice("tabs:".length)),
+          localGroupIds: [...localEntities.keys()]
+            .filter((key) => key.startsWith("groups:"))
+            .map((key) => key.slice("groups:".length)),
         };
       }
       case "addCurrentTabsToCloud": {
@@ -2082,7 +2085,10 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           webdavUrl: String(
             (await readLocal([KEYS.WEBDAV_URL]))[KEYS.WEBDAV_URL] || "",
           ),
-          restoreGroupMode: String(s[KEYS.RESTORE_GROUP_MODE] || "ondemand"),
+          restoreGroupMode: String(
+            s[KEYS.RESTORE_GROUP_MODE] || "ondemand",
+          ),
+          tabSyncMode: await getTabSyncMode(),
         };
       }
       case "setProvider": {
