@@ -344,7 +344,7 @@
     missing: "缺失扩展",
     openInstall: "打开安装页",
     remoteExtUnavailable:
-      "暂时无法读取云端扩展清单，请先解锁云端数据或检查 Gist 连接。",
+      "暂时无法读取云端扩展清单，请检查当前云端存储后端的连接状态。",
     checkFailed: "扩展检查失败",
     extensionsReady: "扩展检查完成",
     checkedCloudExtensions: "已从当前云端存储后端检查 {count} 个扩展。",
