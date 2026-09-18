@@ -170,16 +170,20 @@ async function renderCloudGroups() {
       indicator.setAttribute("aria-hidden", "true");
       indicator.textContent = "›";
 
-      summary.append(main, restore, indicator);
+      summary.append(main, indicator);
 
       const content = document.createElement("div");
       content.className = "popup-cloud-group-content";
+
+      const actions = document.createElement("div");
+      actions.className = "popup-cloud-group-actions";
+      actions.append(restore);
 
       if (!tabs.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
         empty.textContent = i.t("cloudGroupEmpty");
-        content.append(empty);
+        content.append(actions, empty);
       } else {
         const tabList = document.createElement("div");
         tabList.className = "popup-cloud-tab-list";
@@ -187,7 +191,7 @@ async function renderCloudGroups() {
         for (const tab of tabs)
           tabList.append(createPopupCloudTabRow(tab));
 
-        content.append(tabList);
+        content.append(actions, tabList);
       }
 
       details.append(summary, content);
