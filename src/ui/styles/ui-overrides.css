@@ -687,7 +687,8 @@ body.popup-page .backup-status.error-copy {
   .page-header:not(.popup-header) .toolbar {
     justify-self: start;
   }
-  @media (max-width: 600px) {
+}
+@media (max-width: 600px) {
   .shell:not(.popup-shell),
   .aux-shell {
     width: 100%;
