@@ -258,15 +258,15 @@ for (const required of [
   if (!optionsSource.includes(required))
     throw new Error("Options controller is missing required implementation " + required);
 
-const buildLocalStateStart = bgCompact.indexOf("async function buildLocalState(");
-const buildLocalStateEnd = bgCompact.indexOf("async function pushSnapshot(", buildLocalStateStart);
+const buildLocalStateStart = bg.indexOf("async function buildLocalState(");
+const buildLocalStateEnd = bg.indexOf("async function pushSnapshot(", buildLocalStateStart);
 if (buildLocalStateStart < 0 || buildLocalStateEnd < 0)
   throw new Error("Unable to locate buildLocalState for tab sync validation");
-const buildLocalState = bgCompact.slice(buildLocalStateStart, buildLocalStateEnd);
+const buildLocalState = bg.slice(buildLocalStateStart, buildLocalStateEnd);
 for (const required of [
-  "tabSyncMode=await getTabSyncMode()",
-  "{tabSyncMode}",
-  'tabSyncMode==="incremental"',
+  "tabSyncMode = await getTabSyncMode()",
+  "{ tabSyncMode }",
+  'tabSyncMode === "incremental"',
 ])
   if (!buildLocalState.includes(required))
     throw new Error("Incremental tab sync is not wired into buildLocalState: " + required);
