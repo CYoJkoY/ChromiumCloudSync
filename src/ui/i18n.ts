@@ -47,7 +47,7 @@
       missing: "Missing extensions",
       openInstall: "Open install page",
       remoteExtUnavailable:
-        "Cloud extension list could not be read. Unlock the cloud data or check the Gist connection.",
+        "Cloud extension list could not be read. Check the active storage provider connection.",
       checkFailed: "Extension check failed",
       extensionsReady: "Extension check complete",
       checkedCloudExtensions:
