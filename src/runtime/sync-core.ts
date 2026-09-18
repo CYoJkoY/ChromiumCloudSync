@@ -58,10 +58,21 @@ const MERGE_POLICIES: Record<
     updateUrl: "latest",
     installType: "latest",
   },
-  groups: { title: "latest", color: "latest", collapsed: "latest" },
+  groups: {
+    title: "latest",
+    color: "latest",
+    collapsed: "latest",
+    index: "latest",
+    updatedAt: "latest",
+  },
   windows: { state: "latest", focused: "latest" },
   default: {},
 };
+
+export interface MergeOptions {
+  tabSyncMode?: "overwrite" | "incremental";
+}
+
 function timeOf(value: UnknownRecord | null | undefined): string {
   return String(value?.updatedAt ?? value?.modifiedAt ?? "");
 }
@@ -229,11 +240,14 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
   remote: unknown[],
   conflicts: ConflictRecord[],
   path: string,
+  preserveNestedTabs = false,
 ): T[] {
   const B = Array.isArray(base) ? base : [];
   if (stableEqual(local, remote)) return clone(local) as T[];
-  if (stableEqual(local, B)) return clone(remote) as T[];
-  if (stableEqual(remote, B)) return clone(local) as T[];
+  if (!preserveNestedTabs && stableEqual(local, B))
+    return clone(remote) as T[];
+  if (!preserveNestedTabs && stableEqual(remote, B))
+    return clone(local) as T[];
 
   const BObjects = B.filter(
     (x): x is UnknownRecord =>
@@ -271,7 +285,9 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
     const b = bm.get(id);
     const l = lm.get(id);
     const r = rm.get(id);
-    const type = path.split(".")[0] || "objects";
+    const type = path.endsWith(".tabs")
+    ? "tabs"
+    : path.split(".")[0] || "objects";
     if (!l && !r) continue;
     if (l && !r) {
       if (b && !stableEqual(l, b))
@@ -297,19 +313,137 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
       out.push(clone(r) as T);
       continue;
     }
-    out.push(
-      mergeEntity(b ?? {}, l!, r!, type, conflicts, `${type}.${id}`) as T,
-    );
+    const merged = mergeEntity(
+      b ?? {},
+      l!,
+      r!,
+      type,
+      conflicts,
+      `${type}.${id}`,
+    ) as T;
+
+    if (preserveNestedTabs && (type === "windows" || type === "groups")) {
+      (merged as UnknownRecord).tabs = mergeArray(
+        (b?.tabs as unknown[]) ?? [],
+        (l?.tabs as unknown[]) ?? [],
+        (r?.tabs as unknown[]) ?? [],
+        conflicts,
+        "tabs",
+        true,
+      );
+    }
+
+    out.push(merged);
   }
 
   out.sort((a, b) => Number(a.index ?? 0) - Number(b.index ?? 0));
   return out;
 }
 
+export function reorderTabGroupBlocks(
+  window: WindowRecord,
+  groupOrder: string[],
+): boolean {
+  const tabs = window.tabs || [];
+  const groupBlocks = new Map<string, TabRecord[]>();
+  const encounteredGroups: string[] = [];
+  const seenGroups = new Set<string>();
+
+  for (const tab of tabs) {
+    const groupId = tab.group?.syncId;
+    if (!groupId) continue;
+    if (!groupBlocks.has(groupId))
+      groupBlocks.set(groupId, []);
+    groupBlocks.get(groupId)?.push(clone(tab));
+    if (!seenGroups.has(groupId)) {
+      seenGroups.add(groupId);
+      encounteredGroups.push(groupId);
+    }
+  }
+
+  if (encounteredGroups.length < 2)
+    return false;
+
+  const rank = new Map(
+    groupOrder.map((id, index) => [id, index]),
+  );
+  const orderedGroups = encounteredGroups.slice().sort((a, b) => {
+    const ar = rank.get(a);
+    const br = rank.get(b);
+    if (ar !== undefined && br !== undefined) return ar - br;
+    if (ar !== undefined) return -1;
+    if (br !== undefined) return 1;
+    return encounteredGroups.indexOf(a) - encounteredGroups.indexOf(b);
+  });
+
+  if (orderedGroups.every((id, index) => id === encounteredGroups[index]))
+    return false;
+
+  const renderedGroups = new Set<string>();
+  const output: TabRecord[] = [];
+  let nextGroup = 0;
+  for (const tab of tabs) {
+    const groupId = tab.group?.syncId;
+    if (!groupId) {
+      output.push(clone(tab));
+      continue;
+    }
+    if (renderedGroups.has(groupId)) continue;
+    renderedGroups.add(groupId);
+
+    const replacementId = orderedGroups[nextGroup];
+    if (!replacementId) return false;
+    const replacement = groupBlocks.get(replacementId);
+    if (!replacement) return false;
+
+    output.push(...replacement.map((item) => clone(item)));
+    nextGroup += 1;
+  }
+
+  window.tabs = output.map((tab, index) => ({
+    ...tab,
+    index,
+  }));
+  return true;
+}
+
+function preserveRemoteOrder<T extends UnknownRecord>(
+  merged: T[],
+  remote: unknown[],
+): T[] {
+  const remoteOrder = new Map<string, number>();
+
+  for (let index = 0; index < remote.length; index += 1) {
+    const raw = remote[index];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      continue;
+
+    const id = objectId(raw as UnknownRecord);
+    if (id) remoteOrder.set(id, index);
+  }
+
+  return merged
+    .slice()
+    .sort((a, b) => {
+      const ai = remoteOrder.get(String(objectId(a)));
+      const bi = remoteOrder.get(String(objectId(b)));
+
+      if (ai !== undefined && bi !== undefined) return ai - bi;
+      if (ai !== undefined) return -1;
+      if (bi !== undefined) return 1;
+      return Number(a.index ?? 0) - Number(b.index ?? 0);
+    })
+    .map((item, index) => ({
+      ...item,
+      index,
+    }));
+}
+
 export function mergeSnapshots(
   base: Snapshot = emptySnapshot(),
   local: Snapshot = emptySnapshot(),
   remote: Snapshot = emptySnapshot(),
+  options: MergeOptions = {},
 ): MergeResult {
   const conflicts: ConflictRecord[] = [];
   const out: Snapshot = {
@@ -325,10 +459,22 @@ export function mergeSnapshots(
   const BWin = base.windows ?? [],
     LWin = local.windows ?? [],
     RWin = remote.windows ?? [];
-  if (stableEqual(LWin, RWin)) out.windows = clone(LWin);
-  else if (stableEqual(LWin, BWin)) out.windows = clone(RWin);
-  else if (stableEqual(RWin, BWin)) out.windows = clone(LWin);
-  else {
+  if (options.tabSyncMode === "incremental") {
+    out.windows = mergeArray<WindowRecord>(
+      BWin,
+      LWin,
+      RWin,
+      conflicts,
+      "windows",
+      true,
+    );
+  } else if (stableEqual(LWin, RWin)) {
+    out.windows = clone(LWin);
+  } else if (stableEqual(LWin, BWin)) {
+    out.windows = clone(RWin);
+  } else if (stableEqual(RWin, BWin)) {
+    out.windows = clone(LWin);
+  } else {
     out.windows = clone(LWin);
     conflicts.push({
       type: "collection-auto-resolved",
@@ -344,7 +490,13 @@ export function mergeSnapshots(
     remote.groups ?? [],
     conflicts,
     "groups",
+    true,
   );
+  if (options.tabSyncMode === "incremental")
+    out.groups = preserveRemoteOrder(
+      out.groups,
+      remote.groups ?? [],
+    );
   out.extensions = mergeArray<ExtensionRecord>(
     base.extensions,
     local.extensions,
@@ -359,6 +511,46 @@ export function mergeSnapshots(
     conflicts,
     "bookmarks",
   );
+  if (options.tabSyncMode === "incremental") {
+    const remoteWindows = new Map(
+      RWin.map((window) => [
+        window.syncId,
+        window,
+      ]),
+    );
+
+    for (const window of out.windows) {
+      const remoteWindow = remoteWindows.get(
+        window.syncId,
+      );
+      if (remoteWindow) {
+        window.tabs = preserveRemoteOrder(
+          window.tabs ?? [],
+          remoteWindow.tabs ?? [],
+        );
+      }
+    }
+
+    const remoteGroups = new Map(
+      (remote.groups ?? []).map((group) => [
+        group.syncId,
+        group,
+      ]),
+    );
+
+    for (const group of out.groups) {
+      const remoteGroup = remoteGroups.get(
+        group.syncId,
+      );
+      if (remoteGroup) {
+        group.tabs = preserveRemoteOrder(
+          group.tabs ?? [],
+          remoteGroup.tabs ?? [],
+        );
+      }
+    }
+  }
+
   out.updatedAt = new Date().toISOString();
   return { snapshot: out, conflicts };
 }
@@ -394,19 +586,48 @@ export function deriveTombstones(
   prior: Tombstone[] = [],
   revision = 0,
   updatedAt = new Date().toISOString(),
+  preserveLiveCollections = false,
 ): Tombstone[] {
   const bm = extractEntities(base),
     lm = extractEntities(local);
+  const preservedCollections = new Set([
+    "windows",
+    "tabs",
+    "groups",
+  ]);
   const map = new Map<string, Tombstone>(
-    (prior ?? []).map((t) => [`${t.collection}:${t.syncId}`, clone(t)]),
+    (prior ?? []).map((t) => [
+      t.collection + ":" + t.syncId,
+      clone(t),
+    ]),
   );
-  for (const key of bm.keys())
-    if (!lm.has(key)) {
-      const [collection, syncId] = key.split(/:(.+)/);
-      if (collection && syncId)
-        map.set(key, { collection, syncId, deletedAt: updatedAt, revision });
-    }
-  for (const key of lm.keys()) map.delete(key);
+  for (const key of bm.keys()) {
+    if (lm.has(key)) continue;
+    const parts = key.split(/:(.+)/);
+    const collection = parts[0] || "";
+    const syncId = parts[1] || "";
+    if (
+      preserveLiveCollections &&
+      preservedCollections.has(collection)
+    )
+      continue;
+    if (collection && syncId)
+      map.set(key, {
+        collection,
+        syncId,
+        deletedAt: updatedAt,
+        revision,
+      });
+  }
+  for (const key of lm.keys()) {
+    const collection = key.split(/:(.+)/)[0] || "";
+    if (
+      preserveLiveCollections &&
+      preservedCollections.has(collection)
+    )
+      continue;
+    map.delete(key);
+  }
   return [...map.values()];
 }
 export function mergeTombstones(...sources: Tombstone[][]): Tombstone[] {

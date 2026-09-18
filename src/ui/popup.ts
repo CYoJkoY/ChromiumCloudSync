@@ -50,29 +50,16 @@ function setError(error) {
 async function refresh() {
   try {
     const r = await request("status");
-    const state = r.gistConfigured ? "ok" : r.authenticated ? "warn" : "bad";
-    const title = !r.authenticated
-      ? i.t("needsToken")
-      : !r.gistConfigured
-        ? i.t("githubConnectedNoGist")
-        : i.t("ready");
-    const meta = [
-      r.gistId ? i.t("gistStatus", { gist: r.gistId }) : "",
-      r.lastSyncAt
-        ? `${i.t("lastSync")} ${new Date(r.lastSyncAt).toLocaleString()}`
-        : "",
-      `${i.t("autoSyncStatus")}: ${r.autoSyncEnabled ? i.t("enabled") : i.t("disabled")}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const names = { gist: i.t("providerGist"), gdrive: i.t("providerGdrive"), webdav: i.t("providerWebdav") };
+    const providerName = names[r.provider] || r.provider || i.t("unknown");
+    const state = r.bound ? "ok" : "warn";
+    const title = r.bound ? i.t("ready") : i.t("provider") + ": " + providerName + " · " + i.t("notConfigured");
+    const meta = [i.t("provider") + ": " + providerName, r.lastSyncAt ? i.t("lastSync") + " " + new Date(r.lastSyncAt).toLocaleString() : "", i.t("autoSyncStatus") + ": " + (r.autoSyncEnabled ? i.t("enabled") : i.t("disabled"))].filter(Boolean).join("\n");
     setStatus(state, title, meta, "");
-    ui.rev.textContent = `${i.t("revision")} ${r.syncRevision ?? 0} · ${i.t("conflictsLabel")} ${r.conflictCount ?? 0}`;
+    ui.rev.textContent = i.t("revision") + " " + (r.syncRevision ?? 0) + " · " + i.t("conflictsLabel") + " " + (r.conflictCount ?? 0);
     void renderCloudGroups();
-  } catch (error) {
-    setError(error);
-  }
+  } catch (error) { setError(error); }
 }
-
 async function withButton(button, work) {
   if (!button || button.disabled) return;
   const old = button.innerHTML;

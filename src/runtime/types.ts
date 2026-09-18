@@ -21,6 +21,7 @@ export interface TabGroupRecord extends UnknownRecord {
   syncId: string;
   localId?: number;
   windowId?: number;
+  index?: number;
   title: string;
   color: string;
   collapsed: boolean;

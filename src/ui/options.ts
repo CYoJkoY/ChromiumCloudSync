@@ -9,32 +9,31 @@ const $ = (id) => document.getElementById(id),
   syncIntervalEl = $("syncInterval"),
   appVersionEl = $("appVersion");
 const providerEl = $("provider"),
+  githubCard = $("githubCard"),
   gdriveCard = $("gdriveCard"),
   webdavCard = $("webdavCard"),
-  restoreModeEl = $("restoreGroupMode");
+  autoSyncStateEl = $("autoSyncState"),
+  restoreModeEl = $("restoreGroupMode"),
+  tabSyncModeEl = $("tabSyncMode"),
+  tabSyncModeDescriptionEl = $("tabSyncModeDescription"),
+  cloudTabsManager = $("cloudTabsManager");
 
 function toggleProvider() {
-  const v = providerEl?.value || "gist";
+  const value = providerEl?.value || "gist";
+  if (githubCard) {
+    githubCard.hidden = value !== "gist";
+    githubCard.classList.toggle("ccsync-ext-hidden", value !== "gist");
+  }
   if (gdriveCard) {
-    gdriveCard.hidden = v !== "gdrive";
-    gdriveCard.classList.toggle("ccsync-ext-hidden", v !== "gdrive");
+    gdriveCard.hidden = value !== "gdrive";
+    gdriveCard.classList.toggle("ccsync-ext-hidden", value !== "gdrive");
   }
   if (webdavCard) {
-    webdavCard.hidden = v !== "webdav";
-    webdavCard.classList.toggle("ccsync-ext-hidden", v !== "webdav");
+    webdavCard.hidden = value !== "webdav";
+    webdavCard.classList.toggle("ccsync-ext-hidden", value !== "webdav");
   }
-  const gh = v === "gist";
-  for (const el of [
-    $("token")?.closest(".sync-field-group"),
-    $("gist")?.closest(".sync-field-group"),
-    $("create"),
-    $("save"),
-  ])
-    if (el) {
-      el.hidden = !gh;
-      el.classList.toggle("ccsync-ext-hidden", !gh);
-    }
 }
+
 providerEl?.addEventListener("change", async () => {
   toggleProvider();
   try {
@@ -98,10 +97,23 @@ $("saveRestoreMode")?.addEventListener("click", async () => {
     showError(e);
   }
 });
+async function updateTabSyncModeDescription(mode) {
+  if (!tabSyncModeDescriptionEl) return;
+  tabSyncModeDescriptionEl.textContent =
+    mode === "incremental"
+      ? i.t("tabSyncIncrementalHelp")
+      : i.t("tabSyncOverwriteHelp");
+}
+
 async function loadProvider() {
-  const r = await request("providerStatus");
+  const [r, tabSync] = await Promise.all([
+    request("providerStatus"),
+    request("getTabSyncSettings"),
+  ]);
   if (providerEl) providerEl.value = r.provider;
   if (restoreModeEl) restoreModeEl.value = r.restoreGroupMode || "ondemand";
+  if (tabSyncModeEl) tabSyncModeEl.value = tabSync.mode || "overwrite";
+  await updateTabSyncModeDescription(tabSync.mode || "overwrite");
   const w = await storageGet([
     "webdavSyncUrl",
     "webdavSyncFolder",
@@ -109,14 +121,12 @@ async function loadProvider() {
     "webdavSyncPassword",
   ]);
   if ($("webdavSyncUrl")) $("webdavSyncUrl").value = w.webdavSyncUrl || "";
-  if ($("webdavSyncFolder"))
-    $("webdavSyncFolder").value = w.webdavSyncFolder || "";
-  if ($("webdavSyncUsername"))
-    $("webdavSyncUsername").value = w.webdavSyncUsername || "";
-  if ($("webdavSyncPassword"))
-    $("webdavSyncPassword").value = w.webdavSyncPassword || "";
+  if ($("webdavSyncFolder")) $("webdavSyncFolder").value = w.webdavSyncFolder || "";
+  if ($("webdavSyncUsername")) $("webdavSyncUsername").value = w.webdavSyncUsername || "";
+  if ($("webdavSyncPassword")) $("webdavSyncPassword").value = w.webdavSyncPassword || "";
   toggleProvider();
 }
+
 function renderVersion() {
   if (!appVersionEl) return;
   const version = chrome.runtime.getManifest()?.version || "";
@@ -152,39 +162,64 @@ function refreshIntervalLabels() {
 async function refresh() {
   try {
     const r = await request("status");
-    setStatus(
-      [
-        r.authenticated
-          ? `${i.t("token")}: ${i.t("tokenConfigured")}`
-          : `${i.t("token")}: ${i.t("tokenNotConfigured")}`,
-        r.gistConfigured ? `Gist: ${r.gistId}` : `Gist: ${i.t("gistNotBound")}`,
-        r.lastSyncAt
-          ? `${i.t("lastSync")} ${new Date(r.lastSyncAt).toLocaleString()}`
-          : `${i.t("lastSync")} ${i.t("never")}`,
-        `${i.t("revision")}: ${r.syncRevision ?? 0}`,
-        `${i.t("conflictsLabel")}: ${r.conflictCount ?? 0}`,
-        `${i.t("autoSyncStatus")}: ${r.autoSyncEnabled ? i.t("enabled") : i.t("disabled")} · ${r.autoSyncIntervalMinutes ?? 5} min`,
-      ].join("\n"),
+    const names = {
+      gist: i.t("providerGist"),
+      gdrive: i.t("providerGdrive"),
+      webdav: i.t("providerWebdav"),
+    };
+    const providerName =
+      names[r.provider] || r.provider || i.t("unknown");
+    setStatus([
+      i.t("provider") + ": " + providerName,
+      i.t("status") + ": " +
+        (r.bound ? i.t("ready") : i.t("notConfigured")),
+      r.lastSyncAt
+        ? i.t("lastSync") + " " + new Date(r.lastSyncAt).toLocaleString()
+        : i.t("lastSync") + " " + i.t("never"),
+      i.t("revision") + ": " + (r.syncRevision ?? 0),
+      i.t("conflictsLabel") + ": " + (r.conflictCount ?? 0),
+      i.t("autoSyncStatus") + ": " +
+        (r.autoSyncEnabled ? i.t("enabled") : i.t("disabled")) +
+        " · " + (r.autoSyncIntervalMinutes ?? 5) + " min",
+    ].join("\n"));
+    if (autoSyncStateEl) {
+      autoSyncStateEl.textContent = r.autoSyncEnabled
+        ? i.t("autoSyncSavedEnabled", {
+            minutes: r.autoSyncIntervalMinutes ?? 5,
+          })
+        : i.t("autoSyncSavedDisabled", {
+            minutes: r.autoSyncIntervalMinutes ?? 5,
+          });
+    }
+    if (tabSyncModeEl)
+      tabSyncModeEl.value =
+        r.tabSyncMode || tabSyncModeEl.value || "overwrite";
+    await updateTabSyncModeDescription(
+      r.tabSyncMode || "overwrite",
     );
   } catch (e) {
     showError(e);
   }
 }
+
 async function load() {
   try {
     renderVersion();
-    const s = await storageGet(["githubToken", "gistId"]);
-    if (s.githubToken) tokenEl.value = s.githubToken;
-    if (s.gistId) gistEl.value = s.gistId;
+    const ss = await storageGet(["githubToken", "gistId"]);
+    if (ss.githubToken) tokenEl.value = ss.githubToken;
+    if (ss.gistId) gistEl.value = ss.gistId;
     const c = await request("getAutoSyncSettings");
     if (autoSyncEnabledEl) autoSyncEnabledEl.checked = !!c.enabled;
-    if (syncIntervalEl) syncIntervalEl.value = String(c.intervalMinutes || 5);
+    if (syncIntervalEl)
+      syncIntervalEl.value = String(c.intervalMinutes || 5);
     refreshIntervalLabels();
+    await loadProvider();
     await refresh();
   } catch (e) {
     showError(e);
   }
 }
+
 function normalizeGistId(v) {
   const r = (v || "").trim();
   if (!r) return "";
@@ -296,12 +331,120 @@ bindAction("saveAutoSync", async (_e, b) => {
     b.textContent = o;
   }
 });
+bindAction("saveTabSyncMode", async (_e, b) => {
+  const mode = tabSyncModeEl?.value === "incremental" ? "incremental" : "overwrite";
+  const old = b.textContent; b.disabled = true; b.textContent = i.t("processing");
+  try {
+    const result = await request("setTabSyncMode", { mode });
+    if (tabSyncModeEl) tabSyncModeEl.value = result.mode;
+    await updateTabSyncModeDescription(result.mode);
+    showFeedback("success", i.t("tabSyncModeSaved"), result.mode === "incremental" ? i.t("tabSyncIncremental") : i.t("tabSyncOverwrite"));
+    await refreshCloudTabs();
+  } finally {
+    b.disabled = false; b.textContent = old;
+  }
+});
 bindAction("historyPage", () =>
   chrome.tabs.create({ url: chrome.runtime.getURL("history.html") }),
 );
 bindAction("guidePage", () =>
   chrome.tabs.create({ url: chrome.runtime.getURL("guide.html") }),
 );
+async function handleCloudTabAction(button, action) {
+  if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+  const old = button.textContent;
+  button.disabled = true;
+  button.textContent = i.t("processing");
+  try { await action(); } catch (e) { showError(e); }
+  finally { button.disabled = false; button.textContent = old; }
+}
+
+function makeCloudTabActionButton(label, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = label;
+  button.addEventListener("click", () => void handleCloudTabAction(button, action));
+  return button;
+}
+
+function createCloudTabRow(tab, localTabIds, containerType, containerSyncId) {
+  const row = document.createElement("div"); row.className = "history-row";
+  const main = document.createElement("div"); main.className = "history-main";
+  const title = document.createElement("div"); title.className = "history-title"; title.textContent = tab.title || tab.url;
+  const meta = document.createElement("div"); meta.className = "history-meta";
+  meta.textContent = localTabIds.has(tab.syncId) ? i.t("openHere") + " · " + tab.url : tab.url;
+  main.append(title, meta);
+  const actions = document.createElement("div"); actions.className = "btn-row";
+  actions.append(
+    makeCloudTabActionButton(i.t("restore"), async () => { await request("restoreCloudTab", { syncId: tab.syncId }); showFeedback("success", i.t("tabRestoreDone"), tab.title || tab.url); }),
+    makeCloudTabActionButton(i.t("moveUp"), async () => { await request("moveCloudTab", { syncId: tab.syncId, containerType, containerSyncId, direction: "up" }); await refreshCloudTabs(); }),
+    makeCloudTabActionButton(i.t("moveDown"), async () => { await request("moveCloudTab", { syncId: tab.syncId, containerType, containerSyncId, direction: "down" }); await refreshCloudTabs(); }),
+    makeCloudTabActionButton(i.t("delete"), async () => { if (!confirm(i.t("deleteCloudTabConfirm"))) return; await request("deleteCloudTab", { syncId: tab.syncId }); await refreshCloudTabs(); }),
+  );
+  row.append(main, actions); return row;
+}
+
+function createCloudGroupSection(group, tabs, localTabIds) {
+  const section = document.createElement("div"); section.className = "subcard";
+  const head = document.createElement("div"); head.className = "history-row";
+  const main = document.createElement("div"); main.className = "history-main";
+  const title = document.createElement("div"); title.className = "history-title"; title.textContent = group.title || i.t("unnamedGroup");
+  const meta = document.createElement("div"); meta.className = "history-meta"; meta.textContent = i.t("groupTabCount", { count: tabs.length });
+  main.append(title, meta);
+  const actions = document.createElement("div"); actions.className = "btn-row";
+  actions.append(
+    makeCloudTabActionButton(i.t("restoreGroup"), async () => { const r = await request("restoreGroup", { groupSyncId: group.syncId }); showFeedback("success", i.t("groupRestoreDone"), i.t("restoreSummary", { tabs: r.tabs, groups: r.groups })); }),
+    makeCloudTabActionButton(i.t("moveUp"), async () => { await request("moveCloudGroup", { syncId: group.syncId, direction: "up" }); await refreshCloudTabs(); }),
+    makeCloudTabActionButton(i.t("moveDown"), async () => { await request("moveCloudGroup", { syncId: group.syncId, direction: "down" }); await refreshCloudTabs(); }),
+    makeCloudTabActionButton(i.t("delete"), async () => { if (!confirm(i.t("deleteCloudGroupConfirm"))) return; await request("deleteCloudGroup", { syncId: group.syncId }); await refreshCloudTabs(); }),
+  );
+  head.append(main, actions); section.append(head);
+  const list = document.createElement("div"); list.className = "section-stack";
+  for (const tab of tabs) list.append(createCloudTabRow(tab, localTabIds, "group", group.syncId));
+  section.append(list); return section;
+}
+
+async function refreshCloudTabs() {
+  if (!cloudTabsManager) return;
+  cloudTabsManager.replaceChildren();
+  try {
+    const data = await request("cloudTabState");
+    const snapshot = data.snapshot || {};
+    if ((data.mode || "overwrite") !== "incremental") {
+      const note = document.createElement("div"); note.className = "note section-note";
+      note.textContent = i.t("cloudTabsIncrementalOnly"); cloudTabsManager.append(note); return;
+    }
+    const localTabIds = new Set(data.localTabIds || []);
+    const groupsById = new Map((snapshot.groups || []).map((group) => [group.syncId, group]));
+    const windows = snapshot.windows || [];
+    if (!windows.length) {
+      const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = i.t("cloudTabsEmpty"); cloudTabsManager.append(empty); return;
+    }
+    for (const entry of windows.entries()) {
+      const windowIndex = entry[0], window = entry[1];
+      const windowCard = document.createElement("div"); windowCard.className = "subcard";
+      const title = document.createElement("div"); title.className = "subcard-title"; title.textContent = i.t("window") + " " + (windowIndex + 1); windowCard.append(title);
+      const grouped = new Map();
+      for (const tab of window.tabs || []) { const groupId = tab.group?.syncId || null; if (!grouped.has(groupId)) grouped.set(groupId, []); grouped.get(groupId).push(tab); }
+      const stack = document.createElement("div"); stack.className = "section-stack";
+      for (const entry2 of grouped.entries()) {
+        const groupId = entry2[0], tabs = entry2[1];
+        if (!groupId) { for (const tab of tabs) stack.append(createCloudTabRow(tab, localTabIds, "window", window.syncId)); continue; }
+        const group = groupsById.get(groupId) || { syncId: groupId, title: "", color: "grey", collapsed: false };
+        stack.append(createCloudGroupSection(group, tabs, localTabIds));
+      }
+      windowCard.append(stack); cloudTabsManager.append(windowCard);
+    }
+  } catch (e) { showError(e); }
+}
+
+bindAction("addCurrentTabsToCloud", async (_e, b) => {
+  const old = b.textContent; b.disabled = true; b.textContent = i.t("processing");
+  try { await request("addCurrentTabsToCloud"); showFeedback("success", i.t("tabsAddedToCloud"), ""); await refreshCloudTabs(); }
+  finally { b.disabled = false; b.textContent = old; }
+});
+bindAction("refreshCloudTabs", () => refreshCloudTabs());
 function setupTabs() {
   const tabs = [...document.querySelectorAll(".nav-tab")],
     panels = [...document.querySelectorAll(".tab-panel")],
@@ -317,6 +460,7 @@ function setupTabs() {
       for (const p of panels)
         p.classList.toggle("hidden", p.id !== t.dataset.target);
       if (hash) history.replaceState(null, "", `#${id.replace(/^panel-/, "")}`);
+      if (id === "panel-cloud-tabs") void refreshCloudTabs();
     };
   for (const t of tabs) {
     t.addEventListener("click", () => act(t.dataset.target));
@@ -337,7 +481,7 @@ function setupTabs() {
   }
   const k = location.hash.replace(/^#/, "");
   act(
-    ["sync", "extension", "local"].includes(k) ? `panel-${k}` : "panel-sync",
+    ["sync", "cloud-tabs", "extension", "local"].includes(k) ? `panel-${k}` : "panel-sync",
     false,
   );
 }

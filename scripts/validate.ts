@@ -231,15 +231,45 @@ const optionsHtml = fs.readFileSync(
   path.join(root, "src/ui/pages/options.html"),
   "utf8",
 );
+for (const required of [
+  'id="providerCard"', 'id="githubCard"', 'id="gdriveCard"', 'id="webdavCard"',
+  'id="autoSyncCard"', 'id="restoreModeCard"', 'id="tabSyncModeCard"',
+  'id="tabSyncMode"', 'id="saveTabSyncMode"', 'id="panel-cloud-tabs"',
+  'id="cloudTabsManager"', 'id="addCurrentTabsToCloud"',
+])
+  if (!optionsHtml.includes(required))
+    throw new Error("Options page is missing required UI anchor " + required);
 if (optionsHtml.includes("extension-storage-layout.js"))
   throw new Error("Obsolete extension storage layout shim is still loaded");
-if (!optionsHtml.includes('id="extensionStorageNavLabel"'))
-  throw new Error("Missing extension storage navigation label anchor");
-if (!optionsHtml.includes('id="extensionStoragePanelTitle"'))
-  throw new Error("Missing extension storage panel title anchor");
-if (!optionsHtml.includes('id="extensionStoragePanelDescription"'))
-  throw new Error("Missing extension storage panel description anchor");
+for (const required of [
+  'id="extensionStorageNavLabel"', 'id="extensionStoragePanelTitle"', 'id="extensionStoragePanelDescription"',
+])
+  if (!optionsHtml.includes(required))
+    throw new Error("Missing extension storage anchor " + required);
 
+const optionsSource = fs.readFileSync(
+  path.join(root, "src/ui/options.ts"),
+  "utf8",
+);
+for (const required of [
+  "loadProvider()", "getTabSyncSettings", "setTabSyncMode", "refreshCloudTabs",
+  "addCurrentTabsToCloud", "githubCard.hidden", "gdriveCard.hidden", "webdavCard.hidden",
+])
+  if (!optionsSource.includes(required))
+    throw new Error("Options controller is missing required implementation " + required);
+
+const buildLocalStateStart = bg.indexOf("async function buildLocalState(");
+const buildLocalStateEnd = bg.indexOf("async function pushSnapshot(", buildLocalStateStart);
+if (buildLocalStateStart < 0 || buildLocalStateEnd < 0)
+  throw new Error("Unable to locate buildLocalState for tab sync validation");
+const buildLocalState = bg.slice(buildLocalStateStart, buildLocalStateEnd);
+for (const required of [
+  "tabSyncMode = await getTabSyncMode()",
+  "{ tabSyncMode }",
+  'tabSyncMode === "incremental"',
+])
+  if (!buildLocalState.includes(required))
+    throw new Error("Incremental tab sync is not wired into buildLocalState: " + required);
 const storage = fs.readFileSync(
   path.join(root, "src/features/extension-storage.ts"),
   "utf8",
