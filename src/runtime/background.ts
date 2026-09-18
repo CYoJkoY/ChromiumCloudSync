@@ -330,6 +330,90 @@ function isRestrictedUrl(url) {
   if (!value) return true;
   return !/^https?:\/\//i.test(value);
 }
+async function collectTabGroups() {
+  if (!chrome.tabGroups?.query) return [];
+  const groups = await chrome.tabGroups.query({});
+  return Promise.all(
+    groups.map(async (g) => ({
+      localId: g.id,
+      windowId: g.windowId,
+      syncId: await getStableLocalId("group", g.id, KEYS.GROUP_SYNC_IDS),
+      title: g.title || "",
+      color: g.color || "grey",
+      collapsed: !!g.collapsed,
+    })),
+  );
+}
+async function collectTabs(groups) {
+  const windows = await chrome.windows.getAll({ populate: true }),
+    meta = Array.isArray(groups) ? groups : await collectTabGroups(),
+    gm = new Map(meta.map((g) => [g.localId, g])),
+    out = [];
+  for (const win of windows.filter((w) => w.type === "normal")) {
+    const windowSyncId = await getStableLocalId(
+        "window",
+        win.id,
+        KEYS.WINDOW_SYNC_IDS,
+      ),
+      tabs = [];
+    for (const tab of (win.tabs || []).filter((t) => !isRestrictedUrl(t.url))) {
+      const g = gm.get(tab.groupId);
+      tabs.push({
+        syncId: await getStableLocalId("tab", tab.id, KEYS.TAB_SYNC_IDS),
+        url: tab.url,
+        title: tab.title || "",
+        pinned: !!tab.pinned,
+        active: !!tab.active,
+        index: tab.index,
+        group: g
+          ? {
+              syncId: g.syncId,
+              title: g.title,
+              color: g.color,
+              collapsed: g.collapsed,
+            }
+          : null,
+      });
+    }
+    out.push({
+      syncId: windowSyncId,
+      state: ["fullscreen", "maximized", "minimized", "normal"].includes(
+        win.state,
+      )
+        ? win.state
+        : "normal",
+      focused: !!win.focused,
+      tabs,
+    });
+  }
+  return out;
+}
+async function collectBookmarks() {
+  const tree = await chrome.bookmarks.getTree(),
+    map = await getObjectMap(KEYS.BOOKMARK_SYNC_IDS),
+    flat = [];
+  let changed = false;
+  async function walk(node, parentSyncId = null, index = 0) {
+    let syncId = node.id === "0" ? "root-bookmarks" : map[String(node.id)];
+    if (!syncId) {
+      syncId = `bookmark-${crypto.randomUUID()}`;
+      map[String(node.id)] = syncId;
+      changed = true;
+    }
+    flat.push({
+      syncId,
+      parentSyncId,
+      index,
+      title: node.title || "",
+      ...(node.url ? { url: node.url } : {}),
+    });
+    for (let i = 0; i < (node.children || []).length; i++)
+      await walk(node.children[i], syncId, i);
+  }
+  for (const r of tree) await walk(r, null, 0);
+  if (changed) await setSettings({ [KEYS.BOOKMARK_SYNC_IDS]: map });
+  return flat;
+}
 async function collectGroupSnapshots(groups) {
   const meta = Array.isArray(groups) ? groups : await collectTabGroups();
   if (!meta.length) return [];

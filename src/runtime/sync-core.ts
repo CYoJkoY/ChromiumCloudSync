@@ -319,6 +319,38 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
   return out;
 }
 
+function preserveRemoteOrder<T extends UnknownRecord>(
+  merged: T[],
+  remote: unknown[],
+): T[] {
+  const remoteOrder = new Map<string, number>();
+
+  for (let index = 0; index < remote.length; index += 1) {
+    const raw = remote[index];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      continue;
+
+    const id = objectId(raw as UnknownRecord);
+    if (id) remoteOrder.set(id, index);
+  }
+
+  return merged
+    .slice()
+    .sort((a, b) => {
+      const ai = remoteOrder.get(String(objectId(a)));
+      const bi = remoteOrder.get(String(objectId(b)));
+
+      if (ai !== undefined && bi !== undefined) return ai - bi;
+      if (ai !== undefined) return -1;
+      if (bi !== undefined) return 1;
+      return Number(a.index ?? 0) - Number(b.index ?? 0);
+    })
+    .map((item, index) => ({
+      ...item,
+      index,
+    }));
+}
+
 export function mergeSnapshots(
   base: Snapshot = emptySnapshot(),
   local: Snapshot = emptySnapshot(),
@@ -370,6 +402,11 @@ export function mergeSnapshots(
     conflicts,
     "groups",
   );
+  if (options.tabSyncMode === "incremental")
+    out.groups = preserveRemoteOrder(
+      out.groups,
+      remote.groups ?? [],
+    );
   out.extensions = mergeArray<ExtensionRecord>(
     base.extensions,
     local.extensions,
@@ -384,6 +421,46 @@ export function mergeSnapshots(
     conflicts,
     "bookmarks",
   );
+  if (options.tabSyncMode === "incremental") {
+    const remoteWindows = new Map(
+      RWin.map((window) => [
+        window.syncId,
+        window,
+      ]),
+    );
+
+    for (const window of out.windows) {
+      const remoteWindow = remoteWindows.get(
+        window.syncId,
+      );
+      if (remoteWindow) {
+        window.tabs = preserveRemoteOrder(
+          window.tabs ?? [],
+          remoteWindow.tabs ?? [],
+        );
+      }
+    }
+
+    const remoteGroups = new Map(
+      (remote.groups ?? []).map((group) => [
+        group.syncId,
+        group,
+      ]),
+    );
+
+    for (const group of out.groups) {
+      const remoteGroup = remoteGroups.get(
+        group.syncId,
+      );
+      if (remoteGroup) {
+        group.tabs = preserveRemoteOrder(
+          group.tabs ?? [],
+          remoteGroup.tabs ?? [],
+        );
+      }
+    }
+  }
+
   out.updatedAt = new Date().toISOString();
   return { snapshot: out, conflicts };
 }

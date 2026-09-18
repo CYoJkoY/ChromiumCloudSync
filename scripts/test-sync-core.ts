@@ -269,3 +269,58 @@ console.log("sync-core tests: OK");
     true,
   );
 }
+
+
+{
+  const a = {
+    syncId: "tab-a",
+    url: "https://a.example",
+    title: "A",
+    pinned: false,
+    active: false,
+    index: 0,
+  };
+  const b = {
+    syncId: "tab-b",
+    url: "https://b.example",
+    title: "B",
+    pinned: false,
+    active: false,
+    index: 1,
+  };
+  const base = snapshot({
+    windows: [{
+      syncId: "window-a",
+      state: "normal",
+      focused: true,
+      tabs: [a, b],
+    }],
+  });
+  const local = snapshot({
+    windows: [{
+      syncId: "window-a",
+      state: "normal",
+      focused: true,
+      tabs: [b, a],
+    }],
+  });
+  const remote = snapshot({
+    windows: [{
+      syncId: "window-a",
+      state: "normal",
+      focused: true,
+      tabs: [a, b],
+    }],
+  });
+  const merged = mergeSnapshots(
+    base,
+    local,
+    remote,
+    { tabSyncMode: "incremental" },
+  );
+  assert.deepEqual(
+    merged.snapshot.windows[0].tabs.map((tab) => tab.syncId),
+    ["tab-a", "tab-b"],
+    "incremental mode must preserve remote tab order",
+  );
+}
