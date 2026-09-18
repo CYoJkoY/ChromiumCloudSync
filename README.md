@@ -73,11 +73,11 @@ The synchronization engine is separated from the storage backend. Choose the pro
 
 | Provider         | What it stores                  | Authentication / access                                  | History source                  |
 | :--------------- | :------------------------------ | :------------------------------------------------------- | :------------------------------ |
-| **GitHub Gist**  | \`current.json\` and sync metadata | GitHub Token + private Gist                              | Gist revision / commit history  |
+| **GitHub Gist**  | `current.json` and sync metadata | GitHub Token + private Gist                              | Gist revision / commit history  |
 | **Google Drive** | One application-created JSON file | User-supplied OAuth Client ID via Chromium Identity API | Google Drive file revisions     |
-| **WebDAV**       | \`current.json\` + optional history index | WebDAV URL, optional folder, username and password/app auth | \`history/index.json\`, up to 30 entries |
+| **WebDAV**       | `current.json` + optional history index | WebDAV URL, optional folder, username and password/app auth | `history/index.json`, up to 30 entries |
 
-For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the \`drive.file\` scope and stores its OAuth credentials locally. WebDAV requests require the user to grant access to the configured server origin.
+For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and stores its OAuth credentials locally. WebDAV requests require the user to grant access to the configured server origin.
 
 <a name="readme-sync-model"></a>
 
@@ -85,7 +85,7 @@ For GitHub Gist, the extension creates or binds a private Gist. Google Drive use
 
 Chromium Cloud Sync uses a **local-first three-way merge** rather than a simple latest-device-wins strategy.
 
-\`\`\`text
+```text
               Local base snapshot
                        │
              ┌─────────┴─────────┐
@@ -102,7 +102,7 @@ Chromium Cloud Sync uses a **local-first three-way merge** rather than a simple 
                  └─────┬─────┘
                        ▼
                 New revision
-\`\`\`
+```
 
 The merge engine uses field-specific policies, including latest-value resolution for ordinary metadata, version comparison for extension versions, and manual conflicts when fields such as URLs are independently changed. Deletions are represented by tombstones.
 
@@ -114,23 +114,23 @@ The current cloud schema is **v11**, with migration support for schemas **7, 8, 
 
 ### Synchronized
 
-\`\`\`text
+```text
 Open windows
 HTTP(S) tabs
 Tab groups
 Bookmarks
 Third-party extension metadata
-\`\`\`
+```
 
 ### Explicitly outside the sync snapshot
 
-\`\`\`text
+```text
 Third-party extension private storage / settings
 Browser passwords
 Authentication credentials
 Unrelated extension-private data
 Browser-level settings
-\`\`\`
+```
 
 Third-party extension settings are intentionally excluded because a generic Chromium extension cannot safely read or write another extension's private storage.
 
@@ -148,10 +148,10 @@ When an official store link is unavailable or unsuitable for the current browser
 
 Package backup is deliberately separated from browser-state synchronization.
 
-\`\`\`text
+```text
 Browser state  →  selected cloud sync provider
 CRX / ZIP      →  GitHub private repository OR WebDAV
-\`\`\`
+```
 
 The package subsystem keeps an index, selection state, package metadata, and SHA-256 checksums. The current GitHub Contents API path rejects files larger than **95 MiB**. The first backup requires manual selection of a CRX or ZIP because another extension's installed package bytes are not directly exposed to the extension.
 
@@ -161,7 +161,7 @@ The package subsystem keeps an index, selection state, package metadata, and SHA
 
 New GitHub synchronization Gists are created as **private Gists**. The current synchronization payload is stored as normal JSON and is **not end-to-end encrypted**. Access to a configured sync backend can therefore expose the synchronized browser state.
 
-For Google Drive, OAuth credentials are stored in \`chrome.storage.local\` and the implementation requests the \`drive.file\` scope. For WebDAV, the configured credentials are stored locally and requests use HTTP Basic Authentication.
+For Google Drive, OAuth credentials are stored in `chrome.storage.local` and the implementation requests the `drive.file` scope. For WebDAV, the configured credentials are stored locally and requests use HTTP Basic Authentication.
 
 The repository still contains compatibility handling for older encrypted synchronization data, but that is a migration path rather than the format used for new synchronization state.
 
@@ -176,7 +176,7 @@ Open [Releases](https://github.com/CYoJkoY/ChromiumCloudSync/releases) and downl
 For the ZIP:
 
 1. Extract the archive.
-2. Open \`chrome://extensions\` or your browser's equivalent extension page.
+2. Open `chrome://extensions` or your browser's equivalent extension page.
 3. Enable **Developer mode**.
 4. Select **Load unpacked**.
 5. Choose the extracted directory.
@@ -209,7 +209,7 @@ History is sourced from the active provider:
 
 - GitHub Gist uses Gist revision/commit history.
 - Google Drive uses file revisions.
-- WebDAV maintains a \`history/index.json\` with up to 30 archived entries.
+- WebDAV maintains a `history/index.json` with up to 30 archived entries.
 
 Rolling back creates a new current revision rather than destroying historical state.
 
@@ -217,7 +217,7 @@ Rolling back creates a new current revision rather than destroying historical st
 
 ## <img src="assets/readme/icons/architecture.svg" width="24" height="24" alt=""> Architecture
 
-\`\`\`text
+```text
 Chromium Cloud Sync
 ├── runtime/
 │   ├── background.ts
@@ -240,9 +240,9 @@ Chromium Cloud Sync
     ├── i18n.ts
     ├── theme.ts
     └── styles/
-\`\`\`
+```
 
-The runtime layer coordinates browser APIs, local storage, provider dispatch, GitHub, diagnostics, schema migration, and synchronization. \`sync-core.ts\` contains merge and tombstone logic; \`schema.ts\` validates and migrates cloud state; the provider layer keeps storage-specific operations out of the merge engine; the UI layer provides the operational surfaces.
+The runtime layer coordinates browser APIs, local storage, provider dispatch, GitHub, diagnostics, schema migration, and synchronization. `sync-core.ts` contains merge and tombstone logic; `schema.ts` validates and migrates cloud state; the provider layer keeps storage-specific operations out of the merge engine; the UI layer provides the operational surfaces.
 
 <a name="readme-development"></a>
 
@@ -255,22 +255,22 @@ The runtime layer coordinates browser APIs, local storage, provider dispatch, Gi
 - TypeScript
 - Playwright with Chromium
 
-Runtime source is maintained in TypeScript. The release workflow rejects tracked \`.js\` source files and generates JavaScript during the build.
+Runtime source is maintained in TypeScript. The release workflow rejects tracked `.js` source files and generates JavaScript during the build.
 
 ### Common commands
 
-\`\`\`bash
+```bash
 npm install
 npm run typecheck
 npm test
 npm run validate
 npm run build:zip
 npm run smoke
-\`\`\`
+```
 
 ### Release workflow
 
-\`\`\`text
+```text
 Git tag
    │
    ├─ version validation
@@ -282,9 +282,9 @@ Git tag
    ├─ signed CRX3 build
    ├─ SHA-256 checksums
    └─ GitHub Release
-\`\`\`
+```
 
-Stable tags use \`vX.Y.Z\`. Development tags use \`vX.Y.Z.devN\` and are published as prereleases.
+Stable tags use `vX.Y.Z`. Development tags use `vX.Y.Z.devN` and are published as prereleases.
 
 <a name="readme-status"></a>
 
@@ -314,7 +314,7 @@ Never include GitHub Tokens, private credentials, or sensitive Gist contents in 
 
 ## <img src="assets/readme/icons/development.svg" width="24" height="24" alt=""> License
 
-Chromium Cloud Sync is released under the **MIT License**. See [\`LICENSE\`](LICENSE) for the full license text.
+Chromium Cloud Sync is released under the **MIT License**. See [`LICENSE`](LICENSE) for the full license text.
 
 <div align="center">
 
