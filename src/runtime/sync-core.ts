@@ -340,6 +340,69 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
   return out;
 }
 
+export function reorderTabGroupBlocks(
+  window: WindowRecord,
+  groupOrder: string[],
+): boolean {
+  const tabs = window.tabs || [];
+  const groupBlocks = new Map<string, TabRecord[]>();
+  const encounteredGroups: string[] = [];
+  const seenGroups = new Set<string>();
+
+  for (const tab of tabs) {
+    const groupId = tab.group?.syncId;
+    if (!groupId) continue;
+    if (!groupBlocks.has(groupId))
+      groupBlocks.set(groupId, []);
+    groupBlocks.get(groupId)?.push(clone(tab));
+    if (!seenGroups.has(groupId)) {
+      seenGroups.add(groupId);
+      encounteredGroups.push(groupId);
+    }
+  }
+
+  if (encounteredGroups.length < 2)
+    return false;
+
+  const rank = new Map(
+    groupOrder.map((id, index) => [id, index]),
+  );
+  const orderedGroups = encounteredGroups.slice().sort((a, b) => {
+    const ar = rank.get(a);
+    const br = rank.get(b);
+    if (ar !== undefined && br !== undefined) return ar - br;
+    if (ar !== undefined) return -1;
+    if (br !== undefined) return 1;
+    return encounteredGroups.indexOf(a) - encounteredGroups.indexOf(b);
+  });
+
+  if (orderedGroups.every((id, index) => id === encounteredGroups[index]))
+    return false;
+
+  const groupSlots = new Map<string, number>();
+  const output: TabRecord[] = [];
+  let nextGroup = 0;
+  for (const tab of tabs) {
+    const groupId = tab.group?.syncId;
+    if (!groupId) {
+      output.push(clone(tab));
+      continue;
+    }
+    if (groupSlots.has(groupId)) continue;
+    groupSlots.set(groupId, output.length);
+    const replacement = groupBlocks.get(orderedGroups[nextGroup]);
+    if (!replacement) return false;
+    output.push(...replacement.map((item) => clone(item)));
+    nextGroup += 1;
+  }
+
+  window.tabs = output.map((tab, index) => ({
+    ...tab,
+    index,
+  }));
+  return true;
+}
+
 function preserveRemoteOrder<T extends UnknownRecord>(
   merged: T[],
   remote: unknown[],
