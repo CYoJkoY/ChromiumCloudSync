@@ -783,6 +783,7 @@ body.popup-page .popup-cloud-group-summary:focus-visible{outline:none;box-shadow
 body.popup-page .popup-cloud-group-summary .secondary{width:auto;min-width:84px;flex:none}
 body.popup-page .popup-cloud-group[open] .popup-cloud-group-summary .cloud-disclosure-indicator{transform:rotate(90deg)}
 body.popup-page .popup-cloud-group-content{min-width:0;padding:0 12px 12px;border-top:1px solid var(--line)}
+body.popup-page .popup-cloud-group-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 body.popup-page .popup-cloud-tab-list{display:grid;gap:7px;margin-top:10px}
 body.popup-page .popup-cloud-tab{min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 body.popup-page .popup-cloud-tab-title{min-width:0;font-size:12px;font-weight:700;line-height:1.4;overflow-wrap:anywhere}
