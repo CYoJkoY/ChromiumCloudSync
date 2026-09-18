@@ -248,42 +248,59 @@ bindAction("validate", async (_e, b) => {
   }
 });
 bindAction("save", async (_e, b) => {
-  const t = tokenEl.value.trim(),
-    g = normalizeGistId(gistEl.value);
+  const t = String(tokenEl?.value || "").trim();
+  const g = normalizeGistId(gistEl?.value || "");
   const p = String(providerEl?.value || "gist");
-  if (p === "gist" && !t) throw Error(i.t("needsToken"));
-  if (!g) throw Error(i.t("gistRequired"));
-  const o = b.textContent;
+
+  if (p === "gist" && !t)
+    throw Error(i.t("needsToken"));
+
+  const old = b.textContent;
   b.disabled = true;
   b.textContent = i.t("processing");
+
   try {
-    const r = await request("configureGist", { gistId: g, token: t });
-    gistEl.value = r.gistId || g;
     await storageSet({ githubToken: t });
-    showFeedback("success", i.t("bindGist"), `Gist: ${r.gistId || g}`);
+
+    if (g) {
+      const r = await request("configureGist", {
+        gistId: g,
+        token: t,
+      });
+      const id = String(r.gistId || g).trim();
+
+      if (!id)
+        throw Error(i.t("gistRequired"));
+
+      gistEl.value = id;
+      await storageSet({ gistId: id });
+
+      showFeedback(
+        "success",
+        i.t("bindGist"),
+        `Gist: ${id}`,
+      );
+    } else {
+      const r = await request("createGist");
+      const id = String(r.id || "").trim();
+
+      if (!id)
+        throw Error(i.t("gistCreateFailed"));
+
+      gistEl.value = id;
+      await storageSet({ gistId: id });
+
+      showFeedback(
+        "success",
+        i.t("createGist"),
+        `Gist: ${id}`,
+      );
+    }
+
     await refresh();
   } finally {
     b.disabled = false;
-    b.textContent = o;
-  }
-});
-bindAction("create", async (_e, b) => {
-  const t = tokenEl.value.trim();
-  const p = String(providerEl?.value || "gist");
-  if (p === "gist" && !t) throw Error(i.t("needsToken"));
-  await storageSet({ githubToken: t });
-  const o = b.textContent;
-  b.disabled = true;
-  b.textContent = i.t("processing");
-  try {
-    const r = await request("createGist");
-    gistEl.value = r.id;
-    await storageSet({ gistId: r.id });
-    showFeedback("success", i.t("createGist"), `Gist: ${r.id}`);
-    await refresh();
-  } finally {
-    b.disabled = false;
-    b.textContent = o;
+    b.textContent = old;
   }
 });
 bindAction("syncNowButton", async (_e, b) => {
@@ -369,74 +386,270 @@ function makeCloudTabActionButton(label, action) {
 }
 
 function createCloudTabRow(tab, localTabIds, containerType, containerSyncId) {
-  const row = document.createElement("div"); row.className = "history-row";
-  const main = document.createElement("div"); main.className = "history-main";
-  const title = document.createElement("div"); title.className = "history-title"; title.textContent = tab.title || tab.url;
-  const meta = document.createElement("div"); meta.className = "history-meta";
-  meta.textContent = localTabIds.has(tab.syncId) ? i.t("openHere") + " · " + tab.url : tab.url;
+  const row = document.createElement("div");
+  row.className = "history-row";
+
+  const main = document.createElement("div");
+  main.className = "history-main";
+
+  const title = document.createElement("div");
+  title.className = "history-title";
+  title.textContent = tab.title || tab.url;
+
+  const meta = document.createElement("div");
+  meta.className = "history-meta";
+  meta.textContent = localTabIds.has(tab.syncId)
+    ? i.t("openHere") + " · " + tab.url
+    : tab.url;
+
   main.append(title, meta);
-  const actions = document.createElement("div"); actions.className = "btn-row";
+
+  const actions = document.createElement("div");
+  actions.className = "btn-row cloud-tab-actions";
+
   actions.append(
-    makeCloudTabActionButton(i.t("restore"), async () => { await request("restoreCloudTab", { syncId: tab.syncId }); showFeedback("success", i.t("tabRestoreDone"), tab.title || tab.url); }),
-    makeCloudTabActionButton(i.t("moveUp"), async () => { await request("moveCloudTab", { syncId: tab.syncId, containerType, containerSyncId, direction: "up" }); await refreshCloudTabs(); }),
-    makeCloudTabActionButton(i.t("moveDown"), async () => { await request("moveCloudTab", { syncId: tab.syncId, containerType, containerSyncId, direction: "down" }); await refreshCloudTabs(); }),
-    makeCloudTabActionButton(i.t("delete"), async () => { if (!confirm(i.t("deleteCloudTabConfirm"))) return; await request("deleteCloudTab", { syncId: tab.syncId }); await refreshCloudTabs(); }),
+    makeCloudTabActionButton(i.t("restore"), async () => {
+      await request("restoreCloudTab", { syncId: tab.syncId });
+      showFeedback("success", i.t("tabRestoreDone"), tab.title || tab.url);
+    }),
+    makeCloudTabActionButton(i.t("moveUp"), async () => {
+      await request("moveCloudTab", {
+        syncId: tab.syncId,
+        containerType,
+        containerSyncId,
+        direction: "up",
+      });
+      await refreshCloudTabs();
+    }),
+    makeCloudTabActionButton(i.t("moveDown"), async () => {
+      await request("moveCloudTab", {
+        syncId: tab.syncId,
+        containerType,
+        containerSyncId,
+        direction: "down",
+      });
+      await refreshCloudTabs();
+    }),
+    makeCloudTabActionButton(i.t("delete"), async () => {
+      if (!confirm(i.t("deleteCloudTabConfirm"))) return;
+      await request("deleteCloudTab", { syncId: tab.syncId });
+      await refreshCloudTabs();
+    }),
   );
-  row.append(main, actions); return row;
+
+  row.append(main, actions);
+  return row;
+}
+
+function createCloudDisclosureSummary(titleText, metaText) {
+  const summary = document.createElement("summary");
+  summary.className = "cloud-disclosure-summary";
+
+  const main = document.createElement("div");
+  main.className = "history-main";
+
+  const title = document.createElement("div");
+  title.className = "history-title";
+  title.textContent = titleText;
+
+  const meta = document.createElement("div");
+  meta.className = "history-meta";
+  meta.textContent = metaText;
+
+  main.append(title, meta);
+
+  const indicator = document.createElement("span");
+  indicator.className = "cloud-disclosure-indicator";
+  indicator.setAttribute("aria-hidden", "true");
+  indicator.textContent = "›";
+
+  summary.append(main, indicator);
+  return summary;
 }
 
 function createCloudGroupSection(group, tabs, localTabIds) {
-  const section = document.createElement("div"); section.className = "subcard";
-  const head = document.createElement("div"); head.className = "history-row";
-  const main = document.createElement("div"); main.className = "history-main";
-  const title = document.createElement("div"); title.className = "history-title"; title.textContent = group.title || i.t("unnamedGroup");
-  const meta = document.createElement("div"); meta.className = "history-meta"; meta.textContent = i.t("groupTabCount", { count: tabs.length });
-  main.append(title, meta);
-  const actions = document.createElement("div"); actions.className = "btn-row";
-  actions.append(
-    makeCloudTabActionButton(i.t("restoreGroup"), async () => { const r = await request("restoreGroup", { groupSyncId: group.syncId }); showFeedback("success", i.t("groupRestoreDone"), i.t("restoreSummary", { tabs: r.tabs, groups: r.groups })); }),
-    makeCloudTabActionButton(i.t("moveUp"), async () => { await request("moveCloudGroup", { syncId: group.syncId, direction: "up" }); await refreshCloudTabs(); }),
-    makeCloudTabActionButton(i.t("moveDown"), async () => { await request("moveCloudGroup", { syncId: group.syncId, direction: "down" }); await refreshCloudTabs(); }),
-    makeCloudTabActionButton(i.t("delete"), async () => { if (!confirm(i.t("deleteCloudGroupConfirm"))) return; await request("deleteCloudGroup", { syncId: group.syncId }); await refreshCloudTabs(); }),
+  const section = document.createElement("details");
+  section.className = "cloud-group-section";
+  section.open = false;
+
+  section.append(
+    createCloudDisclosureSummary(
+      group.title || i.t("unnamedGroup"),
+      i.t("groupTabCount", { count: tabs.length }),
+    ),
   );
-  head.append(main, actions); section.append(head);
-  const list = document.createElement("div"); list.className = "section-stack";
-  for (const tab of tabs) list.append(createCloudTabRow(tab, localTabIds, "group", group.syncId));
-  section.append(list); return section;
+
+  const actions = document.createElement("div");
+  actions.className = "btn-row cloud-scope-actions";
+
+  actions.append(
+    makeCloudTabActionButton(i.t("restoreGroup"), async () => {
+      const r = await request("restoreGroup", {
+        groupSyncId: group.syncId,
+      });
+      showFeedback(
+        "success",
+        i.t("groupRestoreDone"),
+        i.t("restoreSummary", {
+          tabs: r.tabs,
+          groups: r.groups,
+        }),
+      );
+    }),
+    makeCloudTabActionButton(i.t("moveUp"), async () => {
+      await request("moveCloudGroup", {
+        syncId: group.syncId,
+        direction: "up",
+      });
+      await refreshCloudTabs();
+    }),
+    makeCloudTabActionButton(i.t("moveDown"), async () => {
+      await request("moveCloudGroup", {
+        syncId: group.syncId,
+        direction: "down",
+      });
+      await refreshCloudTabs();
+    }),
+    makeCloudTabActionButton(i.t("delete"), async () => {
+      if (!confirm(i.t("deleteCloudGroupConfirm"))) return;
+      await request("deleteCloudGroup", {
+        syncId: group.syncId,
+      });
+      await refreshCloudTabs();
+    }),
+  );
+
+  const list = document.createElement("div");
+  list.className = "section-stack cloud-tab-list";
+  for (const tab of tabs)
+    list.append(createCloudTabRow(tab, localTabIds, "group", group.syncId));
+
+  section.append(actions, list);
+  return section;
+}
+
+function createCloudUngroupedSection(tabs, localTabIds, windowSyncId) {
+  const section = document.createElement("details");
+  section.className = "cloud-ungrouped-section";
+  section.open = false;
+
+  section.append(
+    createCloudDisclosureSummary(
+      i.t("ungroupedTabs"),
+      i.t("groupTabCount", { count: tabs.length }),
+    ),
+  );
+
+  const list = document.createElement("div");
+  list.className = "section-stack cloud-tab-list";
+  for (const tab of tabs)
+    list.append(createCloudTabRow(tab, localTabIds, "window", windowSyncId));
+
+  section.append(list);
+  return section;
 }
 
 async function refreshCloudTabs() {
-  if (!cloudTabsManager) return;
+  if (!cloudTabsManager)
+    return;
+
   cloudTabsManager.replaceChildren();
+
   try {
     const data = await request("cloudTabState");
     const snapshot = data.snapshot || {};
+
     if ((data.mode || "overwrite") !== "incremental") {
-      const note = document.createElement("div"); note.className = "note section-note";
-      note.textContent = i.t("cloudTabsIncrementalOnly"); cloudTabsManager.append(note); return;
+      const note = document.createElement("div");
+      note.className = "note section-note";
+      note.textContent = i.t("cloudTabsIncrementalOnly");
+      cloudTabsManager.append(note);
+      return;
     }
+
     const localTabIds = new Set(data.localTabIds || []);
-    const groupsById = new Map((snapshot.groups || []).map((group) => [group.syncId, group]));
+    const groupsById = new Map(
+      (snapshot.groups || []).map((group) => [
+        group.syncId,
+        group,
+      ]),
+    );
     const windows = snapshot.windows || [];
+
     if (!windows.length) {
-      const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = i.t("cloudTabsEmpty"); cloudTabsManager.append(empty); return;
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = i.t("cloudTabsEmpty");
+      cloudTabsManager.append(empty);
+      return;
     }
-    for (const entry of windows.entries()) {
-      const windowIndex = entry[0], window = entry[1];
-      const windowCard = document.createElement("div"); windowCard.className = "subcard";
-      const title = document.createElement("div"); title.className = "subcard-title"; title.textContent = i.t("window") + " " + (windowIndex + 1); windowCard.append(title);
-      const grouped = new Map();
-      for (const tab of window.tabs || []) { const groupId = tab.group?.syncId || null; if (!grouped.has(groupId)) grouped.set(groupId, []); grouped.get(groupId).push(tab); }
-      const stack = document.createElement("div"); stack.className = "section-stack";
-      for (const entry2 of grouped.entries()) {
-        const groupId = entry2[0], tabs = entry2[1];
-        if (!groupId) { for (const tab of tabs) stack.append(createCloudTabRow(tab, localTabIds, "window", window.syncId)); continue; }
-        const group = groupsById.get(groupId) || { syncId: groupId, title: "", color: "grey", collapsed: false };
-        stack.append(createCloudGroupSection(group, tabs, localTabIds));
+
+    for (const [windowIndex, window] of windows.entries()) {
+      const windowSection = document.createElement("details");
+      windowSection.className = "cloud-window-section";
+      windowSection.open = windowIndex === 0;
+
+      const windowTabs = window.tabs || [];
+
+      windowSection.append(
+        createCloudDisclosureSummary(
+          i.t("window") + " " + (windowIndex + 1),
+          i.t("groupTabCount", { count: windowTabs.length }),
+        ),
+      );
+
+      const body = document.createElement("div");
+      body.className = "cloud-window-body";
+
+      if (!windowTabs.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = i.t("cloudTabsEmpty");
+        body.append(empty);
+        windowSection.append(body);
+        cloudTabsManager.append(windowSection);
+        continue;
       }
-      windowCard.append(stack); cloudTabsManager.append(windowCard);
+
+      const grouped = new Map();
+      const ungrouped = [];
+
+      for (const tab of windowTabs) {
+        const groupId = tab.group?.syncId || null;
+        if (!groupId) {
+          ungrouped.push(tab);
+          continue;
+        }
+        if (!grouped.has(groupId))
+          grouped.set(groupId, []);
+        grouped.get(groupId).push(tab);
+      }
+
+      for (const [groupId, tabs] of grouped.entries()) {
+        const group = groupsById.get(groupId) || {
+          syncId: groupId,
+          title: "",
+          color: "grey",
+          collapsed: false,
+        };
+        body.append(createCloudGroupSection(group, tabs, localTabIds));
+      }
+
+      if (ungrouped.length)
+        body.append(
+          createCloudUngroupedSection(
+            ungrouped,
+            localTabIds,
+            window.syncId,
+          ),
+        );
+
+      windowSection.append(body);
+      cloudTabsManager.append(windowSection);
     }
-  } catch (e) { showError(e); }
+  } catch (e) {
+    showError(e);
+  }
 }
 
 bindAction("addCurrentTabsToCloud", async (_e, b) => {

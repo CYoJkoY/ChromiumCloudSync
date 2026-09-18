@@ -1789,6 +1789,13 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           collapsed: !!g.collapsed,
           tabCount: (g.tabs || []).length,
           updatedAt: g.updatedAt || "",
+          tabs: (g.tabs || []).map((tab) => ({
+            syncId: tab.syncId,
+            title: tab.title || "",
+            url: tab.url || "",
+            index: Number.isFinite(tab.index) ? tab.index : 0,
+            pinned: !!tab.pinned,
+          })),
         }));
       }
       case "restoreGroup":

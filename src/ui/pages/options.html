@@ -198,6 +198,9 @@
           </div>
           <main>
             <div class="tab-panel" id="panel-sync" role="tabpanel">
+              <section class="card sync-section sync-now-card">
+                <button class="primary full sync-now-button" data-i18n="syncNow" id="syncNowButton" type="button">Sync now</button>
+              </section>
   <section class="card sync-section" id="providerCard">
     <div class="card-title"><span data-i18n="providerTitle">Cloud sync provider</span></div>
     <p class="card-desc" data-i18n="providerHelp">Choose where the browser state is stored. Credentials stay on this device.</p>
@@ -217,12 +220,16 @@
       <span class="field-label-text" data-i18n="token">GitHub Token</span>
       <input autocomplete="off" class="field" id="token" placeholder="github_pat_…" type="password" />
     </label><div class="btn-row"><button class="secondary" data-i18n="validateToken" id="validate" type="button">Validate token</button></div></div>
-    <div class="sync-field-group"><label class="field-label">
-      <span class="field-label-text" data-i18n="gistId">Gist ID</span>
-      <input class="field" data-i18n-placeholder="gistPlaceholder" id="gist" placeholder="Leave blank to create a new sync Gist" />
-    </label><div class="btn-row"><button class="primary" data-i18n="bindGist" id="save" type="button">Bind Gist</button></div></div>
-    <div class="btn-row primary-actions"><button class="primary" data-i18n="createGist" id="create" type="button">Create sync Gist</button></div>
-  </section>
+    <div class="sync-field-group">
+      <label class="field-label">
+        <span class="field-label-text" data-i18n="gistId">Gist ID</span>
+        <input class="field" data-i18n-placeholder="gistPlaceholder" id="gist" placeholder="Leave blank to create a new sync Gist" />
+      </label>
+      <div class="btn-row">
+        <button class="primary" data-i18n="gistAction" id="save" type="button">Use Gist / create if blank</button>
+      </div>
+    </div>
+</section>
   <section class="card sync-section" id="gdriveCard" hidden>
     <div class="card-title"><span data-i18n="gdriveTitle">Google Drive</span></div>
     <p class="card-desc" data-i18n="gdriveHelp">Store the synchronization state in a private Google Drive file.</p>
@@ -230,7 +237,7 @@
       <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientId">OAuth Client ID</span><input class="field" id="gdriveClientId" type="text" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com" /></label>
       <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientSecret">Client Secret (optional)</span><input class="field" id="gdriveClientSecret" type="password" autocomplete="off" /></label>
     </div>
-    <div class="btn-row"><button class="primary" data-i18n="gdriveConnect" id="gdriveConnect" type="button">Connect Google Drive</button><button class="secondary" data-i18n="gdriveDisconnect" id="gdriveDisconnect" type="button">Disconnect</button><button class="secondary" data-i18n="testConnection" id="providerTest" type="button">Test connection</button></div>
+    <div class="btn-row backend-actions"><button class="primary" data-i18n="gdriveConnect" id="gdriveConnect" type="button">Connect Google Drive</button><button class="secondary" data-i18n="gdriveDisconnect" id="gdriveDisconnect" type="button">Disconnect</button><button class="secondary" data-i18n="testConnection" id="providerTest" type="button">Test connection</button></div>
   </section>
   <section class="card sync-section" id="webdavCard" hidden>
     <div class="card-title"><span data-i18n="webdavTitle">WebDAV</span></div>
@@ -241,7 +248,7 @@
       <label class="field-label"><span class="field-label-text" data-i18n="webdavUser">Username</span><input class="field" id="webdavSyncUsername" type="text" autocomplete="off" /></label>
       <label class="field-label"><span class="field-label-text" data-i18n="webdavPass">Password / app password</span><input class="field" id="webdavSyncPassword" type="password" autocomplete="off" /></label>
     </div>
-    <div class="btn-row"><button class="primary" data-i18n="saveWebdav" id="webdavSave" type="button">Save WebDAV settings</button><button class="secondary" data-i18n="testConnection" id="webdavTest" type="button">Test connection</button></div>
+    <div class="btn-row backend-actions"><button class="primary" data-i18n="saveWebdav" id="webdavSave" type="button">Save WebDAV settings</button><button class="secondary" data-i18n="testConnection" id="webdavTest" type="button">Test connection</button></div>
   </section>
   <section class="card sync-section" id="autoSyncCard">
     <div class="card-title"><span data-i18n="autoSyncTitle">Automatic sync</span></div>
@@ -270,15 +277,16 @@
     <div class="note section-note" id="tabSyncModeDescription"></div>
     <button class="secondary block-action" data-i18n="saveTabSyncMode" id="saveTabSyncMode" type="button">Save tab synchronization mode</button>
   </section>
-  <section class="card sync-section"><div class="btn-row primary-actions"><button class="secondary" data-i18n="syncNow" id="syncNowButton" type="button">Sync now</button></div></section>
 </div>
 <div class="tab-panel hidden" id="panel-cloud-tabs" role="tabpanel">
   <section class="card cloud-tabs-panel">
     <div class="card-title"><span data-i18n="cloudTabsTitle">Cloud tab collection</span></div>
     <p class="card-desc" data-i18n="cloudTabsHelp">Manage persistent cloud tabs and tab groups without restoring the entire browser state.</p>
-    <div class="btn-row">
-      <button class="primary" id="addCurrentTabsToCloud" data-i18n="addCurrentTabs" type="button">Add current tabs</button>
-      <button class="secondary" id="refreshCloudTabs" data-i18n="refresh" type="button">Refresh</button>
+    <div class="cloud-tabs-toolbar">
+      <div class="btn-row">
+        <button class="primary" id="addCurrentTabsToCloud" data-i18n="addCurrentTabs" type="button">Add current browser tabs to cloud</button>
+        <button class="secondary" id="refreshCloudTabs" data-i18n="refresh" type="button">Refresh</button>
+      </div>
     </div>
     <div id="cloudTabsManager"></div>
   </section>
