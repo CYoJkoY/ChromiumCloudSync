@@ -8,9 +8,7 @@ const dist = path.join(root, "dist");
 const manifest = JSON.parse(
   fs.readFileSync(path.join(root, "manifest.json"), "utf8"),
 );
-const baseVersion = String(manifest.version || "").trim();
-const versionName = String(manifest.version_name || "").trim();
-const releaseVersion = String(process.env.RELEASE_VERSION || "").trim();
+const version = String(manifest.version || "").trim();
 const makeZip = process.argv.includes("--zip");
 
 const runtimeArtifacts = [
@@ -53,22 +51,14 @@ const styleArtifacts = [
   ["src/ui/styles/ui-overrides.css", "ui-overrides.css"],
 ] as const;
 
-if (!/^\d+\.\d+\.\d+$/.test(baseVersion))
-  throw new Error(`Invalid manifest version: ${baseVersion}; expected X.Y.Z`);
-if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName))
-  throw new Error(
-    `Invalid manifest version_name: ${versionName}; expected X.Y.Z.devN`,
-  );
-if (versionName && !versionName.startsWith(`${baseVersion}.dev`))
-  throw new Error(
-    `manifest.version_name (${versionName}) does not match manifest.version (${baseVersion})`,
-  );
+if (!/^\d+\.\d+\.\d+$/.test(version))
+  throw new Error(`Invalid manifest version: ${version}; expected X.Y.Z`);
 
-const version = releaseVersion || versionName || baseVersion;
-if (version !== baseVersion && version !== versionName)
+if (Object.prototype.hasOwnProperty.call(manifest, "version_name")) {
   throw new Error(
-    `Release version ${version} must match manifest.version ${baseVersion} or manifest.version_name ${versionName || "<empty>"}`,
+    "manifest.version_name is disabled. Remove it and use a single stable release channel.",
   );
+}
 
 fs.rmSync(compilerOut, { recursive: true, force: true });
 fs.rmSync(dist, { recursive: true, force: true });

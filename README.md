@@ -51,14 +51,14 @@ The current implementation covers open windows and HTTP(S) tabs, tab groups, boo
 | Capability                    | Description                                                                                                           |
 | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
 | **Tabs & windows**            | Sync normal windows and HTTP(S) tabs, including title, URL, pinning, active state, order, and group information.      |
-| **Tab groups**                | Preserve stable group identity, title, color, collapsed state, and group membership.                                 |
+| **Tab groups**                | Preserve stable group identity, title, color, collapsed state, and group membership.                                  |
 | **Bookmarks**                 | Sync bookmark titles, URLs, parent relationships, order, and stable IDs.                                              |
 | **Extension inventory**       | Track third-party extension ID, name, version, enabled state, installation type, update information, and store links. |
-| **Extension Recovery Center** | Detect missing extensions and surface available Chrome Web Store, Edge Add-ons, or compatible recovery links.          |
+| **Extension Recovery Center** | Detect missing extensions and surface available Chrome Web Store, Edge Add-ons, or compatible recovery links.         |
 | **Three-way merge**           | Merge base, local, and remote snapshots instead of blindly replacing one side.                                        |
 | **Deletion tombstones**       | Preserve deletions so stale devices do not silently recreate removed items.                                           |
 | **Conflict visibility**       | Keep unresolved field conflicts explicit for review.                                                                  |
-| **Provider-independent sync** | Run manual and automatic synchronization through the selected cloud provider.                                          |
+| **Provider-independent sync** | Run manual and automatic synchronization through the selected cloud provider.                                         |
 | **Automatic sync**            | Optional background synchronization with configurable intervals; disabled by default.                                 |
 | **History & rollback**        | Use provider-native history plus a local index of up to 30 recent entries where supported.                            |
 | **Package backup**            | Store selected CRX/ZIP packages separately in a GitHub private repository or WebDAV.                                  |
@@ -71,10 +71,10 @@ The current implementation covers open windows and HTTP(S) tabs, tab groups, boo
 
 The synchronization engine is separated from the storage backend. Choose the provider that fits the environment:
 
-| Provider         | What it stores                  | Authentication / access                                  | History source                  |
-| :--------------- | :------------------------------ | :------------------------------------------------------- | :------------------------------ |
-| **GitHub Gist**  | `current.json` and sync metadata | GitHub Token + private Gist                              | Gist revision / commit history  |
-| **Google Drive** | One application-created JSON file | User-supplied OAuth Client ID via Chromium Identity API | Google Drive file revisions     |
+| Provider         | What it stores                          | Authentication / access                                     | History source                         |
+| :--------------- | :-------------------------------------- | :---------------------------------------------------------- | :------------------------------------- |
+| **GitHub Gist**  | `current.json` and sync metadata        | GitHub Token + private Gist                                 | Gist revision / commit history         |
+| **Google Drive** | One application-created JSON file       | User-supplied OAuth Client ID via Chromium Identity API     | Google Drive file revisions            |
 | **WebDAV**       | `current.json` + optional history index | WebDAV URL, optional folder, username and password/app auth | `history/index.json`, up to 30 entries |
 
 For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and stores its OAuth credentials locally. WebDAV requests require the user to grant access to the configured server origin.
@@ -284,7 +284,7 @@ Git tag
    └─ GitHub Release
 ```
 
-Stable tags use `vX.Y.Z`. Development tags use `vX.Y.Z.devN` and are published as prereleases.
+Stable tags use `vX.Y.Z` and are published as normal GitHub Releases. ChromiumCloudSync uses a single stable release channel; `version_name`, `.devN` tags, and pre-releases are not used.
 
 <a name="readme-status"></a>
 

@@ -166,9 +166,7 @@ try {
     if (!window || !Array.isArray((window as { tabs?: unknown }).tabs))
       throw new Error("Snapshot probe returned a window without a tabs array.");
 
-  console.log(
-    `Extension smoke test passed for ${manifest.version_name || manifest.version}.`,
-  );
+  console.log(`Extension smoke test passed for ${manifest.version}.`);
 } finally {
   await context?.close().catch(() => undefined);
   fs.rmSync(userDataDir, { recursive: true, force: true });

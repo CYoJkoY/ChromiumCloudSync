@@ -65,8 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION_NAME="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version_name || ''")"
-          VERSION="${VERSION_NAME:-$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")}"
+          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")"
           ZIP="dist/chromium-cloud-sync-v${VERSION}.zip"
           test -f "$ZIP"
           unzip -t "$ZIP"

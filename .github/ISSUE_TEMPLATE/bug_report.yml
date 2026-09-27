@@ -42,8 +42,8 @@ body:
     id: extension_version
     attributes:
       label: Extension version
-      description: Shown on the extension card (e.g. `1.8.0`). Also visible in `manifest.json` → `version_name`.
-      placeholder: 1.8.0
+      description: Shown on the extension card (e.g. `1.9.1`). Also visible in `manifest.json` → `version`.
+      placeholder: 1.9.1
     validations:
       required: true
 

@@ -4,11 +4,10 @@ on:
   push:
     tags:
       - "v*.*.*"
-      - "v*.*.*.dev*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to build (for example v1.7.8 or v1.7.8.dev1)"
+        description: "Existing stable release tag to build (for example v1.9.1)"
         required: true
         type: string
 
@@ -71,22 +70,18 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then TAG="${{ inputs.tag }}"; fi
 
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
-            echo "Invalid release tag: $TAG"
+          if [[ -n "$VERSION_NAME" ]]; then
+            echo "manifest.version_name is disabled. Remove it and use a single stable release channel."
+            exit 1
+          fi
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid stable release tag: $TAG"
             exit 1
           fi
 
           TAG_VERSION="${TAG#v}"
-          IS_DEV="false"
-          EFFECTIVE_VERSION="$VERSION"
-          if [[ "$TAG_VERSION" == *.dev[0-9]* ]]; then
-            IS_DEV="true"
-            if [[ -z "$VERSION_NAME" || "$TAG_VERSION" != "$VERSION_NAME" ]]; then
-              echo "Development tag ($TAG_VERSION) does not match manifest.version_name ($VERSION_NAME)."
-              exit 1
-            fi
-            EFFECTIVE_VERSION="$VERSION_NAME"
-          elif [[ "$TAG_VERSION" != "$VERSION" ]]; then
+          if [[ "$TAG_VERSION" != "$VERSION" ]]; then
             echo "Stable tag ($TAG_VERSION) does not match manifest.version ($VERSION)."
             exit 1
           fi
@@ -97,9 +92,8 @@ jobs:
             exit 1
           fi
 
-          echo "version=$EFFECTIVE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "is_dev=$IS_DEV" >> "$GITHUB_OUTPUT"
 
       - name: Validate project
         run: npm run validate
@@ -111,8 +105,6 @@ jobs:
         run: xvfb-run --auto-servernum npm run smoke
 
       - name: Build release ZIP
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: npm run build:zip
 
       - name: Locate release ZIP
@@ -143,8 +135,8 @@ jobs:
             "storage.js"
             "sync-core.js"
             "types.js"
-            cloud-gdrive.js
-            cloud-webdav.js
+            "cloud-gdrive.js"
+            "cloud-webdav.js"
             "extension-storage.js"
             "extension-storage-watch.js"
             "update.js"
@@ -239,7 +231,6 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
-          IS_DEV="${{ steps.version.outputs.is_dev }}"
           ARGS=(
             "$TAG"
             "dist/chromium-cloud-sync-v${VERSION}.zip"
@@ -248,5 +239,4 @@ jobs:
             --title "Chromium Cloud Sync v${VERSION}"
             --generate-notes
           )
-          if [[ "$IS_DEV" == "true" ]]; then ARGS+=(--prerelease); fi
           gh release create "${ARGS[@]}"

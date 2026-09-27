@@ -10,7 +10,6 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
 const stableVersion = String(manifest.version || "").trim();
-const versionName = String(manifest.version_name || "").trim();
 
 if (!/^\d+\.\d+\.\d+$/.test(stableVersion)) {
   throw new Error(
@@ -18,15 +17,9 @@ if (!/^\d+\.\d+\.\d+$/.test(stableVersion)) {
   );
 }
 
-if (versionName && !/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) {
+if (Object.prototype.hasOwnProperty.call(manifest, "version_name")) {
   throw new Error(
-    `Invalid manifest version_name: ${versionName}. Expected X.Y.Z.devN.`,
-  );
-}
-
-if (versionName && !versionName.startsWith(`${stableVersion}.dev`)) {
-  throw new Error(
-    `manifest.version_name (${versionName}) does not match manifest.version (${stableVersion}).`,
+    "manifest.version_name is disabled. Remove it and use a single stable release channel.",
   );
 }
 
