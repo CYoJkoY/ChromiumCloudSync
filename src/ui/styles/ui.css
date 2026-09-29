@@ -236,6 +236,7 @@ textarea:focus-visible {
   display: grid;
   place-items: center;
   cursor: pointer;
+  text-decoration: none; /* 新增：防止 a 标签出现下划线 */
 }
 .icon-button:hover {
   background: var(--surface-2);
