@@ -46,6 +46,7 @@
       noMissing: "✓ No cloud extension is missing from this browser.",
       missing: "Missing extensions",
       openInstall: "Open install page",
+      searchCrxsoso: "Search / download from crxsoso",
       remoteExtUnavailable:
         "Cloud extension list could not be read. Check the active storage provider connection.",
       checkFailed: "Extension check failed",
@@ -393,6 +394,7 @@
     noMissing: "✓ 当前浏览器没有缺失云端扩展。",
     missing: "缺失扩展",
     openInstall: "打开安装页",
+    searchCrxsoso: "从 crxsoso 搜索 / 下载",
     remoteExtUnavailable:
       "暂时无法读取云端扩展清单，请检查当前云端存储后端的连接状态。",
     checkFailed: "扩展检查失败",

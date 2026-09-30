@@ -388,7 +388,6 @@ bindAction("checkExtensions", async (_event, button) =>
       a.target = "_blank";
       a.rel = "noreferrer";
       a.className = "secondary";
-      a.textContent = i.t("openInstall");
       row.append(main, a);
       wrap.append(row);
     }
