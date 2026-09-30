@@ -796,6 +796,119 @@ if (!storageCompact.includes("String(a.davPass||'')===String(b.davPass||'')"))
     "WebDAV extension-backup selection matching does not include the password",
   );
 
+// ---------------------------------------------------------------------------
+// Translation key completeness.
+//
+// Three separate translation mechanisms coexist here: the shared DICT in
+// ui/i18n.ts (reached through CCSyncI18n.t), a file-local `dict` in
+// ui/extensions.ts, and a file-local `text` object of bilingual closures in
+// features/extension-storage.ts whose `t` is injected into gdrive-packages.ts.
+//
+// Referencing a key that its own file's table does not define is not an error at
+// runtime — every one of the three lookups ends in `?? key`, so the UI silently
+// renders the raw identifier ("searchCrxsoso") instead of a sentence. That is
+// invisible to the type checker because the keys are plain strings. Resolve each
+// literal reference against the table the referencing file actually uses.
+// ---------------------------------------------------------------------------
+{
+  const readLines = (file: string): string[] =>
+    fs.readFileSync(path.join(root, file), "utf8").split("\n");
+
+  const plainKey = /^\s*"?([A-Za-z0-9_]+)"?\s*:/;
+  const closureKey = /^\s*([A-Za-z0-9_]+)\s*:\s*\(\)\s*=>/;
+
+  const keysUntil = (
+    lines: string[],
+    startIndex: number,
+    endTest: (line: string) => boolean,
+    pattern: RegExp,
+    label: string,
+  ): Set<string> => {
+    if (startIndex < 0)
+      throw new Error(`Translation gate cannot locate the start of ${label}`);
+    const found = new Set<string>();
+    for (let index = startIndex + 1; index < lines.length; index += 1) {
+      if (endTest(lines[index])) return found;
+      const match = pattern.exec(lines[index]);
+      if (match) found.add(match[1]);
+    }
+    throw new Error(`Translation gate cannot locate the end of ${label}`);
+  };
+
+  const i18nLines = readLines("src/ui/i18n.ts");
+  const sharedDict = keysUntil(
+    i18nLines,
+    i18nLines.findIndex((line) => /^\s*en:\s*\{/.test(line)),
+    (line) => line.includes('"zh-CN"'),
+    plainKey,
+    "the shared DICT.en block in src/ui/i18n.ts",
+  );
+
+  const extensionLines = readLines("src/ui/extensions.ts");
+  const extensionDictStart = extensionLines.findIndex((line) =>
+    /^\s*const dict = \{/.test(line),
+  );
+  const extensionDict = keysUntil(
+    extensionLines,
+    extensionLines.findIndex(
+      (line, index) => index > extensionDictStart && /^\s*en:\s*\{/.test(line),
+    ),
+    (line) => line.includes('"zh-CN"'),
+    plainKey,
+    "the local dict.en block in src/ui/extensions.ts",
+  );
+
+  const storageLines = readLines("src/features/extension-storage.ts");
+  const storageText = keysUntil(
+    storageLines,
+    storageLines.findIndex((line) => /^\s*const text = \{/.test(line)),
+    (line) => line.includes("const t = (k) =>"),
+    closureKey,
+    "the local text block in src/features/extension-storage.ts",
+  );
+
+  // gdrive-packages.ts has no table of its own: extension-storage.ts injects its
+  // `t`, so its keys must resolve against that file's `text` object.
+  const consumers: Array<[string, Set<string>]> = [
+    ["src/ui/popup.ts", sharedDict],
+    ["src/ui/options.ts", sharedDict],
+    ["src/ui/history.ts", sharedDict],
+    ["src/ui/extensions.ts", extensionDict],
+    ["src/features/extension-storage.ts", storageText],
+    ["src/features/gdrive-packages.ts", storageText],
+  ];
+
+  const reference = /\bt\(\s*"([A-Za-z0-9_]+)"/g;
+  for (const [file, table] of consumers) {
+    const source = fs.readFileSync(path.join(root, file), "utf8");
+    for (const match of source.matchAll(reference))
+      if (!table.has(match[1]))
+        throw new Error(
+          `${file} renders t("${match[1]}") but its translation table does not define that key, so the UI would show the raw identifier instead of a localized string`,
+        );
+  }
+
+  // A new page that translates strings must be added to the table above rather
+  // than escape the check entirely.
+  const covered = new Set(consumers.map(([file]) => file));
+  const mentionsTranslation = /\bt\(\s*"[A-Za-z0-9_]+"/;
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory()
+        ? walk(`${dir}/${entry.name}`)
+        : entry.name.endsWith(".ts")
+          ? [`${dir}/${entry.name}`]
+          : [],
+    );
+  for (const file of walk("src")) {
+    if (covered.has(file)) continue;
+    if (mentionsTranslation.test(fs.readFileSync(path.join(root, file), "utf8")))
+      throw new Error(
+        `${file} references translation keys but is not covered by the translation completeness gate`,
+      );
+  }
+}
+
 console.log(
   `Validation passed for organized TypeScript sources and generated runtime ${baseVersion}`,
 );
