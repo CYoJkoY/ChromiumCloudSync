@@ -9,12 +9,6 @@ import {
   reorderTabGroupBlocks,
   SCHEMA_VERSION,
 } from "./sync-core.js";
-import {
-  unwrapMasterWithSecret,
-  decryptJson,
-  importAesKey,
-  base64ToBytes,
-} from "./legacy-crypto.js";
 import { parseAndValidateCloudState } from "./schema.js";
 import { readLocal, writeLocal, removeLocal } from "./storage.js";
 import { detectBrowserCapabilities } from "./browser-capabilities.js";
@@ -31,23 +25,58 @@ import {
   saveSyncDiagnostics,
 } from "./diagnostics.js";
 import {
+  listRemoteHistory,
+  readHistoryEntryState,
+  readRemoteModularState,
+  writeRemoteModularState,
+} from "./cloud-files.js";
+import {
+  LEGACY_MONOLITHIC_FILE as CURRENT_FILE,
+  MANIFEST_FILE,
+  MODULAR_STORAGE_LAYOUT,
+  MODULE_FILES,
+  STORAGE_FORMAT_VERSION,
+  SYNC_MODULE_IDS,
+  bumpModuleRevisions,
+  diffModuleChanges,
+  mergeModularCloudState,
+  serializeModularState,
+  splitCloudState,
+} from "./sync-modules.js";
+import {
+  LEGACY_ENCRYPTED_FILE,
+  configureGithubTokenSource,
+  createGistFileStore,
+  createSyncGist,
+  gistContainsSyncData,
+  githubRequest,
+  legacyGistHistoryDeletes,
+  readGistRaw,
+  validateGithubToken,
+} from "./cloud-gist.js";
+import {
   connectGoogleDrive,
+  createGdriveFileStore,
   disconnectGoogleDrive,
+  gdriveConnected,
+  gdriveStatus,
   gdriveTest,
-  gdriveLoad,
-  gdriveCreate,
-  gdriveSave,
-  gdriveRevisions,
-  gdriveLoadRevision,
+  invalidateGdriveLayout,
 } from "./cloud-gdrive.js";
 import {
+  createWebdavFileStore,
+  webdavBound,
+  webdavConfig,
   webdavTest,
-  webdavLoad,
-  webdavCreate,
-  webdavSave,
-  webdavRevisions,
-  webdavLoadRevision,
 } from "./cloud-webdav.js";
+
+/* ---------------------------------------------------------------------------
+ * Provider dispatch
+ *
+ * Every provider is reduced to the same FileStore contract, and the modular
+ * synchronization protocol in cloud-files.ts is the only place that knows how
+ * module files are laid out, archived, and migrated.
+ * ------------------------------------------------------------------------- */
 
 async function activeProvider() {
   const s = await getSettings();
@@ -55,103 +84,167 @@ async function activeProvider() {
     ? String(s[KEYS.PROVIDER])
     : "gist";
 }
+
 async function providerBound() {
   const p = await activeProvider();
   if (p === "gist") {
     const s = await getSettings();
     return !!(s[KEYS.GIST_ID] && String(s[KEYS.GITHUB_TOKEN] || "").trim());
   }
-  if (p === "gdrive") {
-    const s = await readLocal(["gdriveTokens"]);
-    return !!s.gdriveTokens;
-  }
-  const s = await readLocal([KEYS.WEBDAV_URL]);
-  return !!String(s[KEYS.WEBDAV_URL] || "").trim();
+  if (p === "gdrive") return gdriveConnected();
+  return webdavBound(await webdavConfig());
 }
-async function readRemote() {
+
+/** FileStore for the currently selected provider. */
+async function providerStore() {
   const p = await activeProvider();
   if (p === "gist") {
     const s = await getSettings();
     if (!s[KEYS.GIST_ID]) throw Error("尚未绑定 GitHub Gist");
-    return loadRemote(s[KEYS.GIST_ID]);
+    return createGistFileStore(String(s[KEYS.GIST_ID]));
   }
-  const raw = p === "gdrive" ? await gdriveLoad() : await webdavLoad();
-  return {
-    state: validatedState(raw),
-    raw,
-    files: {},
-    manifest: {
-      schemaVersion: SCHEMA_VERSION,
-      format: `${p}-v1`,
-      currentFile: "current.json",
-      revision: Number(raw?.revision || 0),
-    },
-    updatedAt: String(raw?.updatedAt || ""),
-  };
-}
-async function writeRemote(state, priorRaw) {
-  const p = await activeProvider();
-  if (p === "gist") {
-    const s = await getSettings();
-    await updateGist(
-      s[KEYS.GIST_ID],
-      state,
-      (priorRaw && priorRaw.files) || {},
-    );
-    return { revision: Number(state.revision || 0) };
-  }
-  return p === "gdrive" ? gdriveSave(state) : webdavSave(state);
-}
-async function createRemote(state) {
-  const p = await activeProvider();
-  if (p === "gist") {
-    const g = await createGist(state);
-    return { location: g.id };
-  }
-  return p === "gdrive" ? gdriveCreate(state) : webdavCreate(state);
-}
-async function remoteRevisions() {
-  const p = await activeProvider();
-  if (p === "gist") {
-    const s = await getSettings();
-    const r = await github(
-      `/gists/${encodeURIComponent(s[KEYS.GIST_ID])}/commits?per_page=30`,
-    );
-    const loaded = await loadRemote(s[KEYS.GIST_ID]);
-    const cur = loaded.raw.gist?.history?.[0]?.version || "";
-    return (r.data || []).map((c, i) => ({
-      sha: c.version,
-      index: i,
-      createdAt: c.committed_at,
-      user: c.user?.login || "",
-      changes: c.change_status || {},
-      current: c.version === cur,
-    }));
-  }
-  return p === "gdrive" ? gdriveRevisions() : webdavRevisions();
-}
-async function remoteRevisionState(id) {
-  const p = await activeProvider();
-  if (p === "gist")
-    return revisionState(
-      await getGistRevision((await getSettings())[KEYS.GIST_ID], id),
-    );
-  return validatedState(
-    p === "gdrive"
-      ? await gdriveLoadRevision(id)
-      : await webdavLoadRevision(id),
-  );
+  if (p === "gdrive") return createGdriveFileStore();
+  return createWebdavFileStore();
 }
 
-const GITHUB_API = "https://api.github.com";
-const CURRENT_FILE = "current.json";
-const LEGACY_ENCRYPTED_FILE = "current.enc.json";
-const MANIFEST_FILE = "manifest.json";
+async function readRemote() {
+  const store = await providerStore();
+  const loaded = await readRemoteModularState(store, validatedState);
+  return {
+    state: loaded.state,
+    modular: loaded.modular,
+    manifest: loaded.manifest,
+    files: loaded.files,
+    layout: loaded.layout,
+    migratedFromLegacy: loaded.migratedFromLegacy,
+    legacyArchive: loaded.legacyArchive,
+    store,
+    raw: {
+      etag: loaded.etag,
+      updatedAt: loaded.updatedAt,
+      provider: loaded.provider,
+      layout: loaded.layout,
+      gist: loaded.raw?.gist ?? null,
+      legacyEncrypted: !!loaded.raw?.legacyEncrypted,
+    },
+  };
+}
+
+/**
+ * Legacy artifacts that must be removed once the modular layout is committed.
+ *
+ * Only artifacts whose content is already represented elsewhere are removed:
+ * the decrypted replacement of `LEGACY_ENCRYPTED_FILE` and superseded per-revision
+ * history files. The legacy monolithic payloads (`current.json` and
+ * `chromium-cloud-sync.json`) are deliberately NOT removed — they stay as
+ * read-only migration archives so cloud data is never silently deleted or reset.
+ */
+function legacyRemovals(priorFiles, provider) {
+  if (provider !== "gist") return [];
+  const names = Object.keys(priorFiles || {}).filter(
+    (name) => priorFiles[name] !== null && priorFiles[name] !== undefined,
+  );
+  const removals = [];
+  if (names.includes(LEGACY_ENCRYPTED_FILE)) removals.push(LEGACY_ENCRYPTED_FILE);
+  for (const name of legacyGistHistoryDeletes(names)) removals.push(name);
+  return [...new Set(removals)];
+}
+
+/**
+ * Commit a cloud state through the modular protocol.
+ *
+ * Only module files whose payload actually changed are uploaded, so a bookmark
+ * edit no longer rewrites the complete tab and extension dataset.
+ */
+async function writeRemote(state, priorLoaded, options = {}) {
+  const store = priorLoaded?.store || (await providerStore());
+  const priorModular = priorLoaded?.modular || null;
+  const globalRevision = Number(state.revision || 0);
+  const requested = Array.isArray(options.changedModules)
+    ? options.changedModules.filter((id) => SYNC_MODULE_IDS.includes(id))
+    : [];
+  const changed = requested.length
+    ? requested
+    : priorLoaded && priorLoaded.layout === "modular" && priorModular
+      ? diffModuleChanges(priorModular, splitCloudState(state))
+      : SYNC_MODULE_IDS.slice();
+
+  const modular = splitCloudState(state, {
+    revision: globalRevision,
+    updatedAt: state.updatedAt,
+    conflicts: state.conflicts || [],
+    moduleRevisions: bumpModuleRevisions(
+      priorModular,
+      changed,
+      globalRevision,
+    ),
+    migration: priorModular?.meta?.migration,
+    legacyArchive: priorLoaded?.legacyArchive ?? null,
+  });
+  const result = await writeRemoteModularState(store, modular, {
+    changedModules: changed,
+    priorFiles: priorLoaded?.files || {},
+    remove: legacyRemovals(priorLoaded?.files, store.id),
+  });
+  return { revision: globalRevision, ...result };
+}
+
+async function createRemote(state) {
+  const p = await activeProvider();
+  const modular = splitCloudState(state, {
+    revision: Number(state.revision || 1),
+    updatedAt: state.updatedAt,
+    conflicts: state.conflicts || [],
+  });
+  if (p === "gist") {
+    const created = await createSyncGist(serializeModularState(modular));
+    await setSettings({
+      [KEYS.GIST_ID]: created.id,
+      [KEYS.ETAG]: created.headers.get("ETag") || "",
+      [KEYS.BASE_SNAPSHOT]: state.snapshot || {},
+      [KEYS.BASE_REVISION]: Number(state.revision || 0),
+      [KEYS.SYNC_REVISION]: Number(state.revision || 0),
+    });
+    return { location: created.id };
+  }
+  const store = await providerStore();
+  const result = await writeRemoteModularState(store, modular, {
+    changedModules: SYNC_MODULE_IDS.slice(),
+    historyLabel: `initial-${modular.meta.revision || 1}`,
+  });
+  return { location: p, written: result.written };
+}
+
+async function remoteRevisions() {
+  const store = await providerStore();
+  const entries = await listRemoteHistory(store);
+  return entries.map((entry, index) => ({
+    sha: entry.sha || entry.id,
+    id: entry.id,
+    index,
+    createdAt: entry.createdAt,
+    user: entry.user || "",
+    changes: entry.changes || {},
+    current: !!entry.current,
+    layout: entry.layout || "",
+    revision: Number(entry.revision || 0),
+    // Modules this revision actually changed; empty for provider-native
+    // history (Gist commits) where the change set is not module-labelled.
+    modules: (entry.modules || []).filter((moduleId) =>
+      SYNC_MODULE_IDS.includes(moduleId),
+    ),
+  }));
+}
+
+async function remoteRevisionState(id) {
+  const store = await providerStore();
+  return readHistoryEntryState(store, String(id), validatedState);
+}
+
 const AUTO_SYNC_MINUTES = 5;
 const DEFAULT_AUTO_SYNC_ENABLED = false;
 const DEFAULT_TAB_SYNC_MODE = "overwrite";
 const MAX_PUSH_RETRIES = 5;
-const GITHUB_API_RETRIES = 2;
 const KEYS = {
   AUTO_SYNC_ENABLED: "autoSyncEnabled",
   AUTO_SYNC_INTERVAL_MINUTES: "autoSyncIntervalMinutes",
@@ -201,6 +294,13 @@ const LEGACY_LOCAL_KEYS = [
 async function getSettings() {
   return readLocal(Object.values(KEYS));
 }
+/**
+ * The Gist transport must not depend on the settings layer, so the orchestrator
+ * registers the token source once instead of the transport importing it.
+ */
+configureGithubTokenSource(async () =>
+  String((await getSettings())[KEYS.GITHUB_TOKEN] || ""),
+);
 async function setSettings(v) {
   return writeLocal(v);
 }
@@ -215,93 +315,6 @@ async function getStableLocalId(kind, id, key) {
   map[k] = `${kind}-${crypto.randomUUID()}`;
   await setSettings({ [key]: map });
   return map[k];
-}
-async function github(path, options = {}, tokenOverride = "") {
-  const s = await getSettings();
-  const token = (tokenOverride || s[KEYS.GITHUB_TOKEN] || "").trim();
-  if (!token) throw Error("未配置 GitHub Token");
-  let lastError = null;
-  for (let attempt = 0; attempt <= GITHUB_API_RETRIES; attempt++) {
-    try {
-      const r = await fetch(`${GITHUB_API}${path}`, {
-        ...options,
-        headers: {
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2026-03-10",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          ...(options.headers || {}),
-        },
-      });
-      const text = await r.text();
-      let data = null;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = { raw: text };
-      }
-      if (r.status === 304) return { status: 304, headers: r.headers };
-      if (!r.ok) {
-        const message = data?.message || `GitHub API HTTP ${r.status}`;
-        const err = new Error(message);
-        err.code = "GITHUB_API_ERROR";
-        err.status = r.status;
-        err.githubMessage = message;
-        err.documentationUrl = data?.documentation_url || "";
-        err.errors = Array.isArray(data?.errors) ? data.errors : [];
-        if (r.status === 422 && err.errors.length)
-          err.detail = err.errors
-            .map((e) =>
-              [e.resource, e.field, e.code, e.message]
-                .filter(Boolean)
-                .join(": "),
-            )
-            .join("; ");
-        throw err;
-      }
-      return { data, headers: r.headers };
-    } catch (e) {
-      lastError = e;
-      if (
-        !(
-          e?.code === "GITHUB_API_ERROR" &&
-          [408, 429, 500, 502, 503, 504].includes(e.status)
-        ) ||
-        attempt === GITHUB_API_RETRIES
-      )
-        throw e;
-      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-    }
-  }
-  throw lastError || Error("GitHub request failed");
-}
-async function validateToken(token = "") {
-  const value = (token || "").trim();
-  if (!value) throw Error("GitHub Token is required");
-  try {
-    await github("/gists?per_page=1", {}, value);
-  } catch (error) {
-    const detail = error?.githubMessage || error?.message || String(error);
-    throw Error(
-      `GitHub Token validation failed${error?.status ? ` (HTTP ${error.status})` : ""}: ${detail}`,
-    );
-  }
-  try {
-    const r = await github("/user", {}, value);
-    return {
-      login: r.data.login,
-      name: r.data.name || r.data.login,
-      avatarUrl: r.data.avatar_url || "",
-      gistsAccessible: true,
-    };
-  } catch {
-    return {
-      login: "GitHub authenticated",
-      name: "GitHub authenticated",
-      avatarUrl: "",
-      gistsAccessible: true,
-    };
-  }
 }
 function extensionStoreInfo(ext) {
   const id = ext.id,
@@ -508,99 +521,6 @@ function normalizeSnapshot(s) {
   x.schemaVersion = SCHEMA_VERSION;
   return x;
 }
-async function readGistRaw(gistId) {
-  const r = await github(`/gists/${encodeURIComponent(gistId)}`);
-  const gist = r.data,
-    files = gist.files || {};
-  return {
-    gist,
-    files,
-    etag: r.headers.get("ETag") || "",
-    updatedAt: gist.updated_at || "",
-  };
-}
-const te = new TextEncoder();
-async function legacyGetLocalKeySeed() {
-  const s = await readLocal(["localKeySeed", "deviceSeed"]);
-  if (s.localKeySeed) return s.localKeySeed;
-  if (s.deviceSeed) {
-    await setSettings({ localKeySeed: s.deviceSeed });
-    return s.deviceSeed;
-  }
-  return null;
-}
-async function legacyDeriveLocalKey() {
-  const seed = await legacyGetLocalKeySeed();
-  if (!seed) return null;
-  const base = await crypto.subtle.importKey(
-    "raw",
-    te.encode(seed),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
-  const salt = await crypto.subtle.digest(
-    "SHA-256",
-    te.encode("chromium-cloud-sync-local-key-v1"),
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: new Uint8Array(salt),
-      iterations: 120000,
-      hash: "SHA-256",
-    },
-    base,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-async function legacyGetLocalMaster() {
-  const s = await readLocal(["masterEnvelope"]);
-  if (!s.masterEnvelope) return null;
-  try {
-    const p = JSON.parse(s.masterEnvelope),
-      key = await legacyDeriveLocalKey();
-    if (!key) return null;
-    const raw = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: base64ToBytes(p.iv), tagLength: 128 },
-      key,
-      base64ToBytes(p.ciphertext),
-    );
-    return importAesKey(new Uint8Array(raw), true);
-  } catch {
-    return null;
-  }
-}
-async function legacyDecryptState(ciphertext, manifest) {
-  const local = await legacyGetLocalMaster();
-  if (local) {
-    try {
-      return await decryptJson(ciphertext, local);
-    } catch {}
-  }
-  const s = await readLocal(["githubToken"]);
-  for (const wrapper of manifest?.crypto?.wrappers || []) {
-    if (
-      wrapper.status === "revoked" ||
-      wrapper.type !== "convenience" ||
-      !s.githubToken
-    )
-      continue;
-    try {
-      const key = await unwrapMasterWithSecret(
-        s.githubToken,
-        wrapper,
-        "convenience",
-      );
-      return await decryptJson(ciphertext, key);
-    } catch {}
-  }
-  throw Error(
-    "此 Gist 使用旧版加密格式。请先使用 v1.5.x 版本打开并成功同步一次，再升级到当前版本。",
-  );
-}
 async function cleanupLegacyLocalState() {
   await removeLocal(LEGACY_LOCAL_KEYS);
 }
@@ -678,153 +598,20 @@ function normalizeCloudState(raw) {
 function validatedState(raw) {
   return parseAndValidateCloudState(normalizeCloudState(raw));
 }
-async function loadRemote(gistId) {
-  const raw = await readGistRaw(gistId);
-  let manifest = null;
-  const manifestText = raw.files[MANIFEST_FILE]?.content;
-  if (manifestText) {
-    try {
-      manifest = JSON.parse(manifestText);
-    } catch {
-      throw Error("Gist manifest.json 无法解析");
-    }
-  }
-  if (!manifest) {
-    const legacyText = raw.files["chromium-cloud-sync.json"]?.content;
-    if (!legacyText) throw Error("Gist 中没有同步数据");
-    return {
-      state: validatedState(JSON.parse(legacyText)),
-      manifest: {
-        schemaVersion: SCHEMA_VERSION,
-        format: "gist-plain-v1",
-        currentFile: CURRENT_FILE,
-        revision: 0,
-      },
-      raw,
-      legacy: true,
-    };
-  }
-  if (![7, 8, 9, 10, 11].includes(Number(manifest.schemaVersion)))
-    throw Error(`不支持的 Gist schema: ${manifest.schemaVersion}`);
-  manifest.schemaVersion = SCHEMA_VERSION;
-  const currentFile = manifest.currentFile || CURRENT_FILE;
-  const plainCandidate =
-    raw.files[CURRENT_FILE]?.content ||
-    (currentFile !== LEGACY_ENCRYPTED_FILE
-      ? raw.files[currentFile]?.content
-      : null);
-  if (plainCandidate) {
-    try {
-      return {
-        state: validatedState(JSON.parse(plainCandidate)),
-        manifest: {
-          ...manifest,
-          format: "gist-plain-v1",
-          currentFile: CURRENT_FILE,
-        },
-        raw,
-      };
-    } catch (error) {
-      if (error?.code === "SCHEMA_VALIDATION_FAILED") throw error;
-      throw Error("Gist 中的 current.json 无法解析");
-    }
-  }
-  const encryptedText =
-    raw.files[LEGACY_ENCRYPTED_FILE]?.content ||
-    (currentFile === LEGACY_ENCRYPTED_FILE
-      ? raw.files[currentFile]?.content
-      : null);
-  if (encryptedText) {
-    const state = validatedState(
-      await legacyDecryptState(encryptedText, manifest),
-    );
-    return {
-      state,
-      manifest: {
-        schemaVersion: SCHEMA_VERSION,
-        format: "gist-plain-v1",
-        currentFile: CURRENT_FILE,
-        revision: Number(manifest.revision || state.revision || 0),
-      },
-      raw,
-      legacyEncrypted: true,
-    };
-  }
-  throw Error("Gist 中没有 current.json 同步数据");
-}
-async function createGist(state) {
-  const manifest = {
-    schemaVersion: SCHEMA_VERSION,
-    format: "gist-plain-v1",
-    currentFile: CURRENT_FILE,
-    revision: Number(state.revision || 1),
-    lastUpdatedAt: state.updatedAt || new Date().toISOString(),
-  };
-  const payload = {
-    description: "Chromium Cloud Sync | private sync state",
-    public: false,
-    files: {
-      [MANIFEST_FILE]: { content: JSON.stringify(manifest, null, 2) },
-      [CURRENT_FILE]: { content: JSON.stringify(state, null, 2) },
-    },
-  };
-  const r = await github("/gists", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  await setSettings({
-    [KEYS.GIST_ID]: r.data.id,
-    [KEYS.ETAG]: r.headers.get("ETag") || "",
-    [KEYS.BASE_SNAPSHOT]: state.snapshot || {},
-    [KEYS.BASE_REVISION]: Number(state.revision || 0),
-    [KEYS.SYNC_REVISION]: Number(state.revision || 0),
-  });
-  return r.data;
-}
-function isLegacyHistoryFile(name) {
-  return (
-    /^history\//.test(name) ||
-    /^ccsync-history-/.test(name) ||
-    /^history-/.test(name)
-  );
-}
-function legacyHistoryDeletes(existingFiles = []) {
-  return [...new Set((existingFiles || []).filter(isLegacyHistoryFile))];
-}
-async function updateGist(gistId, state, existingFiles = {}) {
-  const now = state.updatedAt || new Date().toISOString(),
-    manifest = {
-      schemaVersion: SCHEMA_VERSION,
-      format: "gist-plain-v1",
-      currentFile: CURRENT_FILE,
-      revision: Number(state.revision || 0),
-      lastUpdatedAt: now,
-    },
-    files = {
-      [MANIFEST_FILE]: { content: JSON.stringify(manifest, null, 2) },
-      [CURRENT_FILE]: { content: JSON.stringify(state, null, 2) },
-    };
-  if (
-    Object.prototype.hasOwnProperty.call(
-      existingFiles || {},
-      LEGACY_ENCRYPTED_FILE,
-    )
-  )
-    files[LEGACY_ENCRYPTED_FILE] = null;
-  for (const f of legacyHistoryDeletes(Object.keys(existingFiles || {})))
-    files[f] = null;
-  for (const f of ["chromium-cloud-sync.json"])
-    if (Object.prototype.hasOwnProperty.call(existingFiles || {}, f))
-      files[f] = null;
-  return github(`/gists/${encodeURIComponent(gistId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      description: "Chromium Cloud Sync | private sync state",
-      files,
-    }),
-  });
-}
-async function buildLocalState(localSnapshot, remoteState, currentBase) {
+/**
+ * Module-scoped merge.
+ *
+ * The extensions, bookmarks, and tabs modules are merged independently and each
+ * produces its own conflict list and module revision, so a bookmark change does
+ * not require treating the complete tab and extension dataset as one logical
+ * unit. The storage layer then uploads only the modules that changed.
+ */
+async function buildLocalState(
+  localSnapshot,
+  remoteState,
+  currentBase,
+  remoteModular,
+) {
   const settings = await getSettings(),
     base = currentBase || remoteState.snapshot || {},
     revision =
@@ -835,12 +622,19 @@ async function buildLocalState(localSnapshot, remoteState, currentBase) {
       ) + 1,
     now = new Date().toISOString(),
     tabSyncMode = await getTabSyncMode(),
-    { snapshot, conflicts } = mergeSnapshots(
+    merged = mergeModularCloudState({
       base,
-      localSnapshot,
-      remoteState.snapshot || {},
-      { tabSyncMode },
-    );
+      local: localSnapshot,
+      remote: remoteState,
+      remoteModular: remoteModular || null,
+      options: { tabSyncMode },
+      revision,
+      updatedAt: now,
+      migration: remoteModular?.meta?.migration,
+      legacyArchive: remoteModular?.manifest?.legacyArchive ?? null,
+    }),
+    snapshot = merged.snapshot,
+    conflicts = merged.conflicts;
   snapshot.schemaVersion = SCHEMA_VERSION;
   snapshot.updatedAt = now;
   const tombstones = deriveTombstones(
@@ -900,13 +694,12 @@ async function pushSnapshot() {
         tombstones: [],
         conflicts: [],
       },
-      raw = null,
+      priorLoaded = null,
       legacyEncrypted = false;
     if (bound) {
-      const loaded = await readRemote();
-      remoteState = loaded.state;
-      raw = loaded.raw;
-      legacyEncrypted = !!loaded.legacyEncrypted;
+      priorLoaded = await readRemote();
+      remoteState = priorLoaded.state;
+      legacyEncrypted = !!priorLoaded.raw?.legacyEncrypted;
     }
     settings = await getSettings();
     const currentBase =
@@ -915,6 +708,7 @@ async function pushSnapshot() {
       localSnapshot,
       remoteState,
       currentBase,
+      priorLoaded?.modular || null,
     );
     if (!bound) {
       await createRemote(built.state);
@@ -924,7 +718,7 @@ async function pushSnapshot() {
         settings[KEYS.GIST_ID] ||
         gistId;
     } else {
-      await writeRemote(built.state, raw);
+      await writeRemote(built.state, priorLoaded);
       if (legacyEncrypted) await cleanupLegacyLocalState();
     }
     const verify = await readRemote();
@@ -1029,6 +823,58 @@ async function writeCloudTabCache(canonical) {
 
 async function invalidateCloudTabCache() {
   await removeLocal([CLOUD_TAB_CACHE_KEY]);
+}
+
+/**
+ * Coherent overall view of the split storage.
+ *
+ * The provider payload is now several independent module files, so the UI needs
+ * one summary that reports the layout, every module file with its own revision,
+ * and whether a legacy archive is still present.
+ */
+async function storageLayoutStatus() {
+  const provider = await activeProvider();
+  const summary = {
+    provider,
+    bound: await providerBound(),
+    layout: "unknown",
+    storageLayout: MODULAR_STORAGE_LAYOUT,
+    formatVersion: STORAGE_FORMAT_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    revision: 0,
+    updatedAt: "",
+    legacyArchive: "",
+    migratedFromLegacy: false,
+    modules: [],
+    files: [],
+  };
+  if (!summary.bound) return summary;
+  try {
+    const loaded = await readRemote();
+    const meta = loaded.modular?.meta;
+    return {
+      ...summary,
+      layout: loaded.layout,
+      revision: Number(loaded.state?.revision || 0),
+      updatedAt: String(loaded.state?.updatedAt || ""),
+      legacyArchive: String(loaded.legacyArchive || ""),
+      migratedFromLegacy: !!loaded.migratedFromLegacy,
+      modules: (meta?.modules || []).map((entry) => ({
+        module: entry.module,
+        file: entry.file,
+        revision: Number(entry.revision || 0),
+        updatedAt: String(entry.updatedAt || ""),
+        checksum: String(entry.checksum || ""),
+        tombstones: Number(entry.tombstones || 0),
+      })),
+      files: Object.keys(loaded.files || {}).filter(
+        (name) => loaded.files?.[name] !== null && loaded.files?.[name] !== undefined,
+      ),
+      migration: meta?.migration || null,
+    };
+  } catch (error) {
+    return { ...summary, error: error?.message || String(error) };
+  }
 }
 
 /** Diagnostics summary of the cached canonical projection (never the payload). */
@@ -1408,69 +1254,38 @@ async function restoreBookmarks(nodes) {
   await setSettings({ [KEYS.BOOKMARK_SYNC_IDS]: map });
   return { added, moved, updated };
 }
-async function getGistRevision(gistId, revision) {
-  return (
-    await github(
-      `/gists/${encodeURIComponent(gistId)}/${encodeURIComponent(revision)}`,
-    )
-  ).data;
-}
-async function revisionState(revisionGist) {
-  const manifestText = revisionGist.files?.[MANIFEST_FILE]?.content;
-  let manifest = null;
-  if (manifestText) {
-    try {
-      manifest = JSON.parse(manifestText);
-    } catch {
-      throw Error("历史 Revision 的 manifest.json 无法解析");
-    }
-  }
-  const currentFile = manifest?.currentFile || CURRENT_FILE,
-    plain =
-      revisionGist.files?.[CURRENT_FILE]?.content ||
-      (currentFile !== LEGACY_ENCRYPTED_FILE
-        ? revisionGist.files?.[currentFile]?.content
-        : null);
-  if (plain) {
-    try {
-      return validatedState(JSON.parse(plain));
-    } catch (error) {
-      if (error?.code === "SCHEMA_VALIDATION_FAILED") throw error;
-      throw Error("历史 Revision 的 current.json 无法解析");
-    }
-  }
-  const encrypted =
-    revisionGist.files?.[LEGACY_ENCRYPTED_FILE]?.content ||
-    (currentFile === LEGACY_ENCRYPTED_FILE
-      ? revisionGist.files?.[currentFile]?.content
-      : null);
-  if (encrypted && manifest)
-    return validatedState(await legacyDecryptState(encrypted, manifest));
-  throw Error("历史 Revision 缺少 current.json");
-}
+/**
+ * Provider-agnostic history view.
+ *
+ * Gist uses native commit history; Google Drive and WebDAV use the
+ * application-managed `history/index.json` control file. The shape returned to
+ * the UI is identical for all three.
+ */
 async function historyData() {
+  if (!(await providerBound())) throw Error("尚未配置云同步后端");
   const s = await getSettings();
-  if (!s[KEYS.GIST_ID]) throw Error("尚未绑定 GitHub Gist");
-  const loaded = await loadRemote(s[KEYS.GIST_ID]);
-  const r = await github(
-      `/gists/${encodeURIComponent(s[KEYS.GIST_ID])}/commits?per_page=30`,
-    ),
-    currentSha =
-      loaded.raw.gist?.history?.[0]?.version ||
-      loaded.raw.gist?.history?.[0]?.sha ||
-      "";
+  const provider = await activeProvider();
+  const loaded = await readRemote();
   return {
-    gistId: s[KEYS.GIST_ID],
+    provider,
+    layout: loaded.layout,
+    storageLayout: MODULAR_STORAGE_LAYOUT,
+    formatVersion: STORAGE_FORMAT_VERSION,
+    gistId: s[KEYS.GIST_ID] || "",
+    location: provider === "gist" ? s[KEYS.GIST_ID] || "" : provider,
     revision: Number(loaded.state?.revision || loaded.manifest?.revision || 0),
     commits: await remoteRevisions(),
     state: loaded.state,
+    modules: loaded.modular?.meta?.modules || [],
+    legacyArchive: loaded.legacyArchive || "",
+    migratedFromLegacy: !!loaded.migratedFromLegacy,
   };
 }
 async function rollbackHistory(revision) {
   const settings = await getSettings();
-  if (!settings[KEYS.GIST_ID]) throw Error("尚未绑定 GitHub Gist");
+  if (!(await providerBound())) throw Error("尚未配置云同步后端");
   if (!revision) throw Error("缺少历史 Revision");
-  const current = await loadRemote(settings[KEYS.GIST_ID]),
+  const current = await readRemote(),
     historical = await remoteRevisionState(revision),
     now = new Date().toISOString(),
     next = {
@@ -1489,7 +1304,7 @@ async function rollbackHistory(revision) {
         {
           type: "rollback",
           status: "resolved",
-          strategy: "gist-revision",
+          strategy: "provider-history",
           revision,
           at: now,
         },
@@ -1498,11 +1313,11 @@ async function rollbackHistory(revision) {
   next.snapshot.updatedAt = now;
   return {
     ok: true,
-    revision: (await saveState(settings[KEYS.GIST_ID], current, next)).revision,
+    revision: (await saveState(current, next)).revision,
     sourceRevision: revision,
   };
 }
-async function saveState(gistId, loaded, nextState) {
+async function saveState(loaded, nextState) {
   const now = new Date().toISOString(),
     revision = Math.max(
       Number(nextState?.revision || 0),
@@ -1516,7 +1331,7 @@ async function saveState(gistId, loaded, nextState) {
       snapshot: normalizeSnapshot(nextState.snapshot),
     };
   state.snapshot.updatedAt = now;
-  await writeRemote(state, loaded.raw);
+  await writeRemote(state, loaded);
   await refreshCanonicalCloudTabStateAfterMutation();
   await setSettings({
     [KEYS.BASE_SNAPSHOT]: state.snapshot,
@@ -1569,7 +1384,7 @@ async function updateManagedCloudState(mutator) {
       state.tombstones,
     );
 
-    await writeRemote(state, loaded.raw);
+    await writeRemote(state, loaded);
     const verify = await readRemote();
 
     if (
@@ -1943,7 +1758,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
       }
       case "validateToken": {
         try {
-          return { ok: true, ...(await validateToken(m.token || "")) };
+          return { ok: true, ...(await validateGithubToken(m.token || "")) };
         } catch (e) {
           throw Error(`Token validation failed: ${e?.message || e}`);
         }
@@ -1956,17 +1771,8 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           await setSettings({ [KEYS.GITHUB_TOKEN]: token });
           return { gistId: "" };
         }
-        const r = await github(
-          `/gists/${encodeURIComponent(m.gistId)}`,
-          {},
-          token,
-        );
-        if (
-          !r.data.files?.[MANIFEST_FILE] &&
-          !r.data.files?.["chromium-cloud-sync.json"] &&
-          !r.data.files?.[CURRENT_FILE] &&
-          !r.data.files?.[LEGACY_ENCRYPTED_FILE]
-        )
+        const r = await readGistRaw(String(m.gistId), token);
+        if (!gistContainsSyncData(r.files))
           throw Error("指定 Gist 不包含 Chromium Cloud Sync 数据");
         await setSettings({
           [KEYS.GITHUB_TOKEN]: token,
@@ -1986,7 +1792,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             tombstones: [],
             conflicts: [],
           },
-          g = await createGist(state);
+          created = await createRemote(state);
         await setSettings({
           [KEYS.SYNC_REVISION]: 1,
           [KEYS.BASE_SNAPSHOT]: snap,
@@ -1994,7 +1800,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           [KEYS.LAST_SYNC]: snap.updatedAt,
         });
         await publishCanonicalCloudTabState(state);
-        return { id: g.id, revision: 1 };
+        return { id: String(created.location || ""), revision: 1 };
       }
       case "snapshot":
         return createSnapshot();
@@ -2406,14 +2212,15 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         return historyData();
       case "providerStatus": {
         const s = await getSettings();
+        const webdav = await webdavConfig();
         return {
           provider: await activeProvider(),
           bound: await providerBound(),
           gistId: s[KEYS.GIST_ID] || "",
-          gdriveConnected: !!(await readLocal(["gdriveTokens"])).gdriveTokens,
-          webdavUrl: String(
-            (await readLocal([KEYS.WEBDAV_URL]))[KEYS.WEBDAV_URL] || "",
-          ),
+          gdriveConnected: await gdriveConnected(),
+          gdrive: await gdriveStatus(),
+          webdavUrl: webdav.url,
+          webdavFolder: webdav.folder,
           restoreGroupMode: String(
             s[KEYS.RESTORE_GROUP_MODE] || "ondemand",
           ),
@@ -2421,6 +2228,8 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           cloudTabCache: await cloudTabCacheSummary(),
         };
       }
+      case "storageLayout":
+        return storageLayoutStatus();
       case "setProvider": {
         const value = ["gdrive", "webdav"].includes(String(m.provider))
           ? String(m.provider)
@@ -2446,7 +2255,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           const s = await getSettings();
           if (!String(s[KEYS.GITHUB_TOKEN] || "").trim())
             throw Error("未配置 GitHub Token");
-          await github("/user", {});
+          await githubRequest("/user", {});
         } else if (p === "gdrive") await gdriveTest();
         else await webdavTest();
         return { ok: true, provider: p };

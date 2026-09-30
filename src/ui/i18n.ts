@@ -293,6 +293,24 @@
       restoreModeSaved: "Restore mode saved",
       restoreSummaryDeferred:
         "Ungrouped tabs restored. Cloud tab groups stay on demand.",
+      storageLayoutTitle: "Cloud storage layout",
+      storageLayoutHelp:
+        "Synchronized data is stored as independent module files: extensions.json, bookmarks.json, and tabs.json, plus manifest.json and meta.json control files. Only modules whose data changed are uploaded again.",
+      storageLayoutLabel: "Layout",
+      storageLayoutModular: "Modular (per-module files)",
+      storageLayoutLegacy: "Legacy (single current.json)",
+      storageLayoutUnavailable:
+        "Storage layout is unavailable until a provider is configured and synchronized.",
+      storageSchemaVersion: "Schema",
+      storageFormatVersion: "Storage format",
+      storageModuleRevision: "Module revision",
+      storageModuleTombstones: "Deletions",
+      historyModules: "Modules",
+      module_extensions: "extensions",
+      module_bookmarks: "bookmarks",
+      module_tabs: "tabs",
+      storageLegacyArchive:
+        "{file} is preserved as the migration archive of the previous single-file layout. It is never deleted automatically.",
       plainStorageNote:
         "Sync data is stored by the selected cloud provider. Provider history is used for rollback where supported.",
       refreshFromCloud: "Refresh from cloud",
@@ -604,6 +622,23 @@
     restoreModeHelp: "选择标签组的恢复方式；不会改变云端同步语义。",
     restoreModeSaved: "恢复方式已保存",
     restoreSummaryDeferred: "已恢复未分组标签页；云端标签组保持按需打开。",
+    storageLayoutTitle: "云端存储结构",
+    storageLayoutHelp:
+      "同步数据以独立模块文件存储：extensions.json、bookmarks.json、tabs.json，外加 manifest.json 与 meta.json 两个控制文件。仅重新上传内容发生变化的模块。",
+    storageLayoutLabel: "布局",
+    storageLayoutModular: "模块化（按模块分文件）",
+    storageLayoutLegacy: "旧版（单一 current.json）",
+    storageLayoutUnavailable: "尚未配置云端提供方或完成同步，无法读取存储结构。",
+    storageSchemaVersion: "数据版本",
+    storageFormatVersion: "存储格式版本",
+    storageModuleRevision: "模块版本",
+    storageModuleTombstones: "删除记录",
+    historyModules: "变更模块",
+    module_extensions: "扩展",
+    module_bookmarks: "书签",
+    module_tabs: "标签页",
+    storageLegacyArchive:
+      "{file} 作为旧版单文件布局的迁移归档保留，不会被自动删除。",
     plainStorageNote:
       "同步数据由当前选择的云端提供商保存；支持的提供商使用其历史记录进行回滚。",
     refreshFromCloud: "从云端刷新",

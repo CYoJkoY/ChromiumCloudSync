@@ -1,13 +1,61 @@
 import { readLocal, writeLocal, removeLocal } from "./storage.js";
+import {
+  HISTORY_INDEX_FILE,
+  LEGACY_MONOLITHIC_FILE,
+  MANIFEST_FILE,
+  META_FILE,
+  MODULE_FILES,
+  SYNC_MODULE_IDS,
+} from "./sync-modules.js";
+import type {
+  FileStore,
+  FileStoreReadResult,
+  HistoryEntry,
+} from "./cloud-files.js";
+import type { SyncModuleId } from "./sync-modules.js";
+
+/**
+ * Google Drive transport.
+ *
+ * Drive has no folder-less file namespace this extension can rely on, so the
+ * modular layout lives inside an application-managed folder created with the
+ * `drive.file` scope:
+ *
+ * ```text
+ * Chromium Cloud Sync/
+ *   manifest.json  meta.json  extensions.json  bookmarks.json  tabs.json
+ *   history/
+ *     index.json
+ *     <label>--manifest.json  <label>--meta.json  <label>--extensions.json …
+ * ```
+ *
+ * The pre-modular single-file payload (`chromium-cloud-sync-state.json`) is
+ * detected, migrated, and preserved as a read-only archive.
+ */
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
-const SCOPE = "https://www.googleapis.com/auth/drive.file"; // 最小权限：只能访问本应用创建的文件
-const FILE_NAME = "chromium-cloud-sync-state.json";
+export const GDRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const GDRIVE_APP_FOLDER = "Chromium Cloud Sync";
+export const GDRIVE_HISTORY_FOLDER = "history";
+export const GDRIVE_INDEX_FILE = "index.json";
+const LEGACY_STATE_FILE = "chromium-cloud-sync-state.json";
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+const JSON_MIME = "application/json";
+export const GDRIVE_HISTORY_LIMIT = 30;
+
+const LOCAL_KEYS = {
+  tokens: "gdriveTokens",
+  legacyFileId: "gdriveFileId",
+  folderId: "gdriveFolderId",
+  historyFolderId: "gdriveHistoryFolderId",
+  fileIds: "gdriveFileIds",
+};
 
 const te = new TextEncoder();
+
 async function sha256B64Url(input: string): Promise<string> {
   const digest = new Uint8Array(
     await crypto.subtle.digest("SHA-256", te.encode(input)),
@@ -17,13 +65,26 @@ async function sha256B64Url(input: string): Promise<string> {
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
-function randomString(n: number): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(n));
+
+function randomString(length: number): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
   return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
+
+export interface GdriveTokens {
+  clientId?: string;
+  clientSecret?: string;
+  refresh_token?: string;
+  access_token?: string;
+  expiry?: number;
+}
+
+/* --------------------------------------------------------------------------
+ * Authentication
+ * ------------------------------------------------------------------------ */
 
 /** OAuth：用户在设置页填自己的 Client ID（推荐 Desktop app 类型，Secret 可留空） */
 export async function connectGoogleDrive(
@@ -32,13 +93,13 @@ export async function connectGoogleDrive(
 ): Promise<{ email: string }> {
   const id = String(clientId || "").trim();
   if (!id) throw Error("请先填写 Google OAuth Client ID");
-  const redirect = chrome.identity.getRedirectURL(); // https://<ext-id>.chromiumapp.org/
+  const redirect = chrome.identity.getRedirectURL();
   const verifier = randomString(64);
   const challenge = await sha256B64Url(verifier);
   const url =
     `${AUTH_URL}?client_id=${encodeURIComponent(id)}` +
     `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code` +
-    `&scope=${encodeURIComponent(SCOPE)}&access_type=offline&prompt=consent` +
+    `&scope=${encodeURIComponent(GDRIVE_SCOPE)}&access_type=offline&prompt=consent` +
     `&code_challenge=${challenge}&code_challenge_method=S256`;
   const responseUrl = await chrome.identity.launchWebAuthFlow({
     url,
@@ -59,198 +120,747 @@ export async function connectGoogleDrive(
     code_verifier: verifier,
   });
   if (clientSecret) body.set("client_secret", clientSecret);
-  const r = await fetch(TOKEN_URL, {
+  const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  const data = await r.json();
-  if (!r.ok)
+  const data = (await response.json()) as Record<string, unknown>;
+  if (!response.ok)
     throw Error(
-      `Google token exchange failed: ${data?.error_description || data?.error || r.status}`,
+      `Google token exchange failed: ${String(data?.error_description || data?.error || response.status)}`,
     );
   await writeLocal({
-    gdriveTokens: {
+    [LOCAL_KEYS.tokens]: {
       clientId: id,
       clientSecret,
-      refresh_token: data.refresh_token || "",
-      access_token: data.access_token,
+      refresh_token: String(data.refresh_token || ""),
+      access_token: String(data.access_token || ""),
       expiry: Date.now() + Number(data.expires_in || 3600) * 1000,
-    },
+    } satisfies GdriveTokens,
   });
+  // Cached folder/file ids belong to the previous account.
+  await removeLocal([
+    LOCAL_KEYS.legacyFileId,
+    LOCAL_KEYS.folderId,
+    LOCAL_KEYS.historyFolderId,
+    LOCAL_KEYS.fileIds,
+  ]);
   return { email: "" };
 }
 
 export async function disconnectGoogleDrive(): Promise<void> {
-  await removeLocal(["gdriveTokens", "gdriveFileId"]);
+  await removeLocal([
+    LOCAL_KEYS.tokens,
+    LOCAL_KEYS.legacyFileId,
+    LOCAL_KEYS.folderId,
+    LOCAL_KEYS.historyFolderId,
+    LOCAL_KEYS.fileIds,
+  ]);
 }
 
-async function accessToken(): Promise<string> {
-  const s = await readLocal(["gdriveTokens"]);
-  const t = s.gdriveTokens as
-    | {
-        access_token?: string;
-        refresh_token?: string;
-        expiry?: number;
-        clientId?: string;
-        clientSecret?: string;
-      }
-    | undefined;
-  if (!t?.refresh_token) throw Error("尚未连接 Google Drive");
-  if (t.access_token && t.expiry && Date.now() < t.expiry - 60_000)
-    return t.access_token;
+export async function gdriveAccessToken(): Promise<string> {
+  const state = await readLocal([LOCAL_KEYS.tokens]);
+  const tokens = state[LOCAL_KEYS.tokens] as GdriveTokens | undefined;
+  if (!tokens?.refresh_token) throw Error("尚未连接 Google Drive");
+  if (tokens.access_token && tokens.expiry && Date.now() < tokens.expiry - 60_000)
+    return tokens.access_token;
   const body = new URLSearchParams({
-    client_id: t.clientId || "",
-    refresh_token: t.refresh_token,
+    client_id: tokens.clientId || "",
+    refresh_token: tokens.refresh_token,
     grant_type: "refresh_token",
   });
-  if (t.clientSecret) body.set("client_secret", t.clientSecret);
-  const r = await fetch(TOKEN_URL, {
+  if (tokens.clientSecret) body.set("client_secret", tokens.clientSecret);
+  const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  const data = await r.json();
-  if (!r.ok) throw Error("Google Drive 授权已失效，请重新连接");
+  const data = (await response.json()) as Record<string, unknown>;
+  if (!response.ok)
+    throw driveError(response.status, data, "Google Drive 授权已失效，请重新连接");
   await writeLocal({
-    gdriveTokens: {
-      ...t,
-      access_token: data.access_token,
+    [LOCAL_KEYS.tokens]: {
+      ...tokens,
+      access_token: String(data.access_token || ""),
       expiry: Date.now() + Number(data.expires_in || 3600) * 1000,
-    },
+    } satisfies GdriveTokens,
   });
-  return data.access_token;
+  return String(data.access_token || "");
 }
 
-async function drive(
+export async function gdriveConnected(): Promise<boolean> {
+  const state = await readLocal([LOCAL_KEYS.tokens]);
+  return !!(state[LOCAL_KEYS.tokens] as GdriveTokens | undefined)?.refresh_token;
+}
+
+/* --------------------------------------------------------------------------
+ * Drive API error reporting
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Drive failures must stay distinguishable in the UI: quota, rate limit,
+ * permission, and missing-file problems each need a different user action, so
+ * they are reported as typed errors rather than a bare HTTP status.
+ */
+export type DriveErrorKind =
+  | "quota"
+  | "rate-limit"
+  | "auth"
+  | "permission"
+  | "not-found"
+  | "too-large"
+  | "server"
+  | "unknown";
+
+export class DriveApiError extends Error {
+  readonly code = "GDRIVE_API_ERROR";
+  readonly status: number;
+  readonly reason: string;
+  readonly kind: DriveErrorKind;
+  readonly context: string;
+  readonly driveMessage: string;
+  constructor(
+    status: number,
+    body: unknown,
+    context = "",
+  ) {
+    const error = (
+      body as {
+        error?: { message?: string; errors?: Array<{ reason?: string }> };
+      } | null
+    )?.error;
+    const reason = error?.errors?.[0]?.reason || "";
+    const message = error?.message || "";
+    const kind = classifyDriveError(status, reason);
+    super(describeDriveError(status, body, context));
+    this.name = "DriveApiError";
+    this.status = status;
+    this.reason = reason;
+    this.kind = kind;
+    this.context = context;
+    this.driveMessage = message;
+  }
+}
+
+function classifyDriveError(status: number, reason: string): DriveErrorKind {
+  if (reason === "storageQuotaExceeded" || reason === "quotaExceeded")
+    return "quota";
+  if (
+    reason === "rateLimitExceeded" ||
+    reason === "userRateLimitExceeded" ||
+    status === 429
+  )
+    return "rate-limit";
+  if (status === 401 || reason === "authError" || reason === "invalidCredentials")
+    return "auth";
+  if (status === 403) return "permission";
+  if (status === 404 || reason === "notFound") return "not-found";
+  if (status === 413) return "too-large";
+  if (status >= 500) return "server";
+  return "unknown";
+}
+
+/** Human-readable classification of a Drive API failure. */
+export function describeDriveError(
+  status: number,
+  body: unknown,
+  context = "",
+): string {
+  const error = (
+    body as {
+      error?: { message?: string; errors?: Array<{ reason?: string }> };
+    } | null
+  )?.error;
+  const reason = error?.errors?.[0]?.reason || "";
+  const message = error?.message || "";
+  const prefix = context ? `${context}：` : "";
+  switch (classifyDriveError(status, reason)) {
+    case "quota":
+      return `${prefix}Google Drive 存储空间或配额不足（${reason}）`;
+    case "rate-limit":
+      return `${prefix}Google Drive 请求过于频繁，请稍后重试（${reason || "rateLimitExceeded"}）`;
+    case "auth":
+      return `${prefix}Google Drive 授权已过期，请重新连接`;
+    case "permission":
+      return `${prefix}Google Drive 权限不足（${reason || message || "forbidden"}）`;
+    case "not-found":
+      return `${prefix}Google Drive 文件不存在（${reason || message || "notFound"}）`;
+    case "too-large":
+      return `${prefix}文件超过 Google Drive 上传大小限制`;
+    case "server":
+      return `${prefix}Google Drive 服务暂时不可用：HTTP ${status}`;
+    default:
+      return message
+        ? `${prefix}${message}`
+        : `${prefix}Google Drive 请求失败：HTTP ${status}`;
+  }
+}
+
+function driveError(
+  status: number,
+  body: unknown,
+  context = "",
+): DriveApiError {
+  return new DriveApiError(status, body, context);
+}
+
+async function parseErrorBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+async function driveFetch(
   path: string,
   init: RequestInit = {},
   token?: string,
 ): Promise<Response> {
-  const t = token ?? (await accessToken());
+  const accessToken = token ?? (await gdriveAccessToken());
   return fetch(`${DRIVE_API}${path}`, {
     ...init,
-    headers: { Authorization: `Bearer ${t}`, ...(init.headers || {}) },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ...((init.headers as Record<string, string>) || {}),
+    },
   });
 }
 
-export async function gdriveTest(): Promise<{ ok: true; detail?: string }> {
-  const token = await accessToken();
-  const r = await drive("/files?pageSize=1&fields=files(id)", {}, token);
-  if (!r.ok) throw Error(`Google Drive 连接失败：HTTP ${r.status}`);
-  return { ok: true };
+async function driveJson(
+  path: string,
+  init: RequestInit = {},
+  token?: string,
+  context = "",
+): Promise<unknown> {
+  const response = await driveFetch(path, init, token);
+  const text = await response.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+  }
+  if (!response.ok) throw driveError(response.status, data, context);
+  return data;
 }
 
-async function findFileId(token: string): Promise<string | null> {
-  const s = await readLocal(["gdriveFileId"]);
-  if (s.gdriveFileId) return String(s.gdriveFileId);
-  const q = `name='${FILE_NAME}' and 'root' in parents and trashed=false`;
-  const r = await drive(
-    `/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive&pageSize=1`,
+/* --------------------------------------------------------------------------
+ * Application-managed folder and file id cache
+ * ------------------------------------------------------------------------ */
+
+interface DriveFileEntry {
+  id: string;
+  name: string;
+}
+
+async function readIdCache(): Promise<Record<string, string>> {
+  const state = await readLocal([LOCAL_KEYS.fileIds]);
+  const cached = state[LOCAL_KEYS.fileIds];
+  return cached && typeof cached === "object" && !Array.isArray(cached)
+    ? (cached as Record<string, string>)
+    : {};
+}
+
+async function writeIdCache(cache: Record<string, string>): Promise<void> {
+  await writeLocal({ [LOCAL_KEYS.fileIds]: cache });
+}
+
+function escapeQueryValue(value: string): string {
+  return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+async function queryFiles(
+  query: string,
+  token: string,
+  fields = "files(id,name,mimeType,modifiedTime)",
+): Promise<DriveFileEntry[]> {
+  const data = (await driveJson(
+    `/files?q=${encodeURIComponent(query)}&spaces=drive&pageSize=200&fields=${encodeURIComponent(fields)}`,
     {},
     token,
-  );
-  const data = await r.json();
-  const id = data?.files?.[0]?.id || null;
-  if (id) await writeLocal({ gdriveFileId: id });
-  return id;
+    "查询 Google Drive 文件",
+  )) as { files?: DriveFileEntry[] };
+  return Array.isArray(data?.files) ? data.files : [];
 }
 
-export async function gdriveLoad(): Promise<unknown> {
-  const token = await accessToken();
-  const id = await findFileId(token);
-  if (!id) throw Error("Google Drive 中还没有同步文件，请先创建");
-  const r = await drive(`/files/${id}?alt=media`, {}, token);
-  if (!r.ok) throw Error(`读取 Google Drive 同步文件失败：HTTP ${r.status}`);
-  return JSON.parse(await r.text());
-}
-
-export async function gdriveCreate(
-  state: unknown,
-): Promise<{ location: string }> {
-  const token = await accessToken();
-  const meta = { name: FILE_NAME, mimeType: "application/json" };
-  const boundary = "ccsync-boundary";
-  const body = te.encode(
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
-      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(state)}\r\n--${boundary}--`,
+async function ensureFolder(
+  name: string,
+  parentId: string | null,
+  token: string,
+): Promise<string> {
+  const parentClause = parentId ? ` and '${escapeQueryValue(parentId)}' in parents` : " and 'root' in parents";
+  const existing = await queryFiles(
+    `name='${escapeQueryValue(name)}' and mimeType='${FOLDER_MIME}'${parentClause} and trashed=false`,
+    token,
   );
-  const r = await fetch(`${UPLOAD_API}/files?uploadType=multipart&fields=id`, {
+  if (existing[0]?.id) return existing[0].id;
+  const boundary = `ccsync-folder-${randomString(8)}`;
+  const metadata = parentId
+    ? { name, mimeType: FOLDER_MIME, parents: [parentId] }
+    : { name, mimeType: FOLDER_MIME };
+  const response = await fetch(`${DRIVE_API}/files?fields=id`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": `multipart/related; boundary=${boundary}`,
     },
-    body,
+    body: te.encode(
+      `--${boundary}\r\nContent-Type: ${JSON_MIME}; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}--`,
+    ),
   });
-  const data = await r.json();
-  if (!r.ok)
-    throw Error(
-      `创建 Google Drive 同步文件失败：${data?.error?.message || r.status}`,
-    );
-  await writeLocal({ gdriveFileId: data.id });
-  return { location: data.id };
+  const text = await response.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { raw: text };
+  }
+  if (!response.ok)
+    throw driveError(response.status, data, "创建 Google Drive 文件夹");
+  const id = String((data as { id?: string })?.id || "");
+  if (!id) throw Error("创建 Google Drive 文件夹失败：未返回文件 ID");
+  return id;
 }
 
-export async function gdriveSave(
-  state: unknown,
-): Promise<{ revision: number }> {
-  const token = await accessToken();
-  const id = await findFileId(token);
-  if (!id) {
-    await gdriveCreate(state);
-    return {
-      revision: Number((state as { revision?: number })?.revision || 0),
-    };
+interface DriveLayout {
+  token: string;
+  folderId: string;
+  historyFolderId: string;
+  ids: Record<string, string>;
+}
+
+/**
+ * Resolve the application-managed Drive layout.
+ *
+ * Folder ids are cached in extension storage so a sync does not pay a lookup
+ * round trip per file. If Drive reports the cached folder as missing, the cache
+ * is invalidated and the layout is recreated once.
+ */
+async function resolveLayout(): Promise<DriveLayout> {
+  const token = await gdriveAccessToken();
+  const state = await readLocal([
+    LOCAL_KEYS.folderId,
+    LOCAL_KEYS.historyFolderId,
+  ]);
+  let folderId = String(state[LOCAL_KEYS.folderId] || "");
+  if (!folderId) {
+    folderId = await ensureFolder(GDRIVE_APP_FOLDER, null, token);
+    await writeLocal({ [LOCAL_KEYS.folderId]: folderId });
+    await writeIdCache({});
   }
-  const r = await fetch(
-    `${UPLOAD_API}/files/${id}?uploadType=media&fields=id`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+  let historyFolderId = String(state[LOCAL_KEYS.historyFolderId] || "");
+  if (!historyFolderId) {
+    historyFolderId = await ensureFolder(
+      GDRIVE_HISTORY_FOLDER,
+      folderId,
+      token,
+    );
+    await writeLocal({ [LOCAL_KEYS.historyFolderId]: historyFolderId });
+  }
+  return { token, folderId, historyFolderId, ids: await readIdCache() };
+}
+
+/** Drop cached folder and file ids (account change, deleted app folder). */
+export async function invalidateGdriveLayout(): Promise<void> {
+  await removeLocal([
+    LOCAL_KEYS.folderId,
+    LOCAL_KEYS.historyFolderId,
+    LOCAL_KEYS.fileIds,
+  ]);
+}
+
+function isMissingDriveFolder(error: unknown): boolean {
+  return (
+    error instanceof DriveApiError &&
+    error.kind === "not-found" &&
+    /文件夹|folder/i.test(error.context)
+  );
+}
+
+async function withLayout<T>(
+  work: (layout: DriveLayout) => Promise<T>,
+): Promise<T> {
+  try {
+    return await work(await resolveLayout());
+  } catch (error) {
+    if (!isMissingDriveFolder(error)) throw error;
+    await invalidateGdriveLayout();
+    return work(await resolveLayout());
+  }
+}
+
+/** Drive names cannot contain "/", so logical paths map onto folders. */
+function driveLocation(
+  logicalName: string,
+): { scope: "app" | "history"; name: string } {
+  const name = String(logicalName || "");
+  if (name === HISTORY_INDEX_FILE)
+    return { scope: "history", name: GDRIVE_INDEX_FILE };
+  if (name.startsWith("history/")) {
+    const rest = name.slice("history/".length);
+    return { scope: "history", name: rest.replace(/\//g, "--") };
+  }
+  return { scope: "app", name };
+}
+
+async function resolveFileId(
+  layout: DriveLayout,
+  logicalName: string,
+): Promise<string | null> {
+  const location = driveLocation(logicalName);
+  const cacheKey = `${location.scope}:${location.name}`;
+  if (layout.ids[cacheKey]) return layout.ids[cacheKey];
+  const parentId =
+    location.scope === "history" ? layout.historyFolderId : layout.folderId;
+  const found = await queryFiles(
+    `name='${escapeQueryValue(location.name)}' and '${escapeQueryValue(parentId)}' in parents and trashed=false`,
+    layout.token,
+  );
+  const id = found[0]?.id || null;
+  if (id) {
+    layout.ids[cacheKey] = id;
+    await writeIdCache(layout.ids);
+  }
+  return id;
+}
+
+async function readTextById(
+  layout: DriveLayout,
+  fileId: string,
+): Promise<string | null> {
+  const response = await driveFetch(
+    `/files/${encodeURIComponent(fileId)}?alt=media`,
+    {},
+    layout.token,
+  );
+  if (response.status === 404) return null;
+  if (!response.ok)
+    throw driveError(
+      response.status,
+      await parseErrorBody(response),
+      "读取 Google Drive 文件",
+    );
+  return response.text();
+}
+
+async function uploadText(
+  layout: DriveLayout,
+  logicalName: string,
+  text: string,
+): Promise<string> {
+  const location = driveLocation(logicalName);
+  const cacheKey = `${location.scope}:${location.name}`;
+  const existing = layout.ids[cacheKey] ?? (await resolveFileId(layout, logicalName));
+  if (existing) {
+    const response = await fetch(
+      `${UPLOAD_API}/files/${encodeURIComponent(existing)}?uploadType=media&fields=id`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${layout.token}`,
+          "Content-Type": `${JSON_MIME}; charset=UTF-8`,
+        },
+        body: text,
       },
-      body: JSON.stringify(state),
+    );
+    if (response.ok) return existing;
+    const data = await parseErrorBody(response);
+    if (response.status !== 404)
+      throw driveError(response.status, data, "写入 Google Drive 文件");
+    // Cached id points at a deleted file: drop it and recreate below.
+    delete layout.ids[cacheKey];
+  }
+  const parentId =
+    location.scope === "history" ? layout.historyFolderId : layout.folderId;
+  const boundary = `ccsync-upload-${randomString(8)}`;
+  const metadata = {
+    name: location.name,
+    mimeType: JSON_MIME,
+    parents: [parentId],
+  };
+  const response = await fetch(
+    `${UPLOAD_API}/files?uploadType=multipart&fields=id`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${layout.token}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: te.encode(
+        `--${boundary}\r\nContent-Type: ${JSON_MIME}; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+          `--${boundary}\r\nContent-Type: ${JSON_MIME}; charset=UTF-8\r\n\r\n${text}\r\n--${boundary}--`,
+      ),
     },
   );
-  if (!r.ok) throw Error(`写入 Google Drive 失败：HTTP ${r.status}`);
-  return { revision: Number((state as { revision?: number })?.revision || 0) };
+  const data = await parseErrorBody(response);
+  if (!response.ok)
+    throw driveError(response.status, data, "创建 Google Drive 文件");
+  const id = String((data as { id?: string })?.id || "");
+  if (!id) throw Error("创建 Google Drive 文件失败：未返回文件 ID");
+  layout.ids[cacheKey] = id;
+  await writeIdCache(layout.ids);
+  return id;
 }
 
-/** Drive 原生修订历史，替代 Gist commits */
-export async function gdriveRevisions(): Promise<
-  Array<{ id: string; createdAt: string; current: boolean }>
-> {
-  const token = await accessToken();
-  const id = await findFileId(token);
-  if (!id) return [];
-  const r = await drive(
-    `/files/${id}/revisions?pageSize=30&fields=revisions(id,modifiedTime)`,
-    {},
-    token,
-  );
-  const data = await r.json();
-  const list = (data?.revisions || []) as Array<{
+/* --------------------------------------------------------------------------
+ * Public helpers
+ * ------------------------------------------------------------------------ */
+
+export async function gdriveTest(): Promise<{ ok: true; folderId: string }> {
+  return withLayout(async (layout) => {
+    const data = (await driveJson(
+      `/files/${encodeURIComponent(layout.folderId)}?fields=id,name`,
+      {},
+      layout.token,
+      "Google Drive 连接测试",
+    )) as { name?: string };
+    return { ok: true as const, folderId: layout.folderId, appFolder: String(data?.name || GDRIVE_APP_FOLDER) };
+  });
+}
+
+export async function gdriveStatus(): Promise<{
+  connected: boolean;
+  folderId: string;
+  appFolder: string;
+  historyFolder: string;
+  legacyFile: string;
+}> {
+  const connected = await gdriveConnected();
+  const state = await readLocal([LOCAL_KEYS.folderId, LOCAL_KEYS.legacyFileId]);
+  return {
+    connected,
+    folderId: String(state[LOCAL_KEYS.folderId] || ""),
+    appFolder: GDRIVE_APP_FOLDER,
+    historyFolder: GDRIVE_HISTORY_FOLDER,
+    legacyFile: state[LOCAL_KEYS.legacyFileId] ? LEGACY_STATE_FILE : "",
+  };
+}
+
+/** Read the pre-modular single-file payload when it exists. */
+async function readLegacyStateFile(
+  layout: DriveLayout,
+): Promise<string | null> {
+  const state = await readLocal([LOCAL_KEYS.legacyFileId]);
+  let fileId = String(state[LOCAL_KEYS.legacyFileId] || "");
+  if (!fileId) {
+    const found = await queryFiles(
+      `name='${escapeQueryValue(LEGACY_STATE_FILE)}' and 'root' in parents and trashed=false`,
+      layout.token,
+    );
+    fileId = found[0]?.id || "";
+    if (fileId) await writeLocal({ [LOCAL_KEYS.legacyFileId]: fileId });
+  }
+  if (!fileId) return null;
+  return readTextById(layout, fileId);
+}
+
+interface DriveHistoryIndex {
+  schemaVersion?: number;
+  entries?: Array<{
     id: string;
-    modifiedTime: string;
+    createdAt: string;
+    revision?: number;
+    files?: string[];
+    /** Modules whose payload changed in this archived revision. */
+    modules?: string[];
   }>;
-  return list.map((rev, index) => ({
-    id: rev.id,
-    createdAt: rev.modifiedTime,
-    current: index === list.length - 1,
-  }));
 }
 
-export async function gdriveLoadRevision(revisionId: string): Promise<unknown> {
-  const token = await accessToken();
-  const id = await findFileId(token);
-  if (!id) throw Error("Google Drive 中还没有同步文件");
-  const r = await drive(
-    `/files/${id}/revisions/${encodeURIComponent(revisionId)}?alt=media`,
-    {},
-    token,
+const PROTOCOL_FILES = [
+  MANIFEST_FILE,
+  META_FILE,
+  ...SYNC_MODULE_IDS.map((moduleId) => MODULE_FILES[moduleId]),
+];
+
+export function createGdriveFileStore(): FileStore {
+  const readIndex = async (
+    layout: DriveLayout,
+  ): Promise<DriveHistoryIndex> => {
+    const id = await resolveFileId(layout, HISTORY_INDEX_FILE);
+    if (!id) return { schemaVersion: 2, entries: [] };
+    const text = await readTextById(layout, id);
+    if (!text) return { schemaVersion: 2, entries: [] };
+    try {
+      const parsed = JSON.parse(text) as DriveHistoryIndex;
+      return {
+        schemaVersion: 2,
+        entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+      };
+    } catch {
+      return { schemaVersion: 2, entries: [] };
+    }
+  };
+
+  return {
+    id: "gdrive",
+    async read(names: string[]): Promise<FileStoreReadResult> {
+      return withLayout(async (layout) => {
+      const files: Record<string, string | null> = {};
+      await Promise.all(
+        [...new Set(names)].map(async (name) => {
+          if (name === LEGACY_MONOLITHIC_FILE) {
+            // The legacy payload lives outside the app folder.
+            files[name] = await readLegacyStateFile(layout);
+            return;
+          }
+          const id = await resolveFileId(layout, name);
+          files[name] = id ? await readTextById(layout, id) : null;
+        }),
+      );
+      return {
+        files,
+        raw: { folderId: layout.folderId, appFolder: GDRIVE_APP_FOLDER },
+      };
+      });
+    },
+    async write(entries) {
+      await withLayout(async (layout) => {
+        for (const [name, text] of Object.entries(entries))
+          await uploadText(layout, name, text);
+      });
+    },
+    async remove(names) {
+      await withLayout(async (layout) => {
+      for (const name of names) {
+        const id = await resolveFileId(layout, name);
+        if (!id) continue;
+        const response = await driveFetch(
+          `/files/${encodeURIComponent(id)}`,
+          { method: "DELETE" },
+          layout.token,
+        );
+        if (!response.ok && response.status !== 404)
+          throw driveError(
+            response.status,
+            await parseErrorBody(response),
+            "删除 Google Drive 文件",
+          );
+        const location = driveLocation(name);
+        delete layout.ids[`${location.scope}:${location.name}`];
+      }
+      await writeIdCache(layout.ids);
+      });
+    },
+    async list() {
+      return withLayout(async (layout) => {
+        const entries = await queryFiles(
+          `'${escapeQueryValue(layout.folderId)}' in parents and trashed=false`,
+          layout.token,
+        );
+        return entries.map((entry) => entry.name);
+      });
+    },
+    history: {
+      async archive(label, entries, meta) {
+        await withLayout(async (layout) => {
+        for (const entry of entries)
+          await uploadText(layout, `history/${label}/${entry.name}`, entry.text);
+        const index = await readIndex(layout);
+        let revision = Number(meta?.revision) || 0;
+        if (!revision) {
+          const metaText = entries.find((entry) => entry.name === META_FILE)?.text;
+          if (metaText) {
+            try {
+              revision =
+                Number((JSON.parse(metaText) as { revision?: number }).revision) ||
+                0;
+            } catch {
+              revision = 0;
+            }
+          }
+        }
+        index.schemaVersion = 2;
+        index.entries = [
+          ...(index.entries || []).filter((entry) => entry.id !== label),
+          {
+            id: label,
+            createdAt: new Date().toISOString(),
+            revision,
+            files: entries.map((entry) => entry.name),
+            modules: (meta?.modules || []).map((moduleId) => String(moduleId)),
+          },
+        ].slice(-GDRIVE_HISTORY_LIMIT);
+        await uploadText(
+          layout,
+          HISTORY_INDEX_FILE,
+          JSON.stringify(index, null, 2),
+        );
+        // Trim archives beyond the retention window.
+        const retained = (index.entries || []).length;
+        if (retained >= GDRIVE_HISTORY_LIMIT) await pruneHistory(layout, index);
+        });
+      },
+      async list(): Promise<HistoryEntry[]> {
+        return withLayout(async (layout) => {
+        const index = await readIndex(layout);
+        return (index.entries || [])
+          .slice()
+          .reverse()
+          .map((entry, position) => ({
+            id: entry.id,
+            createdAt: entry.createdAt,
+            current: position === 0,
+            layout: "modular",
+            revision: Number(entry.revision) || 0,
+            modules: (entry.modules || []).filter((moduleId) =>
+              SYNC_MODULE_IDS.includes(moduleId as SyncModuleId),
+            ) as SyncModuleId[],
+          }));
+        });
+      },
+      async read(entryId) {
+        return withLayout(async (layout) => {
+        const files: Record<string, string | null> = {};
+        await Promise.all(
+          PROTOCOL_FILES.map(async (name) => {
+            const id = await resolveFileId(layout, `history/${entryId}/${name}`);
+            files[name] = id ? await readTextById(layout, id) : null;
+          }),
+        );
+        if (PROTOCOL_FILES.every((name) => files[name] === null))
+          throw Error(`读取 Google Drive 历史版本失败：${entryId}`);
+        return files;
+        });
+      },
+    },
+  };
+}
+
+async function pruneHistory(
+  layout: DriveLayout,
+  index: DriveHistoryIndex,
+): Promise<void> {
+  const keep = new Set(
+    (index.entries || []).flatMap((entry) =>
+      (entry.files || []).map((name) => `history/${entry.id}/${name}`),
+    ),
   );
-  if (!r.ok) throw Error(`读取历史修订失败：HTTP ${r.status}`);
-  return JSON.parse(await r.text());
+  const entries = await queryFiles(
+    `'${escapeQueryValue(layout.historyFolderId)}' in parents and trashed=false`,
+    layout.token,
+  );
+  for (const entry of entries) {
+    if (entry.name === GDRIVE_INDEX_FILE) continue;
+    const logical = `history/${entry.name.replace(/--/g, "/")}`;
+    if (keep.has(logical)) continue;
+    delete layout.ids[`history:${entry.name}`];
+    const response = await driveFetch(
+      `/files/${encodeURIComponent(entry.id)}`,
+      { method: "DELETE" },
+      layout.token,
+    );
+    if (!response.ok && response.status !== 404)
+      throw driveError(
+        response.status,
+        await parseErrorBody(response),
+        "清理 Google Drive 历史文件",
+      );
+  }
+  await writeIdCache(layout.ids);
 }

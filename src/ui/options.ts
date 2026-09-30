@@ -16,7 +16,19 @@ const providerEl = $("provider"),
   restoreModeEl = $("restoreGroupMode"),
   tabSyncModeEl = $("tabSyncMode"),
   tabSyncModeDescriptionEl = $("tabSyncModeDescription"),
-  cloudTabsManager = $("cloudTabsManager");
+  cloudTabsManager = $("cloudTabsManager"),
+  storageLayoutSummaryEl = $("storageLayoutSummary"),
+  storageModuleListEl = $("storageModuleList"),
+  storageLegacyNoteEl = $("storageLegacyNote");
+
+function providerLabel(provider) {
+  const names = {
+    gist: i.t("providerGist"),
+    gdrive: i.t("providerGdrive"),
+    webdav: i.t("providerWebdav"),
+  };
+  return names[provider] || provider || i.t("unknown");
+}
 
 function toggleProvider() {
   const value = providerEl?.value || "gist";
@@ -215,6 +227,7 @@ async function load() {
     refreshIntervalLabels();
     await loadProvider();
     await refresh();
+    await refreshStorageLayout();
   } catch (e) {
     showError(e);
   }
@@ -757,6 +770,80 @@ chrome.runtime.onMessage.addListener((message) => {
   if (!panel || panel.classList.contains("hidden")) return;
   void refreshCloudTabs();
 });
+/**
+ * Coherent overall view of the split provider storage.
+ *
+ * The cloud payload is several independent module files now, so this panel
+ * reports the layout, every module file with its own revision, and whether a
+ * legacy archive is still preserved.
+ */
+async function refreshStorageLayout() {
+  if (!storageLayoutSummaryEl || !storageModuleListEl) return;
+  storageLayoutSummaryEl.textContent = i.t("loading");
+  storageLayoutSummaryEl.style.whiteSpace = "pre-line";
+  storageModuleListEl.replaceChildren();
+  if (storageLegacyNoteEl) storageLegacyNoteEl.hidden = true;
+
+  try {
+    const layout = await request("storageLayout");
+    if (!layout || !layout.bound) {
+      storageLayoutSummaryEl.textContent = i.t("storageLayoutUnavailable");
+      return;
+    }
+    if (layout.error) {
+      storageLayoutSummaryEl.textContent = `${i.t("operationFailed")}: ${layout.error}`;
+      return;
+    }
+    storageLayoutSummaryEl.textContent = [
+      `${i.t("provider")}: ${providerLabel(layout.provider)}`,
+      `${i.t("storageLayoutLabel")}: ${
+        layout.layout === "modular"
+          ? i.t("storageLayoutModular")
+          : i.t("storageLayoutLegacy")
+      }`,
+      `${i.t("storageSchemaVersion")}: ${layout.schemaVersion} · ${i.t("storageFormatVersion")}: ${layout.formatVersion}`,
+      `${i.t("revision")}: ${layout.revision}`,
+      layout.updatedAt
+        ? `${i.t("lastSync")} ${new Date(layout.updatedAt).toLocaleString()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    for (const entry of layout.modules || []) {
+      const row = document.createElement("div");
+      row.className = "history-row";
+      const main = document.createElement("div");
+      main.className = "history-main";
+      const title = document.createElement("div");
+      title.className = "history-title mono";
+      title.textContent = entry.file;
+      const meta = document.createElement("div");
+      meta.className = "history-meta";
+      meta.textContent = `${i.t("storageModuleRevision")}: ${entry.revision} · ${i.t("storageModuleTombstones")}: ${entry.tombstones} · ${entry.checksum}`;
+      main.append(title, meta);
+      const side = document.createElement("div");
+      side.className = "history-meta";
+      side.textContent = entry.updatedAt
+        ? new Date(entry.updatedAt).toLocaleString()
+        : "";
+      row.append(main, side);
+      storageModuleListEl.append(row);
+    }
+
+    if (layout.legacyArchive && storageLegacyNoteEl) {
+      storageLegacyNoteEl.hidden = false;
+      storageLegacyNoteEl.textContent = i.t("storageLegacyArchive", {
+        file: layout.legacyArchive,
+      });
+    }
+  } catch (e) {
+    showError(e);
+  }
+}
+
+bindAction("refreshStorageLayout", () => refreshStorageLayout());
+
 function setupTabs() {
   const tabs = [...document.querySelectorAll(".nav-tab")],
     panels = [...document.querySelectorAll(".tab-panel")],
@@ -773,6 +860,7 @@ function setupTabs() {
         p.classList.toggle("hidden", p.id !== t.dataset.target);
       if (hash) history.replaceState(null, "", `#${id.replace(/^panel-/, "")}`);
       if (id === "panel-cloud-tabs") void refreshCloudTabs(false);
+      if (id === "panel-local") void refreshStorageLayout();
     };
   for (const t of tabs) {
     t.addEventListener("click", () => act(t.dataset.target));

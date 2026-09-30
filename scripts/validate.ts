@@ -42,6 +42,9 @@ const sourceFiles = [
   "src/runtime/schema.ts",
   "src/runtime/storage.ts",
   "src/runtime/browser-capabilities.ts",
+  "src/runtime/cloud-files.ts",
+  "src/runtime/cloud-gist.ts",
+  "src/runtime/sync-modules.ts",
   "src/runtime/cloud-tab-state.ts",
   "src/runtime/diagnostics.ts",
   "src/runtime/legacy-crypto.ts",
@@ -96,6 +99,9 @@ const requiredRefs = {
 const runtimeFiles = [
   "background.js",
   "browser-capabilities.js",
+  "cloud-files.js",
+  "cloud-gist.js",
+  "sync-modules.js",
   "cloud-tab-state.js",
   "diagnostics.js",
   "legacy-crypto.js",
@@ -217,16 +223,111 @@ const bg = fs.readFileSync(
   "utf8",
 );
 const bgCompact = compactSource(bg);
-if (bgCompact.includes(`[LEGACY_ENCRYPTED_FILE]:{content:null}`))
+
+/* ---------------------------------------------------------------------------
+ * Issue #21: modular per-module storage layout
+ * ------------------------------------------------------------------------- */
+const syncModules = fs.readFileSync(
+  path.join(root, "src/runtime/sync-modules.ts"),
+  "utf8",
+);
+for (const required of [
+  'extensions: "extensions.json"',
+  'bookmarks: "bookmarks.json"',
+  'tabs: "tabs.json"',
+  'export const MANIFEST_FILE = "manifest.json"',
+  'export const META_FILE = "meta.json"',
+  'export const HISTORY_INDEX_FILE = "history/index.json"',
+  "export function splitCloudState",
+  "export function combineModularState",
+  "export function migrateLegacyToModular",
+  "export function diffModuleChanges",
+  "export function bumpModuleRevisions",
+  "export function mergeModularCloudState",
+  "export function isLegacyMonolithicPayload",
+])
+  if (!syncModules.includes(required))
+    throw new Error("Modular storage contract is missing " + required);
+
+const cloudFiles = fs.readFileSync(
+  path.join(root, "src/runtime/cloud-files.ts"),
+  "utf8",
+);
+for (const required of [
+  "export async function readRemoteModularState",
+  "export async function writeRemoteModularState",
+  "export async function readHistoryEntryState",
+  "export async function persistLegacyMigration",
+  "export interface FileStore",
+  "export interface FileStoreHistory",
+])
+  if (!cloudFiles.includes(required))
+    throw new Error("Provider file protocol is missing " + required);
+// The legacy monolithic payload must be preserved as a migration archive.
+if (!/removals\.delete\(LEGACY_MONOLITHIC_FILE\)/.test(cloudFiles))
   throw new Error(
-    "Invalid Gist PATCH payload: legacy encrypted file must be deleted with a null file value, not null content",
+    "Modular write path may delete the legacy current.json archive; migration must preserve cloud data",
   );
+
+for (const provider of [
+  ["src/runtime/cloud-gist.ts", "createGistFileStore"],
+  ["src/runtime/cloud-gdrive.ts", "createGdriveFileStore"],
+  ["src/runtime/cloud-webdav.ts", "createWebdavFileStore"],
+]) {
+  const [file, factory] = provider;
+  const text = fs.readFileSync(path.join(root, file), "utf8");
+  if (!text.includes(`export function ${factory}`))
+    throw new Error(`${file} must export ${factory}`);
+  for (const required of ["read(", "write(", "remove(", "list(", "history:"])
+    if (!text.includes(required))
+      throw new Error(`${file} FileStore is missing ${required}`);
+}
+
+const gistTransport = fs.readFileSync(
+  path.join(root, "src/runtime/cloud-gist.ts"),
+  "utf8",
+);
+const gistCompact = compactSource(gistTransport);
+// Gist deletions must use a null file value, never `{ content: null }`.
+if (!gistCompact.includes("payload[name]=null"))
+  throw new Error(
+    "Gist transport must delete files with a null file value in the PATCH payload",
+  );
+if (/\{content:null\}/.test(gistCompact))
+  throw new Error(
+    "Invalid Gist PATCH payload: a null content value does not delete a file",
+  );
+if (!gistCompact.includes("truncated") || !gistCompact.includes("raw_url"))
+  throw new Error(
+    "Gist transport must resolve truncated file content through raw_url",
+  );
+
+// Legacy encrypted payload cleanup stays guarded by presence in prior files.
 if (
-  !/if\(Object\.prototype\.hasOwnProperty\.call\(existingFiles\|\|\{\},LEGACY_ENCRYPTED_FILE,?\)\)files\[LEGACY_ENCRYPTED_FILE\]=null;/.test(
-    bgCompact,
+  !bgCompact.includes(
+    "names.includes(LEGACY_ENCRYPTED_FILE))removals.push(LEGACY_ENCRYPTED_FILE)",
   )
 )
   throw new Error("Missing legacy encrypted file cleanup guard");
+if (/removals\.push\(CURRENT_FILE\)/.test(bg))
+  throw new Error(
+    "current.json must be preserved as the modular migration archive, never deleted",
+  );
+
+for (const required of [
+  "readRemoteModularState(store, validatedState)",
+  "writeRemoteModularState(store, modular",
+  "diffModuleChanges(",
+  "bumpModuleRevisions(",
+  "mergeModularCloudState({",
+  "serializeModularState(",
+  "listRemoteHistory(store)",
+  "readHistoryEntryState(store",
+])
+  if (!bg.includes(required))
+    throw new Error(
+      "Background worker does not use the modular storage protocol: " + required,
+    );
 
 const optionsHtml = fs.readFileSync(
   path.join(root, "src/ui/pages/options.html"),

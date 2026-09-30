@@ -439,13 +439,138 @@ function preserveRemoteOrder<T extends UnknownRecord>(
     }));
 }
 
+/**
+ * Module-scoped merge primitives.
+ *
+ * The tabs module (windows + tab groups), the extensions module, and the
+ * bookmarks module are merged independently so a bookmark change never has to
+ * treat the complete tab and extension dataset as one logical unit. Each
+ * primitive returns its own conflict list, which lets the storage layer decide
+ * per module whether anything actually changed.
+ */
+export interface TabsModuleMergeResult {
+  windows: WindowRecord[];
+  groups: TabGroupRecord[];
+  conflicts: ConflictRecord[];
+}
+
+export function mergeTabsModule(
+  base: Snapshot = emptySnapshot(),
+  local: Snapshot = emptySnapshot(),
+  remote: Snapshot = emptySnapshot(),
+  options: MergeOptions = {},
+): TabsModuleMergeResult {
+  const conflicts: ConflictRecord[] = [];
+  const BWin = base.windows ?? [],
+    LWin = local.windows ?? [],
+    RWin = remote.windows ?? [];
+  let windows: WindowRecord[];
+  if (options.tabSyncMode === "incremental") {
+    windows = mergeArray<WindowRecord>(BWin, LWin, RWin, conflicts, "windows", true);
+  } else if (stableEqual(LWin, RWin)) {
+    windows = clone(LWin);
+  } else if (stableEqual(LWin, BWin)) {
+    windows = clone(RWin);
+  } else if (stableEqual(RWin, BWin)) {
+    windows = clone(LWin);
+  } else {
+    windows = clone(LWin);
+    conflicts.push({
+      type: "collection-auto-resolved",
+      collection: "windows",
+      status: "resolved",
+      winner: "local",
+      strategy: "device-live-state",
+    });
+  }
+  let groups = mergeArray<TabGroupRecord>(
+    base.groups ?? [],
+    local.groups ?? [],
+    remote.groups ?? [],
+    conflicts,
+    "groups",
+    true,
+  );
+  if (options.tabSyncMode !== "incremental") return { windows, groups, conflicts };
+
+  groups = preserveRemoteOrder(groups, remote.groups ?? []);
+  const remoteWindows = new Map(
+    RWin.map((window) => [window.syncId, window]),
+  );
+  for (const window of windows) {
+    const remoteWindow = remoteWindows.get(window.syncId);
+    if (remoteWindow)
+      window.tabs = preserveRemoteOrder(
+        window.tabs ?? [],
+        remoteWindow.tabs ?? [],
+      );
+  }
+  const remoteGroups = new Map(
+    (remote.groups ?? []).map((group) => [group.syncId, group]),
+  );
+  for (const group of groups) {
+    const remoteGroup = remoteGroups.get(group.syncId);
+    if (remoteGroup)
+      group.tabs = preserveRemoteOrder(
+        group.tabs ?? [],
+        remoteGroup.tabs ?? [],
+      );
+  }
+  return { windows, groups, conflicts };
+}
+
+export interface ExtensionsModuleMergeResult {
+  extensions: ExtensionRecord[];
+  conflicts: ConflictRecord[];
+}
+
+export function mergeExtensionsModule(
+  base: Snapshot = emptySnapshot(),
+  local: Snapshot = emptySnapshot(),
+  remote: Snapshot = emptySnapshot(),
+): ExtensionsModuleMergeResult {
+  const conflicts: ConflictRecord[] = [];
+  return {
+    extensions: mergeArray<ExtensionRecord>(
+      base.extensions ?? [],
+      local.extensions ?? [],
+      remote.extensions ?? [],
+      conflicts,
+      "extensions",
+    ),
+    conflicts,
+  };
+}
+
+export interface BookmarksModuleMergeResult {
+  bookmarks: BookmarkRecord[];
+  conflicts: ConflictRecord[];
+}
+
+export function mergeBookmarksModule(
+  base: Snapshot = emptySnapshot(),
+  local: Snapshot = emptySnapshot(),
+  remote: Snapshot = emptySnapshot(),
+): BookmarksModuleMergeResult {
+  const conflicts: ConflictRecord[] = [];
+  return {
+    bookmarks: mergeArray<BookmarkRecord>(
+      base.bookmarks ?? [],
+      local.bookmarks ?? [],
+      remote.bookmarks ?? [],
+      conflicts,
+      "bookmarks",
+    ),
+    conflicts,
+  };
+}
+
 export function mergeSnapshots(
   base: Snapshot = emptySnapshot(),
   local: Snapshot = emptySnapshot(),
   remote: Snapshot = emptySnapshot(),
   options: MergeOptions = {},
 ): MergeResult {
-  const conflicts: ConflictRecord[] = [];
   const out: Snapshot = {
     schemaVersion: SCHEMA_VERSION,
     extensions: [],
@@ -456,103 +581,20 @@ export function mergeSnapshots(
   const syncMeta = local.syncMeta ?? remote.syncMeta ?? base.syncMeta;
   if (syncMeta !== undefined) out.syncMeta = clone(syncMeta);
   if (local.device !== undefined) out.device = clone(local.device);
-  const BWin = base.windows ?? [],
-    LWin = local.windows ?? [],
-    RWin = remote.windows ?? [];
-  if (options.tabSyncMode === "incremental") {
-    out.windows = mergeArray<WindowRecord>(
-      BWin,
-      LWin,
-      RWin,
-      conflicts,
-      "windows",
-      true,
-    );
-  } else if (stableEqual(LWin, RWin)) {
-    out.windows = clone(LWin);
-  } else if (stableEqual(LWin, BWin)) {
-    out.windows = clone(RWin);
-  } else if (stableEqual(RWin, BWin)) {
-    out.windows = clone(LWin);
-  } else {
-    out.windows = clone(LWin);
-    conflicts.push({
-      type: "collection-auto-resolved",
-      collection: "windows",
-      status: "resolved",
-      winner: "local",
-      strategy: "device-live-state",
-    });
-  }
-  out.groups = mergeArray<TabGroupRecord>(
-    base.groups ?? [],
-    local.groups ?? [],
-    remote.groups ?? [],
-    conflicts,
-    "groups",
-    true,
-  );
-  if (options.tabSyncMode === "incremental")
-    out.groups = preserveRemoteOrder(
-      out.groups,
-      remote.groups ?? [],
-    );
-  out.extensions = mergeArray<ExtensionRecord>(
-    base.extensions,
-    local.extensions,
-    remote.extensions,
-    conflicts,
-    "extensions",
-  );
-  out.bookmarks = mergeArray<BookmarkRecord>(
-    base.bookmarks,
-    local.bookmarks,
-    remote.bookmarks,
-    conflicts,
-    "bookmarks",
-  );
-  if (options.tabSyncMode === "incremental") {
-    const remoteWindows = new Map(
-      RWin.map((window) => [
-        window.syncId,
-        window,
-      ]),
-    );
 
-    for (const window of out.windows) {
-      const remoteWindow = remoteWindows.get(
-        window.syncId,
-      );
-      if (remoteWindow) {
-        window.tabs = preserveRemoteOrder(
-          window.tabs ?? [],
-          remoteWindow.tabs ?? [],
-        );
-      }
-    }
-
-    const remoteGroups = new Map(
-      (remote.groups ?? []).map((group) => [
-        group.syncId,
-        group,
-      ]),
-    );
-
-    for (const group of out.groups) {
-      const remoteGroup = remoteGroups.get(
-        group.syncId,
-      );
-      if (remoteGroup) {
-        group.tabs = preserveRemoteOrder(
-          group.tabs ?? [],
-          remoteGroup.tabs ?? [],
-        );
-      }
-    }
-  }
+  const tabs = mergeTabsModule(base, local, remote, options);
+  out.windows = tabs.windows;
+  out.groups = tabs.groups;
+  const extensions = mergeExtensionsModule(base, local, remote);
+  out.extensions = extensions.extensions;
+  const bookmarks = mergeBookmarksModule(base, local, remote);
+  out.bookmarks = bookmarks.bookmarks;
 
   out.updatedAt = new Date().toISOString();
-  return { snapshot: out, conflicts };
+  return {
+    snapshot: out,
+    conflicts: [...tabs.conflicts, ...extensions.conflicts, ...bookmarks.conflicts],
+  };
 }
 
 export function extractEntities(

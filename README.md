@@ -17,6 +17,7 @@
   <a href="#readme-overview">Overview</a> ·
   <a href="#readme-features">Features</a> ·
   <a href="#readme-providers">Cloud providers</a> ·
+  <a href="#readme-storage-layout">Storage layout</a> ·
   <a href="#readme-sync-model">Sync model</a> ·
   <a href="#readme-data-scope">Data scope</a> ·
   <a href="#readme-extension-recovery">Extension recovery</a> ·
@@ -71,13 +72,49 @@ The current implementation covers open windows and HTTP(S) tabs, tab groups, boo
 
 The synchronization engine is separated from the storage backend. Choose the provider that fits the environment:
 
-| Provider         | What it stores                          | Authentication / access                                     | History source                         |
-| :--------------- | :-------------------------------------- | :---------------------------------------------------------- | :------------------------------------- |
-| **GitHub Gist**  | `current.json` and sync metadata        | GitHub Token + private Gist                                 | Gist revision / commit history         |
-| **Google Drive** | One application-created JSON file       | User-supplied OAuth Client ID via Chromium Identity API     | Google Drive file revisions            |
-| **WebDAV**       | `current.json` + optional history index | WebDAV URL, optional folder, username and password/app auth | `history/index.json`, up to 30 entries |
+| Provider         | What it stores                                   | Authentication / access                                     | History source                         |
+| :--------------- | :----------------------------------------------- | :---------------------------------------------------------- | :------------------------------------- |
+| **GitHub Gist**  | Modular sync files (see below) inside one Gist   | GitHub Token + private Gist                                 | Gist revision / commit history         |
+| **Google Drive** | Modular sync files inside an application folder  | User-supplied OAuth Client ID via Chromium Identity API     | Google Drive file revisions            |
+| **WebDAV**       | Modular sync files + a provider history index    | WebDAV URL, optional folder, username and password/app auth | `history/index.json`, up to 30 entries |
 
 For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and stores its OAuth credentials locally. WebDAV requests require the user to grant access to the configured server origin.
+
+All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
+
+<a name="readme-storage-layout"></a>
+
+### Cloud storage layout
+
+Synchronized data is **not** one monolithic file. Each synchronized resource is stored independently so it can be uploaded, downloaded, and versioned on its own:
+
+| File                 | Contents                                                                  |
+| :------------------- | :------------------------------------------------------------------------ |
+| `manifest.json`      | Storage layout, schema version, module index, legacy archive pointer       |
+| `meta.json`          | Revisions, tombstone counts, migration record, orphan tombstones           |
+| `extensions.json`    | Extension inventory module                                                 |
+| `bookmarks.json`     | Bookmark collection module                                                 |
+| `tabs.json`          | Windows, tabs, and tab groups module                                       |
+| `history/index.json` | Provider history index where the provider has no native history            |
+
+Metadata, schema information, and history indexes stay in separate files rather than being mixed into synchronized data, and a module file carries only its own payload plus its revision, timestamp, checksum, and tombstones.
+
+Because only the modules whose data actually changed are uploaded, a bookmark edit re-writes `bookmarks.json` and the two control files while `extensions.json` and `tabs.json` stay byte-identical and keep their own module revision. Merging and conflict detection are module-scoped as well: a conflict is attributed to the module that owns it.
+
+Settings → **Local** shows this layout live: the active layout, schema and storage-format versions, and every module file with its revision, deletion count, and checksum.
+
+#### Upgrading from `current.json`
+
+Existing cloud data is migrated automatically and non-destructively:
+
+1. A remote that still holds `current.json` (or the older `chromium-cloud-sync.json`) is detected on the next read.
+2. The legacy payload is validated, then split into the module files above, carrying its revision forward so module revisions stay continuous.
+3. The migration is recorded in `meta.json` and `manifest.json` with the new storage layout and format version.
+4. The legacy `current.json` is **kept** as a read-only archive — it is never deleted or reset by the migration, so the previous data remains recoverable.
+5. If a device that has not upgraded yet writes a newer `current.json` afterwards, that newer payload wins and the migration record is re-created against it.
+6. An incomplete module set is reported as an explicit error instead of being presented as a valid partial state.
+
+Popup restore, cloud tab management, and history keep reading one coherent overall synchronization state — the split is a storage detail, not a user-facing concept.
 
 <a name="readme-sync-model"></a>
 
@@ -220,17 +257,21 @@ Rolling back creates a new current revision rather than destroying historical st
 ```text
 Chromium Cloud Sync
 ├── runtime/
-│   ├── background.ts
+│   ├── background.ts            orchestration + provider dispatch
 │   ├── browser-capabilities.ts
+│   ├── cloud-tab-state.ts       canonical cloud-tab projection
 │   ├── diagnostics.ts
 │   ├── legacy-crypto.ts
-│   ├── schema.ts
-│   ├── storage.ts
-│   ├── sync-core.ts
+│   ├── schema.ts                validation + version migration
+│   ├── storage.ts               serialized local mutations
+│   ├── sync-core.ts             per-module merge, tombstones, checksums
+│   ├── sync-modules.ts          modular storage domain (split/combine/migrate)
 │   └── types.ts
 ├── cloud providers/
-│   ├── cloud-gdrive.ts
-│   └── cloud-webdav.ts
+│   ├── cloud-files.ts           provider-agnostic FileStore protocol
+│   ├── cloud-gist.ts            GitHub Gist transport
+│   ├── cloud-gdrive.ts          Google Drive transport
+│   └── cloud-webdav.ts          WebDAV transport
 ├── features/
 │   ├── extension-storage.ts
 │   ├── extension-storage-watch.ts
@@ -242,7 +283,9 @@ Chromium Cloud Sync
     └── styles/
 ```
 
-The runtime layer coordinates browser APIs, local storage, provider dispatch, GitHub, diagnostics, schema migration, and synchronization. `sync-core.ts` contains merge and tombstone logic; `schema.ts` validates and migrates cloud state; the provider layer keeps storage-specific operations out of the merge engine; the UI layer provides the operational surfaces.
+The runtime layer coordinates browser APIs, local storage, provider dispatch, diagnostics, schema migration, and synchronization. `sync-core.ts` contains per-module merge and tombstone logic; `sync-modules.ts` owns the modular storage layout (module split/combine, per-module revisions and change detection, legacy migration); `schema.ts` validates and migrates cloud state.
+
+`cloud-files.ts` defines one provider-agnostic file protocol — read, write, remove, list, and history — and each provider module implements only file placement, transport, and its native history model. Adding a provider therefore does not require touching merge, migration, or history semantics, and no provider needs to know how another one stores files. The UI layer provides the operational surfaces.
 
 <a name="readme-development"></a>
 

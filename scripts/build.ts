@@ -14,6 +14,9 @@ const makeZip = process.argv.includes("--zip");
 const runtimeArtifacts = [
   ["src/runtime/background.ts", "background.js"],
   ["src/runtime/browser-capabilities.ts", "browser-capabilities.js"],
+  ["src/runtime/cloud-files.ts", "cloud-files.js"],
+  ["src/runtime/cloud-gist.ts", "cloud-gist.js"],
+  ["src/runtime/sync-modules.ts", "sync-modules.js"],
   ["src/runtime/cloud-tab-state.ts", "cloud-tab-state.js"],
   ["src/runtime/diagnostics.ts", "diagnostics.js"],
   ["src/runtime/legacy-crypto.ts", "legacy-crypto.js"],

@@ -319,6 +319,22 @@
                   keeps the Gist revision history for rollback.
                 </div>
               </section>
+              <section class="card" id="storageLayoutCard">
+                <div class="card-title">
+                  <span data-i18n="storageLayoutTitle">Cloud storage layout</span>
+                </div>
+                <p class="card-desc" data-i18n="storageLayoutHelp">
+                  Synchronized data is stored as independent module files:
+                  extensions.json, bookmarks.json, and tabs.json, plus
+                  manifest.json and meta.json control files.
+                </p>
+                <div class="status-box" id="storageLayoutSummary"></div>
+                <div class="section-stack" id="storageModuleList"></div>
+                <div class="note section-note" id="storageLegacyNote" hidden></div>
+                <div class="btn-row">
+                  <button class="secondary" id="refreshStorageLayout" data-i18n="refresh" type="button">Refresh</button>
+                </div>
+              </section>
             </div>
           </main>
         </div>

@@ -8,6 +8,9 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const sources = [
   "src/runtime/background.ts",
   "src/runtime/browser-capabilities.ts",
+  "src/runtime/cloud-files.ts",
+  "src/runtime/cloud-gist.ts",
+  "src/runtime/sync-modules.ts",
   "src/runtime/cloud-tab-state.ts",
   "src/runtime/cloud-gdrive.ts",
   "src/runtime/cloud-webdav.ts",

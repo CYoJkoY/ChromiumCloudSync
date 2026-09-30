@@ -393,6 +393,7 @@ function validateConflict(
     "field",
     "winner",
     "strategy",
+    "module",
   ] as const)
     if (value[field] !== undefined && typeof value[field] !== "string")
       throw new SchemaValidationError(
