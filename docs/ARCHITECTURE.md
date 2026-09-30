@@ -75,6 +75,17 @@ The sync protocol follows optimistic concurrency: fetch remote state, merge agai
 
 Credentials never travel through the protocol layer. The Gist transport receives its token through `configureGithubTokenSource`, registered once by the orchestrator, so the transport module cannot import the settings layer and cannot form an import cycle.
 
+### Provider authorization
+
+Authorization is a provider concern, and each provider keeps its credentials inside the local browser profile:
+
+- **Google Drive** prefers browser-managed OAuth. `connectGoogleDriveBrowser()` calls `chrome.identity.getAuthToken({ interactive: true, scopes: ["…/auth/drive.file"] })`, so Chromium's account chooser performs authorization and Chromium owns the token cache — the extension stores no access or refresh token. The connected account is read back from Drive's `about` endpoint and recorded locally as `{ mode, email, accountId, displayName, photoLink, scope, connectedAt }`. A `401` from Drive drops the cached token and retries once before surfacing an auth failure; disconnecting removes the cached token, clears all cached tokens, and revokes server-side.
+- **Manual OAuth** (`connectGoogleDriveManual`) is an explicit fallback for hosts where the Identity API cannot mint a token — typically unpacked development builds with no registered OAuth client. `browser-capabilities.ts` probes `identity.getAuthToken` and `removeCachedAuthToken`/`clearAllCachedAuthTokens`, and the UI only presents the manual client fields, with an explanatory notice, when that probe fails. `DriveAuthError` distinguishes "reconnect required" from a Drive fault.
+- **GitHub Gist** uses a user-supplied token resolved through the registered token source.
+- **WebDAV** uses the configured origin credentials.
+
+`assertNoCredentialsInPayload` runs on every modular write and rejects any payload containing a credential-shaped key (`access_token`, `refresh_token`, `client_secret`, `code_verifier`, …) at any depth. The check is key-based, so ordinary synchronized data such as a bookmark URL containing `access_token=` in its query string is unaffected.
+
 ### Diagnostics
 
 `diagnostics.ts` records the last sync outcome, revision context, changed counts, and categorized failures so users and maintainers can distinguish authentication, validation, network, and concurrency problems.

@@ -19,7 +19,11 @@ const providerEl = $("provider"),
   cloudTabsManager = $("cloudTabsManager"),
   storageLayoutSummaryEl = $("storageLayoutSummary"),
   storageModuleListEl = $("storageModuleList"),
-  storageLegacyNoteEl = $("storageLegacyNote");
+  storageLegacyNoteEl = $("storageLegacyNote"),
+  gdriveAuthStateEl = $("gdriveAuthState"),
+  gdriveConnectBrowserEl = $("gdriveConnectBrowser"),
+  gdriveManualDetailsEl = $("gdriveManualDetails"),
+  gdriveManualNoticeEl = $("gdriveManualNotice");
 
 function providerLabel(provider) {
   const names = {
@@ -55,19 +59,61 @@ providerEl?.addEventListener("change", async () => {
     showError(e);
   }
 });
-$("gdriveConnect")?.addEventListener("click", async () => {
+/**
+ * Browser-managed authorization: no client configuration is requested, so
+ * Chromium's own account chooser handles Google account selection and consent.
+ */
+$("gdriveConnectBrowser")?.addEventListener("click", async () => {
+  const button = gdriveConnectBrowserEl;
+  if (button) {
+    button.disabled = true;
+    button.textContent = i.t("gdriveConnecting");
+  }
   try {
-    await request("connectGdrive", {
-      clientId: $("gdriveClientId")?.value || "",
+    const auth = await request("connectGdrive", {});
+    showFeedback(
+      "success",
+      auth?.email
+        ? i.t("gdriveConnectedAs", { email: auth.email })
+        : i.t("gdriveConnected"),
+      "",
+    );
+    await refresh();
+  } catch (e) {
+    showError(e);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = i.t("gdriveConnectBrowser");
+    }
+  }
+});
+/** Explicit fallback: developer-provided OAuth client, shown only when needed. */
+$("gdriveConnect")?.addEventListener("click", async () => {
+  const clientId = $("gdriveClientId")?.value || "";
+  if (!String(clientId).trim()) {
+    showError(new Error(i.t("gdriveClientIdRequired")));
+    return;
+  }
+  try {
+    const auth = await request("connectGdrive", {
+      clientId,
       clientSecret: $("gdriveClientSecret")?.value || "",
     });
-    showFeedback("success", i.t("gdriveConnected"), "");
+    showFeedback(
+      "success",
+      auth?.email
+        ? i.t("gdriveConnectedAs", { email: auth.email })
+        : i.t("gdriveConnected"),
+      "",
+    );
     await refresh();
   } catch (e) {
     showError(e);
   }
 });
 $("gdriveDisconnect")?.addEventListener("click", async () => {
+  if (!confirm(i.t("gdriveDisconnectConfirm"))) return;
   try {
     await request("disconnectGdrive");
     showFeedback("success", i.t("gdriveDisconnected"), "");
@@ -171,6 +217,51 @@ function refreshIntervalLabels() {
   for (const option of syncIntervalEl.options)
     option.textContent = `${option.value} ${suffix}`;
 }
+/**
+ * Show the connected Google account and connection state.
+ *
+ * Browser-managed OAuth is presented as the normal path. The manual OAuth
+ * client section is only surfaced when this browser cannot authorize the
+ * extension itself, and it says so explicitly rather than looking like the
+ * default setup step.
+ */
+function renderGdriveAuthState(r) {
+  if (gdriveAuthStateEl) {
+    if (!r.gdriveConnected) {
+      gdriveAuthStateEl.textContent = i.t("gdriveNotConnected");
+    } else {
+      const account =
+        r.gdriveEmail || r.gdriveDisplayName || i.t("gdriveUnknownAccount");
+      const lines = [
+        i.t("gdriveConnectedAs", { email: account }),
+        `${i.t("gdriveAuthMode")}: ${
+          r.gdriveMode === "manual"
+            ? i.t("gdriveAuthModeManual")
+            : i.t("gdriveAuthModeBrowser")
+        }`,
+        `${i.t("gdriveScope")}: ${r.gdriveScope || "drive.file"}`,
+      ];
+      if (r.gdriveConnectedAt)
+        lines.push(
+          `${i.t("gdriveConnectedAt")} ${new Date(r.gdriveConnectedAt).toLocaleString()}`,
+        );
+      gdriveAuthStateEl.textContent = lines.join("\n");
+      gdriveAuthStateEl.style.whiteSpace = "pre-line";
+    }
+  }
+  const browserManaged = r.gdriveBrowserManaged !== false;
+  if (gdriveManualNoticeEl) {
+    gdriveManualNoticeEl.hidden = browserManaged;
+    if (!browserManaged)
+      gdriveManualNoticeEl.textContent = i.t("gdriveManualRequired");
+  }
+  if (gdriveManualDetailsEl && !browserManaged)
+    gdriveManualDetailsEl.open = true;
+  // Without browser-managed OAuth the account button cannot work, so it is
+  // disabled instead of failing after the user clicks it.
+  if (gdriveConnectBrowserEl) gdriveConnectBrowserEl.disabled = !browserManaged;
+}
+
 async function refresh() {
   try {
     const r = await request("status");
@@ -203,6 +294,7 @@ async function refresh() {
             minutes: r.autoSyncIntervalMinutes ?? 5,
           });
     }
+    renderGdriveAuthState(r);
     if (tabSyncModeEl)
       tabSyncModeEl.value =
         r.tabSyncMode || tabSyncModeEl.value || "overwrite";

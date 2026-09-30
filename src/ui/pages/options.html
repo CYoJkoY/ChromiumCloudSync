@@ -233,11 +233,19 @@
   <section class="card sync-section" id="gdriveCard" hidden>
     <div class="card-title"><span data-i18n="gdriveTitle">Google Drive</span></div>
     <p class="card-desc" data-i18n="gdriveHelp">Store the synchronization state in a private Google Drive file.</p>
-    <div class="ccsync-ext-grid">
-      <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientId">OAuth Client ID</span><input class="field" id="gdriveClientId" type="text" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com" /></label>
-      <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientSecret">Client Secret (optional)</span><input class="field" id="gdriveClientSecret" type="password" autocomplete="off" /></label>
-    </div>
-    <div class="btn-row backend-actions"><button class="primary" data-i18n="gdriveConnect" id="gdriveConnect" type="button">Connect Google Drive</button><button class="secondary" data-i18n="gdriveDisconnect" id="gdriveDisconnect" type="button">Disconnect</button><button class="secondary" data-i18n="testConnection" id="providerTest" type="button">Test connection</button></div>
+    <p class="card-desc" data-i18n="gdriveBrowserHelp">Authorize with your Google account through the browser's own account chooser. Only the app-created-files scope is requested, and the resulting session stays in this browser profile.</p>
+    <div class="status-box section-note" id="gdriveAuthState" data-i18n="gdriveNotConnected">Not connected</div>
+    <div class="btn-row backend-actions"><button class="primary" data-i18n="gdriveConnectBrowser" id="gdriveConnectBrowser" type="button">Connect with Google account</button><button class="secondary" data-i18n="gdriveDisconnect" id="gdriveDisconnect" type="button">Disconnect</button><button class="secondary" data-i18n="testConnection" id="providerTest" type="button">Test connection</button></div>
+    <div class="note section-note" id="gdriveManualNotice" hidden></div>
+    <details class="gdrive-manual" id="gdriveManualDetails">
+      <summary data-i18n="gdriveManualTitle">Advanced: use your own OAuth client</summary>
+      <p class="card-desc" data-i18n="gdriveManualHelp">Only needed where this browser cannot authorize the extension itself, such as an unpacked development build or a Chromium derivative without identity.getAuthToken. Otherwise use the browser account button above; no client configuration is required.</p>
+      <div class="ccsync-ext-grid">
+        <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientId">OAuth Client ID</span><input class="field" id="gdriveClientId" type="text" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com" /></label>
+        <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientSecret">Client Secret (optional)</span><input class="field" id="gdriveClientSecret" type="password" autocomplete="off" /></label>
+      </div>
+      <div class="btn-row backend-actions"><button class="primary" data-i18n="gdriveConnect" id="gdriveConnect" type="button">Connect with OAuth client</button></div>
+    </details>
   </section>
   <section class="card sync-section" id="webdavCard" hidden>
     <div class="card-title"><span data-i18n="webdavTitle">WebDAV</span></div>

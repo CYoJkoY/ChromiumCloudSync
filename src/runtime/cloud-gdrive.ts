@@ -1,4 +1,5 @@
 import { readLocal, writeLocal, removeLocal } from "./storage.js";
+import { detectBrowserCapabilities } from "./browser-capabilities.js";
 import {
   HISTORY_INDEX_FILE,
   LEGACY_MONOLITHIC_FILE,
@@ -47,6 +48,7 @@ const JSON_MIME = "application/json";
 export const GDRIVE_HISTORY_LIMIT = 30;
 
 const LOCAL_KEYS = {
+  auth: "gdriveAuth",
   tokens: "gdriveTokens",
   legacyFileId: "gdriveFileId",
   folderId: "gdriveFolderId",
@@ -75,6 +77,7 @@ function randomString(length: number): string {
 }
 
 export interface GdriveTokens {
+  /** Manual fallback only: the developer-provided OAuth client. */
   clientId?: string;
   clientSecret?: string;
   refresh_token?: string;
@@ -82,18 +85,251 @@ export interface GdriveTokens {
   expiry?: number;
 }
 
+/**
+ * How the Drive session was authorized.
+ *
+ * `identity` is browser-managed OAuth: Chromium's Identity API mints the token
+ * from the extension's own OAuth client and shows the normal Google account
+ * chooser, so the user never types client configuration. `manual` is the
+ * explicit fallback for hosts and unpacked builds where the Identity API cannot
+ * mint a token.
+ */
+export type GdriveAuthMode = "identity" | "manual";
+
+export interface GdriveAuthState {
+  mode: GdriveAuthMode;
+  email: string;
+  accountId: string;
+  displayName: string;
+  photoLink: string;
+  scope: string;
+  connectedAt: string;
+}
+
+interface IdentityApi {
+  getAuthToken?(details: {
+    interactive?: boolean;
+    scopes?: string[];
+    account?: { id: string };
+  }): Promise<string>;
+  removeCachedAuthToken?(details: { token: string }): Promise<void>;
+  clearAllCachedAuthTokens?(): Promise<void>;
+  getAccounts?(): Promise<Array<{ id: string; email: string }>>;
+  launchWebAuthFlow?(details: {
+    url: string;
+    interactive: boolean;
+  }): Promise<string | undefined>;
+  getRedirectURL?(path?: string): string;
+}
+
+function identityApi(): IdentityApi {
+  return (chrome.identity as unknown as IdentityApi) || {};
+}
+
+/** The single minimum Drive scope this extension needs: app-created files only. */
+const IDENTITY_SCOPES = [GDRIVE_SCOPE];
+
 /* --------------------------------------------------------------------------
  * Authentication
  * ------------------------------------------------------------------------ */
 
-/** OAuth：用户在设置页填自己的 Client ID（推荐 Desktop app 类型，Secret 可留空） */
-export async function connectGoogleDrive(
+async function readAuthState(): Promise<GdriveAuthState | null> {
+  const state = await readLocal([LOCAL_KEYS.auth]);
+  const auth = state[LOCAL_KEYS.auth] as GdriveAuthState | undefined;
+  if (!auth || typeof auth !== "object") return null;
+  return {
+    mode: auth.mode === "manual" ? "manual" : "identity",
+    email: String(auth.email || ""),
+    accountId: String(auth.accountId || ""),
+    displayName: String(auth.displayName || ""),
+    photoLink: String(auth.photoLink || ""),
+    scope: String(auth.scope || GDRIVE_SCOPE),
+    connectedAt: String(auth.connectedAt || ""),
+  };
+}
+
+async function writeAuthState(
+  mode: GdriveAuthMode,
+  account: DriveAccount,
+): Promise<GdriveAuthState> {
+  const auth: GdriveAuthState = {
+    mode,
+    email: account.email,
+    accountId: account.accountId,
+    displayName: account.displayName,
+    photoLink: account.photoLink,
+    scope: GDRIVE_SCOPE,
+    connectedAt: new Date().toISOString(),
+  };
+  await writeLocal({ [LOCAL_KEYS.auth]: auth });
+  return auth;
+}
+
+interface DriveAccount {
+  email: string;
+  accountId: string;
+  displayName: string;
+  photoLink: string;
+}
+
+const EMPTY_ACCOUNT: DriveAccount = {
+  email: "",
+  accountId: "",
+  displayName: "",
+  photoLink: "",
+};
+
+/**
+ * Whether browser-managed OAuth can be used at all.
+ *
+ * Detection is capability-based rather than brand-based, so a host that lacks
+ * `identity.getAuthToken` falls back to the explicit manual path instead of
+ * failing during authorization.
+ */
+export function supportsBrowserManagedDriveAuth(): boolean {
+  const capabilities = detectBrowserCapabilities();
+  return capabilities.identityGetAuthToken && capabilities.identityTokenCache;
+}
+
+/** Ask Chromium to mint (and cache) a Drive token for the signed-in account. */
+async function identityToken(interactive: boolean): Promise<string> {
+  const identity = identityApi();
+  if (!identity.getAuthToken)
+    throw driveAuthError(
+      "当前浏览器不支持 identity.getAuthToken，请改用手动 OAuth 客户端配置",
+    );
+  try {
+    const token = await identity.getAuthToken({
+      interactive,
+      scopes: IDENTITY_SCOPES,
+    });
+    if (!token)
+      throw driveAuthError("Google 授权已取消");
+    return String(token);
+  } catch (error) {
+    if (error instanceof DriveAuthError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    // Chromium reports a missing OAuth client (typical for unpacked builds) as
+    // an authorization-page error; surface it as the explicit fallback case.
+    if (/client_id|oauth|authorization page|not found/i.test(message))
+      throw driveAuthError(
+        `浏览器托管授权不可用（${message}）。请在下方展开“高级：使用自有 OAuth 客户端”。`,
+      );
+    throw driveAuthError(`Google 授权失败：${message}`);
+  }
+}
+
+/** Authorization failures the UI must present as "reconnect", not as Drive faults. */
+export class DriveAuthError extends Error {
+  readonly kind = "auth";
+  constructor(message: string) {
+    super(message);
+    this.name = "DriveAuthError";
+  }
+}
+
+function driveAuthError(message: string): DriveAuthError {
+  return new DriveAuthError(message);
+}
+
+/** Read the authorized account from Drive itself, so the UI shows a real identity. */
+async function fetchDriveAccount(token: string): Promise<DriveAccount> {
+  try {
+    const response = await fetch(
+      `${DRIVE_API}/about?fields=user(emailAddress,displayName,photoLink)`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) return EMPTY_ACCOUNT;
+    const data = (await response.json()) as {
+      user?: {
+        emailAddress?: string;
+        displayName?: string;
+        photoLink?: string;
+      };
+    };
+    return {
+      email: String(data?.user?.emailAddress || ""),
+      accountId: "",
+      displayName: String(data?.user?.displayName || ""),
+      photoLink: String(data?.user?.photoLink || ""),
+    };
+  } catch {
+    return EMPTY_ACCOUNT;
+  }
+}
+
+/** Best-effort: pick the browser account id so Chromium can preselect it. */
+async function pickAccountId(preferredEmail = ""): Promise<string> {
+  const identity = identityApi();
+  if (!identity.getAccounts) return "";
+  try {
+    const accounts = (await identity.getAccounts()) || [];
+    if (!accounts.length) return "";
+    const wanted = String(preferredEmail || "").toLowerCase();
+    const match = wanted
+      ? accounts.find(
+          (account) => String(account.email || "").toLowerCase() === wanted,
+        )
+      : null;
+    return String((match || accounts[0])?.id || "");
+  } catch {
+    return "";
+  }
+}
+
+/** Forget cached folder/file ids: they belong to whichever account was connected. */
+async function clearDriveIdCache(): Promise<void> {
+  await removeLocal([
+    LOCAL_KEYS.legacyFileId,
+    LOCAL_KEYS.folderId,
+    LOCAL_KEYS.historyFolderId,
+    LOCAL_KEYS.fileIds,
+  ]);
+}
+
+/**
+ * Browser-managed connection flow.
+ *
+ * The user selects Google Drive, clicks Connect, and Chromium's own
+ * identity/OAuth UI handles account selection and consent for the minimum
+ * `drive.file` scope. No client configuration is requested, and no token is
+ * persisted by the extension — Chromium owns the token cache.
+ */
+export async function connectGoogleDriveBrowser(
+  preferredEmail = "",
+): Promise<GdriveAuthState> {
+  if (!supportsBrowserManagedDriveAuth())
+    throw driveAuthError(
+      "当前浏览器不支持托管授权，请改用手动 OAuth 客户端配置",
+    );
+  const accountId = await pickAccountId(preferredEmail);
+  const token = await identityToken(true);
+  const account = await fetchDriveAccount(token);
+  await clearDriveIdCache();
+  // Manual credentials are irrelevant once the browser manages the session.
+  await removeLocal([LOCAL_KEYS.tokens]);
+  return writeAuthState("identity", {
+    ...account,
+    accountId: account.accountId || accountId,
+  });
+}
+
+/**
+ * Explicit fallback: developer-provided OAuth client via PKCE.
+ *
+ * Only for hosts and unpacked builds where `identity.getAuthToken` cannot mint a
+ * token. Tokens stay in this browser profile and never enter synchronized data.
+ */
+export async function connectGoogleDriveManual(
   clientId: string,
   clientSecret = "",
-): Promise<{ email: string }> {
+): Promise<GdriveAuthState> {
   const id = String(clientId || "").trim();
-  if (!id) throw Error("请先填写 Google OAuth Client ID");
-  const redirect = chrome.identity.getRedirectURL();
+  if (!id) throw driveAuthError("请先填写 Google OAuth Client ID");
+  const identity = identityApi();
+  if (!identity.getRedirectURL || !identity.launchWebAuthFlow)
+    throw driveAuthError("当前浏览器不支持 chrome.identity 授权流程");
+  const redirect = identity.getRedirectURL();
   const verifier = randomString(64);
   const challenge = await sha256B64Url(verifier);
   const url =
@@ -101,15 +337,15 @@ export async function connectGoogleDrive(
     `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code` +
     `&scope=${encodeURIComponent(GDRIVE_SCOPE)}&access_type=offline&prompt=consent` +
     `&code_challenge=${challenge}&code_challenge_method=S256`;
-  const responseUrl = await chrome.identity.launchWebAuthFlow({
+  const responseUrl = await identity.launchWebAuthFlow({
     url,
     interactive: true,
   });
-  if (!responseUrl) throw Error("Google 授权已取消");
+  if (!responseUrl) throw driveAuthError("Google 授权已取消");
   const parsed = new URL(responseUrl);
   const code = parsed.searchParams.get("code");
   if (!code)
-    throw Error(
+    throw driveAuthError(
       `Google 授权失败：${parsed.searchParams.get("error") || "no code"}`,
     );
   const body = new URLSearchParams({
@@ -127,7 +363,7 @@ export async function connectGoogleDrive(
   });
   const data = (await response.json()) as Record<string, unknown>;
   if (!response.ok)
-    throw Error(
+    throw driveAuthError(
       `Google token exchange failed: ${String(data?.error_description || data?.error || response.status)}`,
     );
   await writeLocal({
@@ -139,35 +375,68 @@ export async function connectGoogleDrive(
       expiry: Date.now() + Number(data.expires_in || 3600) * 1000,
     } satisfies GdriveTokens,
   });
-  // Cached folder/file ids belong to the previous account.
-  await removeLocal([
-    LOCAL_KEYS.legacyFileId,
-    LOCAL_KEYS.folderId,
-    LOCAL_KEYS.historyFolderId,
-    LOCAL_KEYS.fileIds,
-  ]);
-  return { email: "" };
+  await clearDriveIdCache();
+  const account = await fetchDriveAccount(String(data.access_token || ""));
+  return writeAuthState("manual", account);
 }
 
+/** Revoke the active session wherever it lives, then forget local state. */
 export async function disconnectGoogleDrive(): Promise<void> {
+  const auth = await readAuthState();
+  const state = await readLocal([LOCAL_KEYS.tokens]);
+  const tokens = state[LOCAL_KEYS.tokens] as GdriveTokens | undefined;
+  const identity = identityApi();
+
+  let revoked = "";
+  if (auth?.mode === "identity" && identity.getAuthToken) {
+    try {
+      revoked = await identity.getAuthToken({
+        interactive: false,
+        scopes: IDENTITY_SCOPES,
+      });
+      if (revoked && identity.removeCachedAuthToken)
+        await identity.removeCachedAuthToken({ token: revoked });
+    } catch {
+      revoked = "";
+    }
+    // Drop every cached token for this extension so a reconnect re-authorizes.
+    try {
+      await identity.clearAllCachedAuthTokens?.();
+    } catch {
+      /* non-fatal: local state is cleared regardless */
+    }
+  } else if (tokens?.access_token) {
+    revoked = tokens.access_token;
+  }
+
+  if (revoked) {
+    try {
+      await fetch(
+        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(revoked)}`,
+        { method: "POST" },
+      );
+    } catch {
+      /* revocation is best-effort; local state is still cleared */
+    }
+  }
+
   await removeLocal([
+    LOCAL_KEYS.auth,
     LOCAL_KEYS.tokens,
     LOCAL_KEYS.legacyFileId,
     LOCAL_KEYS.folderId,
     LOCAL_KEYS.historyFolderId,
     LOCAL_KEYS.fileIds,
   ]);
+  await invalidateGdriveLayout();
 }
 
-export async function gdriveAccessToken(): Promise<string> {
-  const state = await readLocal([LOCAL_KEYS.tokens]);
-  const tokens = state[LOCAL_KEYS.tokens] as GdriveTokens | undefined;
-  if (!tokens?.refresh_token) throw Error("尚未连接 Google Drive");
+async function manualAccessToken(tokens: GdriveTokens): Promise<string> {
   if (tokens.access_token && tokens.expiry && Date.now() < tokens.expiry - 60_000)
     return tokens.access_token;
   const body = new URLSearchParams({
     client_id: tokens.clientId || "",
-    refresh_token: tokens.refresh_token,
+    refresh_token: tokens.refresh_token || "",
     grant_type: "refresh_token",
   });
   if (tokens.clientSecret) body.set("client_secret", tokens.clientSecret);
@@ -189,9 +458,55 @@ export async function gdriveAccessToken(): Promise<string> {
   return String(data.access_token || "");
 }
 
+/** Resolve a Drive access token for whichever authorization mode is active. */
+export async function gdriveAccessToken(): Promise<string> {
+  const auth = await readAuthState();
+  const state = await readLocal([LOCAL_KEYS.tokens]);
+  const tokens = state[LOCAL_KEYS.tokens] as GdriveTokens | undefined;
+
+  if (auth?.mode === "identity" || (!auth && !tokens?.refresh_token)) {
+    if (!auth && !tokens?.refresh_token) throw driveAuthError("尚未连接 Google Drive");
+    // Non-interactive: a cached Chromium token is reused, and re-authorization is
+    // an explicit user action rather than a surprise prompt mid-sync.
+    return identityToken(false);
+  }
+  if (!tokens?.refresh_token) throw driveAuthError("尚未连接 Google Drive");
+  return manualAccessToken(tokens);
+}
+
+/** Drop a Chromium-cached token so the next call re-authorizes. */
+export async function clearCachedDriveToken(token: string): Promise<void> {
+  if (!token) return;
+  const identity = identityApi();
+  try {
+    await identity.removeCachedAuthToken?.({ token });
+  } catch {
+    /* non-fatal */
+  }
+}
+
 export async function gdriveConnected(): Promise<boolean> {
+  const auth = await readAuthState();
+  if (auth) return true;
   const state = await readLocal([LOCAL_KEYS.tokens]);
   return !!(state[LOCAL_KEYS.tokens] as GdriveTokens | undefined)?.refresh_token;
+}
+
+/** Connection state for Settings: account, mode, scope, and fallback availability. */
+export async function gdriveAuthState(): Promise<{
+  connected: boolean;
+  auth: GdriveAuthState | null;
+  browserManagedAvailable: boolean;
+  scope: string;
+}> {
+  const auth = await readAuthState();
+  const connected = await gdriveConnected();
+  return {
+    connected,
+    auth: auth || (connected ? { ...EMPTY_ACCOUNT, mode: "manual", scope: GDRIVE_SCOPE, connectedAt: "" } as GdriveAuthState : null),
+    browserManagedAvailable: supportsBrowserManagedDriveAuth(),
+    scope: GDRIVE_SCOPE,
+  };
 }
 
 /* --------------------------------------------------------------------------
@@ -321,13 +636,28 @@ async function driveFetch(
   token?: string,
 ): Promise<Response> {
   const accessToken = token ?? (await gdriveAccessToken());
-  return fetch(`${DRIVE_API}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...((init.headers as Record<string, string>) || {}),
-    },
-  });
+  const request = (bearer: string): Promise<Response> =>
+    fetch(`${DRIVE_API}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${bearer}`,
+        ...((init.headers as Record<string, string>) || {}),
+      },
+    });
+  const response = await request(accessToken);
+  if (response.status !== 401) return response;
+
+  // A browser-managed token can be revoked server-side while Chromium still has
+  // it cached. Drop the cached token and retry once before surfacing an auth
+  // failure, so a stale cache does not require a manual reconnect.
+  const auth = await readAuthState();
+  if (auth?.mode !== "identity") return response;
+  await clearCachedDriveToken(accessToken);
+  try {
+    return await request(await gdriveAccessToken());
+  } catch {
+    return response;
+  }
 }
 
 async function driveJson(
@@ -630,15 +960,30 @@ export async function gdriveStatus(): Promise<{
   appFolder: string;
   historyFolder: string;
   legacyFile: string;
+  auth: GdriveAuthState | null;
+  mode: GdriveAuthMode | "";
+  email: string;
+  displayName: string;
+  scope: string;
+  connectedAt: string;
+  browserManagedAvailable: boolean;
 }> {
   const connected = await gdriveConnected();
   const state = await readLocal([LOCAL_KEYS.folderId, LOCAL_KEYS.legacyFileId]);
+  const { auth, browserManagedAvailable } = await gdriveAuthState();
   return {
     connected,
     folderId: String(state[LOCAL_KEYS.folderId] || ""),
     appFolder: GDRIVE_APP_FOLDER,
     historyFolder: GDRIVE_HISTORY_FOLDER,
     legacyFile: state[LOCAL_KEYS.legacyFileId] ? LEGACY_STATE_FILE : "",
+    auth,
+    mode: auth?.mode || "",
+    email: auth?.email || "",
+    displayName: auth?.displayName || "",
+    scope: auth?.scope || GDRIVE_SCOPE,
+    connectedAt: auth?.connectedAt || "",
+    browserManagedAvailable,
   };
 }
 

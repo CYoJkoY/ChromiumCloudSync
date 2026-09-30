@@ -162,6 +162,64 @@ export async function readRemoteModularState(
   };
 }
 
+/**
+ * Credential keys that must never appear in a synchronization payload.
+ *
+ * Provider authentication state (OAuth tokens, client configuration) belongs to
+ * the local browser profile only. The check is key-based rather than
+ * value-based, so ordinary synchronized data such as a bookmark URL that happens
+ * to contain `access_token=` in its query string is still accepted.
+ */
+const FORBIDDEN_PAYLOAD_KEYS = new Set([
+  "access_token",
+  "accessToken",
+  "refresh_token",
+  "refreshToken",
+  "id_token",
+  "idToken",
+  "client_id",
+  "clientId",
+  "client_secret",
+  "clientSecret",
+  "code_verifier",
+  "codeVerifier",
+  "code_challenge",
+  "codeChallenge",
+  "authorization",
+  "bearer",
+  "oauth",
+  "oauthToken",
+  "gdriveTokens",
+  "gdriveAuth",
+  "tokens",
+]);
+
+/**
+ * Reject a payload that carries provider credentials.
+ *
+ * Called on every modular write so a future change cannot silently start
+ * uploading authentication state alongside browser data.
+ */
+export function assertNoCredentialsInPayload(
+  value: unknown,
+  path = "$",
+  depth = 0,
+): void {
+  if (depth > 32 || value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1)
+      assertNoCredentialsInPayload(value[index], `${path}[${index}]`, depth + 1);
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (FORBIDDEN_PAYLOAD_KEYS.has(key))
+      throw Error(
+        `同步数据不得包含云端授权凭据（${path}.${key}）；凭据只保存在本地浏览器配置中`,
+      );
+    assertNoCredentialsInPayload(child, `${path}.${key}`, depth + 1);
+  }
+}
+
 export interface WriteOptions {
   changedModules?: SyncModuleId[] | null;
   /** Files as read before the write, used for archiving and legacy handling. */
@@ -198,6 +256,8 @@ export async function writeRemoteModularState(
       ? options.changedModules.slice()
       : SYNC_MODULE_IDS.slice();
   const serialized = serializeModularState(modular, changed);
+  // The synchronization payload must never contain provider OAuth credentials.
+  assertNoCredentialsInPayload(serialized);
   const priorFiles = options.priorFiles ?? {};
 
   // A history entry is a complete point-in-time snapshot of the remote state

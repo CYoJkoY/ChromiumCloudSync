@@ -55,13 +55,16 @@ import {
   validateGithubToken,
 } from "./cloud-gist.js";
 import {
-  connectGoogleDrive,
+  connectGoogleDriveBrowser,
+  connectGoogleDriveManual,
   createGdriveFileStore,
   disconnectGoogleDrive,
+  gdriveAuthState,
   gdriveConnected,
   gdriveStatus,
   gdriveTest,
   invalidateGdriveLayout,
+  supportsBrowserManagedDriveAuth,
 } from "./cloud-gdrive.js";
 import {
   createWebdavFileStore,
@@ -1722,12 +1725,25 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         const s = await getSettings();
         const provider = await activeProvider();
         const bound = await providerBound();
+        const gdrive = await gdriveStatus();
         return {
           provider,
           bound,
           authenticated:
-            provider === "gist" &&
-            !!s[KEYS.GITHUB_TOKEN],
+            (provider === "gist" && !!s[KEYS.GITHUB_TOKEN]) ||
+            (provider === "gdrive" && gdrive.connected),
+          // Browser-managed OAuth is the normal Drive path; the manual client
+          // configuration is only offered where the Identity API cannot mint a
+          // token, so the UI needs to know which one applies.
+          gdriveConnected: gdrive.connected,
+          gdriveMode: gdrive.mode,
+          gdriveEmail: gdrive.email,
+          gdriveDisplayName: gdrive.displayName,
+          gdriveScope: gdrive.scope,
+          gdriveConnectedAt: gdrive.connectedAt,
+          gdriveBrowserManaged:
+            gdrive.browserManagedAvailable &&
+            supportsBrowserManagedDriveAuth(),
           gistConfigured:
             provider === "gist" &&
             !!s[KEYS.GIST_ID],
@@ -2239,16 +2255,28 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         await setupAlarms();
         return { provider: value };
       }
-      case "connectGdrive":
-        return connectGoogleDrive(
-          String(m.clientId || ""),
-          String(m.clientSecret || ""),
-        );
+      case "connectGdrive": {
+        // Browser-managed OAuth is the normal path: Chromium's account chooser
+        // authorizes the minimum drive.file scope and no client configuration is
+        // requested. An explicit clientId selects the manual fallback instead.
+        const clientId = String(m.clientId || "").trim();
+        const auth = clientId
+          ? await connectGoogleDriveManual(
+              clientId,
+              String(m.clientSecret || ""),
+            )
+          : await connectGoogleDriveBrowser(String(m.email || ""));
+        await invalidateCloudTabCache();
+        await invalidateGdriveLayout();
+        return { ok: true, ...auth };
+      }
       case "disconnectGdrive": {
         await disconnectGoogleDrive();
         await invalidateCloudTabCache();
         return { ok: true };
       }
+      case "gdriveAuth":
+        return gdriveAuthState();
       case "testProvider": {
         const p = await activeProvider();
         if (p === "gist") {

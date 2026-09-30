@@ -18,6 +18,7 @@
   <a href="#readme-features">Features</a> ·
   <a href="#readme-providers">Cloud providers</a> ·
   <a href="#readme-storage-layout">Storage layout</a> ·
+  <a href="#readme-gdrive-auth">Google Drive auth</a> ·
   <a href="#readme-sync-model">Sync model</a> ·
   <a href="#readme-data-scope">Data scope</a> ·
   <a href="#readme-extension-recovery">Extension recovery</a> ·
@@ -75,10 +76,27 @@ The synchronization engine is separated from the storage backend. Choose the pro
 | Provider         | What it stores                                   | Authentication / access                                     | History source                         |
 | :--------------- | :----------------------------------------------- | :---------------------------------------------------------- | :------------------------------------- |
 | **GitHub Gist**  | Modular sync files (see below) inside one Gist   | GitHub Token + private Gist                                 | Gist revision / commit history         |
-| **Google Drive** | Modular sync files inside an application folder  | User-supplied OAuth Client ID via Chromium Identity API     | Google Drive file revisions            |
+| **Google Drive** | Modular sync files inside an application folder  | Browser-managed OAuth (Chromium Identity API); manual client only as a fallback | Google Drive file revisions            |
 | **WebDAV**       | Modular sync files + a provider history index    | WebDAV URL, optional folder, username and password/app auth | `history/index.json`, up to 30 entries |
 
-For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and stores its OAuth credentials locally. WebDAV requests require the user to grant access to the configured server origin.
+For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and keeps its authorization state in the local browser profile. WebDAV requests require the user to grant access to the configured server origin.
+
+<a name="readme-gdrive-auth"></a>
+
+### Connecting Google Drive
+
+Google Drive uses **browser-managed OAuth**, so connecting works like authorizing any other browser-integrated account:
+
+1. Select **Google Drive** as the sync provider.
+2. Click **Connect with Google account**.
+3. Chromium's own identity/OAuth UI handles Google account selection and consent.
+4. Only the minimum `https://www.googleapis.com/auth/drive.file` scope is requested — the extension can see files it created, nothing else.
+5. The connection state is stored locally, and Settings shows the connected account, authorization mode, scope, and connection time.
+6. **Disconnect** revokes the session and clears the cached token; reconnecting needs no credentials.
+
+No OAuth Client ID or Client Secret is required for this flow, and access tokens are never written into synchronized data — every modular upload is checked for credential-shaped keys and rejected if any are found.
+
+Where a browser genuinely cannot authorize the extension itself — an unpacked development build with no registered OAuth client, or a Chromium derivative without `identity.getAuthToken` — the extension detects that through capability probing, says so explicitly in Settings, and reveals an **Advanced: use your own OAuth client** section. That manual PKCE path is a documented fallback, not the default setup experience.
 
 All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
 

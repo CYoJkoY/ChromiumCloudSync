@@ -329,6 +329,79 @@ for (const required of [
       "Background worker does not use the modular storage protocol: " + required,
     );
 
+/* ---------------------------------------------------------------------------
+ * Issue #22: browser-managed Google Drive OAuth
+ * ------------------------------------------------------------------------- */
+const gdrive = fs.readFileSync(
+  path.join(root, "src/runtime/cloud-gdrive.ts"),
+  "utf8",
+);
+for (const required of [
+  "export const GDRIVE_SCOPE = \"https://www.googleapis.com/auth/drive.file\"",
+  "export async function connectGoogleDriveBrowser",
+  "export async function connectGoogleDriveManual",
+  "export function supportsBrowserManagedDriveAuth",
+  "export class DriveAuthError",
+  "getAuthToken",
+  "removeCachedAuthToken",
+  "clearAllCachedAuthTokens",
+  "getAccounts",
+])
+  if (!gdrive.includes(required))
+    throw new Error("Google Drive auth is missing " + required);
+// The minimum scope must be the only one requested.
+if (/auth\/drive(?!\.file)/.test(gdrive))
+  throw new Error(
+    "Google Drive must request only the minimum drive.file scope",
+  );
+// Browser-managed auth must be the default; manual client config is a fallback.
+if (!/interactive,\s*\n?\s*scopes: IDENTITY_SCOPES/.test(gdrive))
+  throw new Error(
+    "Drive tokens must be minted through chrome.identity.getAuthToken with an explicit scope list",
+  );
+if (!gdrive.includes("readAuthState()") || !gdrive.includes("writeAuthState("))
+  throw new Error("Drive authorization state must be stored locally");
+
+const capabilities = fs.readFileSync(
+  path.join(root, "src/runtime/browser-capabilities.ts"),
+  "utf8",
+);
+for (const required of [
+  "identityGetAuthToken: boolean",
+  "identityTokenCache: boolean",
+  "identityGetAuthToken: hasFunction(identity, \"getAuthToken\")",
+])
+  if (!capabilities.includes(required))
+    throw new Error("Browser capabilities are missing " + required);
+
+// The synchronization payload must never carry provider credentials.
+if (!cloudFiles.includes("export function assertNoCredentialsInPayload"))
+  throw new Error("Missing credential guard for the synchronization payload");
+if (!/assertNoCredentialsInPayload\(serialized\)/.test(cloudFiles))
+  throw new Error(
+    "writeRemoteModularState must reject payloads containing OAuth credentials",
+  );
+
+const bgSource = bg;
+for (const required of [
+  "connectGoogleDriveBrowser",
+  "connectGoogleDriveManual",
+  "gdriveAuthState",
+  "gdriveBrowserManaged",
+  'case "gdriveAuth":',
+])
+  if (!bgSource.includes(required))
+    throw new Error("Background worker is missing Drive auth wiring " + required);
+// An empty connect payload must select the browser-managed flow.
+if (!/clientId\s*\n?\s*\?\s*\n?\s*await connectGoogleDriveManual/.test(bgSource))
+  throw new Error(
+    "connectGdrive must default to browser-managed OAuth and use the manual client only when one is supplied",
+  );
+
+const manifestText = fs.readFileSync(path.join(root, "manifest.json"), "utf8");
+if (!/"identity"/.test(manifestText))
+  throw new Error("manifest.json must declare the identity permission");
+
 const optionsHtml = fs.readFileSync(
   path.join(root, "src/ui/pages/options.html"),
   "utf8",
@@ -346,9 +419,24 @@ for (const required of [
   'id="panel-cloud-tabs"',
   'id="cloudTabsManager"',
   'id="addCurrentTabsToCloud"',
+  'id="gdriveConnectBrowser"',
+  'id="gdriveAuthState"',
+  'id="gdriveManualDetails"',
+  'id="gdriveManualNotice"',
 ])
   if (!optionsHtml.includes(required))
     throw new Error("Options page is missing required UI anchor " + required);
+{
+  const manualSection = optionsHtml.indexOf('id="gdriveManualDetails"');
+  const clientIdField = optionsHtml.indexOf('id="gdriveClientId"');
+  const browserButton = optionsHtml.indexOf('id="gdriveConnectBrowser"');
+  if (manualSection < 0 || clientIdField < 0 || browserButton < 0)
+    throw new Error("Google Drive card is missing an authorization control");
+  if (!(browserButton < manualSection && manualSection < clientIdField))
+    throw new Error(
+      "Browser-managed connection must be the primary control and the manual OAuth client must stay inside the advanced fallback section",
+    );
+}
 if (optionsHtml.includes("extension-storage-layout.js"))
   throw new Error("Obsolete extension storage layout shim is still loaded");
 for (const required of [
@@ -372,6 +460,8 @@ for (const required of [
   "githubCard.hidden",
   "gdriveCard.hidden",
   "webdavCard.hidden",
+  "renderGdriveAuthState",
+  'request("connectGdrive", {})',
 ])
   if (!optionsSource.includes(required))
     throw new Error(
