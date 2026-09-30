@@ -315,10 +315,35 @@ if (
   )
 )
   throw new Error("Missing legacy encrypted file cleanup guard");
-if (/removals\.push\(CURRENT_FILE\)/.test(bg))
-  throw new Error(
-    "current.json must be preserved as the modular migration archive, never deleted",
-  );
+// #21 criterion 4: the legacy monolithic payloads are read-only migration
+// archives. No source may add one to a removal set, in any spelling — the local
+// alias, the canonical constant, or a bare string literal. Matching only one
+// spelling let a rename or an inlined literal reintroduce silent cloud-data
+// deletion without tripping the gate.
+{
+  const legacyArchiveNames = [
+    "CURRENT_FILE",
+    "LEGACY_MONOLITHIC_FILE",
+    "LEGACY_ALT_FILE",
+    '"current.json"',
+    "'current.json'",
+    '"chromium-cloud-sync.json"',
+    "'chromium-cloud-sync.json'",
+  ];
+  for (const dir of ["src/runtime", "src/features"]) {
+    for (const entry of fs.readdirSync(path.join(root, dir))) {
+      if (!entry.endsWith(".ts")) continue;
+      const text = fs.readFileSync(path.join(root, dir, entry), "utf8");
+      for (const name of legacyArchiveNames) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`removals\\.push\\(${escaped}\\)`).test(text))
+          throw new Error(
+            `${dir}/${entry} adds ${name} to the removal set; the legacy monolithic payload must be preserved as a migration archive and never deleted`,
+          );
+      }
+    }
+  }
+}
 
 for (const required of [
   "readRemoteModularState(store, validatedState)",

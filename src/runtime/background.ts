@@ -31,7 +31,6 @@ import {
   writeRemoteModularState,
 } from "./cloud-files.js";
 import {
-  LEGACY_MONOLITHIC_FILE as CURRENT_FILE,
   MANIFEST_FILE,
   MODULAR_STORAGE_LAYOUT,
   MODULE_FILES,
