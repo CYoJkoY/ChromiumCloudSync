@@ -579,19 +579,29 @@ for (const required of [
       "Browser-managed connection must be the primary control and the manual OAuth client must stay inside the advanced fallback section",
     );
 }
-{
-  const packageIndexTag = optionsHtml.indexOf('<script src="package-index.js">');
-  const gdriveTag = optionsHtml.indexOf('<script src="gdrive-packages.js">');
-  const storageTag = optionsHtml.indexOf('<script src="extension-storage.js">');
-  if (packageIndexTag < 0 || gdriveTag < 0 || storageTag < 0)
+// extension-storage.js resolves both globals at load time, so a page that loads
+// it without the domain module and Drive transport throws during evaluation and
+// silently loses the whole package-backup UI. Check every page, not one page, so
+// a new host page cannot reintroduce that failure.
+let packageUiPages = 0;
+for (const file of htmlFiles) {
+  const html = fs.readFileSync(path.join(root, "src/ui/pages", file), "utf8");
+  const storageTag = html.indexOf('<script src="extension-storage.js">');
+  if (storageTag < 0) continue;
+  packageUiPages++;
+  const packageIndexTag = html.indexOf('<script src="package-index.js">');
+  const gdriveTag = html.indexOf('<script src="gdrive-packages.js">');
+  if (packageIndexTag < 0 || gdriveTag < 0)
     throw new Error(
-      "Options page must load package-index.js, gdrive-packages.js, and extension-storage.js",
+      `${file} loads extension-storage.js but must also load package-index.js and gdrive-packages.js`,
     );
   if (!(packageIndexTag < gdriveTag && gdriveTag < storageTag))
     throw new Error(
-      "The package domain and Drive transport must load before extension-storage.js",
+      `${file} must load package-index.js and gdrive-packages.js before extension-storage.js`,
     );
 }
+if (packageUiPages < 1)
+  throw new Error("No page hosts the package backup UI");
 if (optionsHtml.includes("extension-storage-layout.js"))
   throw new Error("Obsolete extension storage layout shim is still loaded");
 for (const required of [
