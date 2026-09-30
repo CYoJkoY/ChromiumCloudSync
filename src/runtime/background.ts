@@ -55,10 +55,14 @@ import {
   validateGithubToken,
 } from "./cloud-gist.js";
 import {
+  classifyDriveError,
   connectGoogleDriveBrowser,
   connectGoogleDriveManual,
   createGdriveFileStore,
+  describeDriveError,
+  driveErrorReason,
   disconnectGoogleDrive,
+  gdriveAccessToken,
   gdriveAuthState,
   gdriveConnected,
   gdriveStatus,
@@ -826,6 +830,23 @@ async function writeCloudTabCache(canonical) {
 
 async function invalidateCloudTabCache() {
   await removeLocal([CLOUD_TAB_CACHE_KEY]);
+}
+
+/**
+ * Classify a Drive failure for a page-context caller.
+ *
+ * The package-backup UI cannot import the runtime modules, so it sends the raw
+ * status and error body here and receives both the kind and the localized
+ * message. Drive quota, rate-limit, permission, and size-limit problems each
+ * need a different user action, so the kind is returned separately.
+ */
+function describeDriveErrorMessage(status, body, context) {
+  const reason = driveErrorReason(body);
+  return {
+    kind: classifyDriveError(Number(status) || 0, reason),
+    reason,
+    message: describeDriveError(Number(status) || 0, body, context),
+  };
 }
 
 /**
@@ -2277,6 +2298,33 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
       }
       case "gdriveAuth":
         return gdriveAuthState();
+      /**
+       * Package backup runs in an extension page, which cannot import the
+       * runtime modules. It reuses the *same* Drive session as synchronization
+       * rather than introducing a second authorization mechanism: the worker
+       * resolves the token, the page performs the Drive requests itself so
+       * large CRX/ZIP bodies never travel through extension messaging.
+       */
+      case "gdrivePackageSession": {
+        const auth = await gdriveAuthState();
+        if (!auth.connected)
+          throw Error(
+            "尚未连接 Google Drive；请先在同步提供方设置中完成授权",
+          );
+        return {
+          token: await gdriveAccessToken(),
+          mode: auth.auth?.mode || "",
+          email: auth.auth?.email || "",
+          scope: auth.scope,
+          connectedAt: auth.auth?.connectedAt || "",
+        };
+      }
+      case "describeDriveError":
+        return describeDriveErrorMessage(
+          Number(m.status || 0),
+          m.body ?? null,
+          String(m.context || ""),
+        );
       case "testProvider": {
         const p = await activeProvider();
         if (p === "gist") {

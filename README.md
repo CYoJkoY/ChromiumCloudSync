@@ -63,7 +63,7 @@ The current implementation covers open windows and HTTP(S) tabs, tab groups, boo
 | **Provider-independent sync** | Run manual and automatic synchronization through the selected cloud provider.                                         |
 | **Automatic sync**            | Optional background synchronization with configurable intervals; disabled by default.                                 |
 | **History & rollback**        | Use provider-native history plus a local index of up to 30 recent entries where supported.                            |
-| **Package backup**            | Store selected CRX/ZIP packages separately in a GitHub private repository or WebDAV.                                  |
+| **Package backup**            | Store selected CRX/ZIP packages separately in a GitHub private repository, WebDAV, or Google Drive.                   |
 | **Bilingual UI**              | English and Simplified Chinese interfaces.                                                                            |
 | **Theme controls**            | Explicit theme controls for settings and auxiliary pages.                                                             |
 
@@ -201,14 +201,29 @@ When an official store link is unavailable or unsuitable for the current browser
 
 ## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Third-party extension package backup
 
-Package backup is deliberately separated from browser-state synchronization.
+Package backup is deliberately separated from browser-state synchronization, and its backend is chosen independently of the sync provider.
 
 ```text
-Browser state  →  selected cloud sync provider
-CRX / ZIP      →  GitHub private repository OR WebDAV
+Browser state  →  selected cloud sync provider (Gist / Google Drive / WebDAV)
+CRX / ZIP      →  GitHub private repository OR WebDAV OR Google Drive
 ```
 
-The package subsystem keeps an index, selection state, package metadata, and SHA-256 checksums. The current GitHub Contents API path rejects files larger than **95 MiB**. The first backup requires manual selection of a CRX or ZIP because another extension's installed package bytes are not directly exposed to the extension.
+You can back up packages to Google Drive while synchronizing browser state through GitHub Gist, or any other combination — selecting a package backend never changes the sync provider.
+
+### Google Drive package backup
+
+Packages are uploaded to an application-managed Drive folder, `Chromium Cloud Sync Packages`, which is deliberately **not** the synchronization folder, so package data can never be mixed into the browser-state payload. An optional subfolder organizes backups further.
+
+- The Drive session authorized in sync settings is reused; there is no second authorization mechanism and no separate credential entry. Settings shows which Google account the package backup will use, and says so explicitly when Drive is not connected yet.
+- Uploads use the resumable protocol with the content length declared up front, so large CRX/ZIP files stream instead of being base64-encoded and so quota exhaustion is reported before the bytes move.
+- The package index (`index.json`), selection state (`selection.json`), and per-package metadata sidecars live inside the package destination, separate from the sync module files.
+- Each backup record stores the filename, extension ID, extension version, source information (Chrome Web Store, Edge Add-ons, self-hosted update URL, unpacked, side-loaded, or policy), timestamp, size, and SHA-256 checksum, plus the backend that stored it.
+- Backups are listed from Drive itself, not only from the index: a package uploaded from another profile or left behind by an interrupted index write is still listed (marked as unindexed), and an index entry whose file has disappeared is reported as missing and cannot be downloaded.
+- Duplicate names and versions never silently overwrite an unrelated backup. When the same name and version already hold different bytes, the checksum prefix is folded into the file name so both packages survive; re-uploading identical bytes updates the existing entry instead of growing the index.
+- Restore uses the existing package recovery flow — download streams the file back from Drive into the usual save dialog.
+- Drive-specific failures are classified and surfaced distinctly in the package-backup UI: storage quota, rate limiting, expired authorization, insufficient permissions, missing files, upload size limits, and temporary Drive outages each produce their own message rather than a bare HTTP status.
+
+The package subsystem keeps an index, selection state, package metadata, and SHA-256 checksums for every backend. The GitHub Contents API path rejects files larger than **95 MiB**; Drive and WebDAV stream the bytes and are bounded by the provider instead. The first backup requires manual selection of a CRX or ZIP because another extension's installed package bytes are not directly exposed to the extension.
 
 <a name="readme-security"></a>
 

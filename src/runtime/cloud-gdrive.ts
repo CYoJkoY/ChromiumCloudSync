@@ -558,7 +558,15 @@ export class DriveApiError extends Error {
   }
 }
 
-function classifyDriveError(status: number, reason: string): DriveErrorKind {
+/**
+ * Classify a Drive failure so callers can branch on the kind instead of parsing
+ * message text. Exported for the package-backup UI, which must surface quota,
+ * permission, and size-limit problems distinctly.
+ */
+export function classifyDriveError(
+  status: number,
+  reason: string,
+): DriveErrorKind {
   if (reason === "storageQuotaExceeded" || reason === "quotaExceeded")
     return "quota";
   if (
@@ -618,6 +626,16 @@ function driveError(
   context = "",
 ): DriveApiError {
   return new DriveApiError(status, body, context);
+}
+
+/** Pull the first Drive `reason` code out of an error body. */
+export function driveErrorReason(body: unknown): string {
+  const error = (
+    body as {
+      error?: { errors?: Array<{ reason?: string }> };
+    } | null
+  )?.error;
+  return String(error?.errors?.[0]?.reason || "");
 }
 
 async function parseErrorBody(response: Response): Promise<unknown> {

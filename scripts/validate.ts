@@ -53,6 +53,8 @@ const sourceFiles = [
   "src/runtime/cloud-webdav.ts",
   "src/features/extension-storage.ts",
   "src/features/extension-storage-watch.ts",
+  "src/features/package-index.ts",
+  "src/features/gdrive-packages.ts",
   "src/features/update.ts",
   "src/ui/extensions.ts",
   "src/ui/guide.ts",
@@ -89,6 +91,8 @@ const requiredRefs = {
     "runtime.js",
     "theme.js",
     "i18n.js",
+    "package-index.js",
+    "gdrive-packages.js",
     "extension-storage.js",
     "options.js",
   ],
@@ -111,6 +115,8 @@ const runtimeFiles = [
   "types.js",
   "extension-storage.js",
   "extension-storage-watch.js",
+  "package-index.js",
+  "gdrive-packages.js",
   "update.js",
   "extensions.js",
   "guide.js",
@@ -402,6 +408,142 @@ const manifestText = fs.readFileSync(path.join(root, "manifest.json"), "utf8");
 if (!/"identity"/.test(manifestText))
   throw new Error("manifest.json must declare the identity permission");
 
+/* ---------------------------------------------------------------------------
+ * Issue #23: Google Drive as a package-backup backend
+ * ------------------------------------------------------------------------- */
+const packageIndex = fs.readFileSync(
+  path.join(root, "src/features/package-index.ts"),
+  "utf8",
+);
+for (const required of [
+  "window.CCSyncPackageIndex",
+  "PACKAGE_INDEX_SCHEMA",
+  "packageFolder",
+  "packagePath",
+  "resolveUniqueFileName",
+  "derivePackageSource",
+  "buildPackageRecord",
+  "packageMetadata",
+  "upsertIndexEntry",
+  "takenNamesInFolder",
+  "mergeIndexWithListing",
+  "normalizeIndex",
+])
+  if (!packageIndex.includes(required))
+    throw new Error("Package index domain is missing " + required);
+
+const gdrivePackages = fs.readFileSync(
+  path.join(root, "src/features/gdrive-packages.ts"),
+  "utf8",
+);
+for (const required of [
+  "window.CCSyncGdrivePackages",
+  "createGdrivePackages",
+  // App-managed destination, deliberately not the synchronization folder.
+  'const GDRIVE_PACKAGES_ROOT = "Chromium Cloud Sync Packages"',
+  "destination",
+  // Packages are large binaries: resumable upload, streamed download.
+  "uploadType=resumable",
+  "X-Upload-Content-Length",
+  "X-Upload-Content-Type",
+  "download",
+  // Listing reconciles the provider with the index.
+  "listPackages",
+  "GDRIVE_LIST_DEPTH",
+  // The session is reused from the sync provider, never re-authorized here.
+  'request("gdrivePackageSession")',
+  // Drive limits/quota/permission errors are classified, not bare statuses.
+  'request("describeDriveError"',
+  "DRIVE_ERROR_MESSAGE_KEYS",
+  "quota",
+  "too-large",
+  "permission",
+])
+  if (!gdrivePackages.includes(required))
+    throw new Error("Drive package transport is missing " + required);
+
+// The package transport must not grow its own Google authorization flow.
+for (const forbidden of [
+  "chrome.identity.getAuthToken",
+  "launchWebAuthFlow",
+  "accounts.google.com/o/oauth2",
+])
+  if (gdrivePackages.includes(forbidden))
+    throw new Error(
+      "Package backup must reuse the authorized Drive session, not authorize again: " +
+        forbidden,
+    );
+
+const extStorage = fs.readFileSync(
+  path.join(root, "src/features/extension-storage.ts"),
+  "utf8",
+);
+for (const required of [
+  // Google Drive is a selectable package-backup backend.
+  '<option value="gdrive">',
+  'gdriveFolder: "extensionBackupGdriveFolder"',
+  'if (cfg.backend === "gdrive")',
+  // The transport is injected, so it stays testable outside a page.
+  "window.CCSyncGdrivePackages.createGdrivePackages",
+  "gdriveDestination",
+  "gdriveDownload",
+  "gdriveListPackages",
+  // Index and selection stay separate from the browser-state sync payload.
+  'gdriveReadJson(cfg, "index.json"',
+  'gdriveUpload(cfg, "selection.json"',
+  // Duplicate names/versions must not silently overwrite unrelated backups.
+  "resolveUniqueFileName",
+  "takenNamesInFolder",
+  "upsertIndexEntry",
+  // Required metadata fields.
+  "buildPackageRecord",
+  "packageMetadata",
+  // Drive failures reach the UI as classified, localized messages.
+  "driveQuota",
+  "driveTooLarge",
+  "drivePermission",
+])
+  if (!extStorage.includes(required))
+    throw new Error("Drive package backup is missing " + required);
+
+// The package backup reuses the sync Drive session instead of adding a second
+// authorization mechanism.
+if (!extStorage.includes("gdrive.session()"))
+  throw new Error(
+    "Drive package backup must reuse the authorized sync session",
+  );
+for (const forbidden of [
+  "chrome.identity.getAuthToken",
+  "launchWebAuthFlow",
+  "oauth2.googleapis.com/token",
+  "accounts.google.com",
+])
+  if (extStorage.includes(forbidden))
+    throw new Error(
+      "Package backup must not implement its own Google authorization flow: " +
+        forbidden,
+    );
+
+// The package-backup backend is independently selectable from the sync provider.
+if (/"syncProvider"/.test(extStorage))
+  throw new Error(
+    "Package backup must not read or change the browser-state sync provider",
+  );
+
+// Package data must never be written into the browser-state sync payload.
+if (/writeRemoteModularState|readRemoteModularState/.test(extStorage))
+  throw new Error(
+    "Package backup must stay separate from the modular sync file protocol",
+  );
+
+for (const required of [
+  'case "gdrivePackageSession":',
+  'case "describeDriveError":',
+  "describeDriveErrorMessage",
+])
+  if (!bg.includes(required))
+    throw new Error("Background worker is missing package-backup support " + required);
+
 const optionsHtml = fs.readFileSync(
   path.join(root, "src/ui/pages/options.html"),
   "utf8",
@@ -435,6 +577,19 @@ for (const required of [
   if (!(browserButton < manualSection && manualSection < clientIdField))
     throw new Error(
       "Browser-managed connection must be the primary control and the manual OAuth client must stay inside the advanced fallback section",
+    );
+}
+{
+  const packageIndexTag = optionsHtml.indexOf('<script src="package-index.js">');
+  const gdriveTag = optionsHtml.indexOf('<script src="gdrive-packages.js">');
+  const storageTag = optionsHtml.indexOf('<script src="extension-storage.js">');
+  if (packageIndexTag < 0 || gdriveTag < 0 || storageTag < 0)
+    throw new Error(
+      "Options page must load package-index.js, gdrive-packages.js, and extension-storage.js",
+    );
+  if (!(packageIndexTag < gdriveTag && gdriveTag < storageTag))
+    throw new Error(
+      "The package domain and Drive transport must load before extension-storage.js",
     );
 }
 if (optionsHtml.includes("extension-storage-layout.js"))

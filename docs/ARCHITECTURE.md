@@ -128,6 +128,33 @@ Legacy encrypted payloads (`chromium-cloud-sync.encrypted.json`) are still clean
 
 Because storage is split, the UI must not be asked to reason about individual files. `readRemoteModularState` always returns one combined `CloudState` plus the modular metadata, and `storageLayoutStatus()` reports the layout, per-module revisions, checksums, tombstone counts, and the legacy archive pointer as a single summary. Popup restore, tab management, and history therefore continue to observe one coherent overall synchronization state.
 
+## Package backup subsystem
+
+Third-party CRX/ZIP package backup is a separate subsystem from browser-state synchronization. It has its own backend selection, its own destination, and its own index, and choosing a package backend never changes the sync provider.
+
+```text
+extension-storage.ts (page context)
+     │
+     ├── GitHub Contents API transport
+     ├── WebDAV transport
+     └── Google Drive transport ──► gdrivePackageSession / describeDriveError
+                                        │
+                                        ▼
+                                 background worker (Drive session owner)
+```
+
+`package-index.ts` holds the pure index domain shared by all three backends: path construction, source derivation, record shape, duplicate-name resolution, index upsert, and listing reconciliation. It is a page-context script that publishes `window.CCSyncPackageIndex`, which keeps the rules testable without a DOM while remaining loadable by the options page.
+
+The Drive backend reuses the session the user already authorized for synchronization instead of introducing a second authentication mechanism. The page cannot import runtime modules, so the worker exposes exactly two messages: `gdrivePackageSession` (a short-lived access token plus the connected account) and `describeDriveError` (classification of a raw status and error body into `quota`, `rate-limit`, `auth`, `permission`, `not-found`, `too-large`, `server`, or `unknown`). The page performs the Drive requests itself, so large package bodies never travel through extension messaging.
+
+Separation guarantees:
+
+- Packages live in the app-managed `Chromium Cloud Sync Packages` folder, distinct from the `Chromium Cloud Sync` synchronization folder.
+- `index.json`, `selection.json`, and per-package `metadata.json` sidecars live inside the package destination, never among the sync module files.
+- Uploads use the resumable protocol with `X-Upload-Content-Length` declared up front, which streams large binaries and makes quota exhaustion reportable before bytes move.
+- `resolveUniqueFileName` folds a checksum prefix into the file name when the same name and version already hold different bytes, so a duplicate never overwrites an unrelated backup; identical bytes resolve to the same name, so retries are idempotent.
+- `mergeIndexWithListing` reconciles the index against what Drive actually lists, reporting provider-only packages as unindexed and vanished files as missing instead of offering them as restorable.
+
 ## Schema lifecycle
 
 ```text
@@ -175,14 +202,16 @@ The browser package therefore remains JavaScript-compatible while the editable s
 
 ## Verification layers
 
-CI validates the project at six distinct boundaries:
+CI validates the project at eight distinct boundaries:
 
 1. Source boundary: no tracked `.js` files and required TypeScript sources exist.
 2. Type boundary: strict type-checking covers the shared domain, schema, storage, modular storage domain, provider file protocol, capability, and diagnostics layer.
 3. Domain boundary: `test-sync-core.ts`, `test-sync-invariants.ts`, `test-schema.ts`, and `test-storage.ts` cover merge, tombstone, schema, and local storage queue behaviour.
 4. Modular storage boundary: `test-sync-modules.ts` covers split/combine round-trips, tombstone partitioning, legacy detection and migration, mixed-layout resolution, module-scoped change detection, per-module revisions, and module-scoped merge; `test-cloud-files.ts` drives the provider file protocol against a recording in-memory `FileStore` to prove which files are uploaded, which stay untouched, that a legacy archive survives migration, and that history entries restore a complete previous state.
-5. Artifact boundary: generated JS is syntactically valid, the production artifact has only approved files, and forbidden remote-code/runtime constructs are rejected.
-6. Browser boundary: real Chromium loads `dist/`, registers the MV3 service worker, opens the popup, and receives a runtime ping.
+5. Package-backup boundary: `test-package-index.ts` covers path construction and traversal safety, source derivation, record completeness, duplicate-name resolution, index normalization/upsert/capping, and listing reconciliation.
+6. Drive authorization boundary: `test-gdrive-auth.ts` drives both authorization modes against a mocked Identity API and fetch.
+7. Artifact boundary: generated JS is syntactically valid, the production artifact has only approved files, and forbidden remote-code/runtime constructs are rejected.
+8. Browser boundary: real Chromium loads `dist/`, registers the MV3 service worker, opens the popup, and receives a runtime ping.
 
 This separation is intentional: a successful TypeScript build cannot prove that a generated MV3 extension actually registers and runs inside Chromium.
 

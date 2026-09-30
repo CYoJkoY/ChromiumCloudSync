@@ -27,6 +27,8 @@ const runtimeArtifacts = [
   ["src/runtime/cloud-gdrive.ts", "cloud-gdrive.js"],
   ["src/runtime/cloud-webdav.ts", "cloud-webdav.js"],
   ["src/features/extension-storage-watch.ts", "extension-storage-watch.js"],
+  ["src/features/package-index.ts", "package-index.js"],
+  ["src/features/gdrive-packages.ts", "gdrive-packages.js"],
   ["src/features/extension-storage.ts", "extension-storage.js"],
   ["src/features/update.ts", "update.js"],
   ["src/ui/extensions.ts", "extensions.js"],
