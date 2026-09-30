@@ -42,6 +42,7 @@ const sourceFiles = [
   "src/runtime/schema.ts",
   "src/runtime/storage.ts",
   "src/runtime/browser-capabilities.ts",
+  "src/runtime/cloud-tab-state.ts",
   "src/runtime/diagnostics.ts",
   "src/runtime/legacy-crypto.ts",
   "src/runtime/background.ts",
@@ -95,6 +96,7 @@ const requiredRefs = {
 const runtimeFiles = [
   "background.js",
   "browser-capabilities.js",
+  "cloud-tab-state.js",
   "diagnostics.js",
   "legacy-crypto.js",
   "schema.js",
@@ -274,6 +276,77 @@ for (const required of [
     throw new Error(
       "Options controller is missing required implementation " + required,
     );
+
+/* ---------------------------------------------------------------------------
+ * Issue #20: the popup restore view and the Cloud Tabs management page must
+ * read one canonical dataset, and Refresh must force a remote read.
+ * ------------------------------------------------------------------------- */
+for (const required of [
+  "buildCanonicalCloudTabState",
+  "resolveCanonicalCloudTabState",
+  "publishCanonicalCloudTabState",
+  "broadcastCloudTabState",
+  "invalidateCloudTabCache",
+  "isCacheUsable",
+  "canonicalCloudTabPayload",
+  'case "refreshCloudTabState":',
+  "forceRemote: true",
+])
+  if (!bg.includes(required))
+    throw new Error(
+      "Background worker is missing canonical cloud-tab state support: " +
+        required,
+    );
+
+// Every cloud-tab reader must go through the canonical projection.
+for (const message of ["cloudGroups", "cloudTabState", "restoreGroup"]) {
+  const caseStart = bg.indexOf(`case "${message}"`);
+  if (caseStart < 0)
+    throw new Error(`Background worker lost the ${message} message handler`);
+}
+if (/case "cloudGroups":[\s\S]{0,400}await pullState\(\)/.test(bg))
+  throw new Error(
+    "cloudGroups must read the canonical cloud-tab projection, not pullState()",
+  );
+if (/case "cloudTabState":[\s\S]{0,400}await pullState\(\)/.test(bg))
+  throw new Error(
+    "cloudTabState must read the canonical cloud-tab projection, not pullState()",
+  );
+
+const popupSource = fs.readFileSync(
+  path.join(root, "src/ui/popup.ts"),
+  "utf8",
+);
+for (const required of [
+  "renderCloudGroups",
+  "cloudTabStateChanged",
+  "refreshCloudGroups",
+  "forceRemote",
+])
+  if (!popupSource.includes(required))
+    throw new Error("Popup is missing canonical cloud-tab support: " + required);
+
+for (const required of [
+  "refreshCloudTabs(true)",
+  "cloudTabStateChanged",
+  "detachedGroups",
+  "forceRemote",
+])
+  if (!optionsSource.includes(required))
+    throw new Error(
+      "Options controller is missing canonical cloud-tab support: " + required,
+    );
+
+const popupHtml = fs.readFileSync(
+  path.join(root, "src/ui/pages/popup.html"),
+  "utf8",
+);
+for (const required of ['id="refreshCloudGroups"', 'id="cloudGroupsMeta"'])
+  if (!popupHtml.includes(required))
+    throw new Error("Popup page is missing anchor " + required);
+for (const required of ['data-i18n="refreshFromCloud"', 'data-i18n="cloudTabsHelpShared"'])
+  if (!optionsHtml.includes(required))
+    throw new Error("Options page is missing anchor " + required);
 
 const buildLocalStateStart = bg.indexOf("async function buildLocalState(");
 const buildLocalStateEnd = bg.indexOf(

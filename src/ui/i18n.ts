@@ -295,6 +295,19 @@
         "Ungrouped tabs restored. Cloud tab groups stay on demand.",
       plainStorageNote:
         "Sync data is stored by the selected cloud provider. Provider history is used for rollback where supported.",
+      refreshFromCloud: "Refresh from cloud",
+      cloudStateSourceRemote: "Source: live cloud read",
+      cloudStateSourceCache: "Source: cached cloud read",
+      cloudStateStale: "Stale cache",
+      cloudStateSummary: "{windows} windows · {groups} groups · {tabs} tabs",
+      cloudStateFetchedAt: "Fetched",
+      cloudStateWarning: "Cloud read failed, showing cached data",
+      cloudRefreshDone: "Cloud tabs refreshed",
+      cloudTabsRefreshing: "Reading the latest cloud tab state…",
+      cloudTabsRefreshed: "Cloud tab state re-read from the provider",
+      cloudOnlyGroups: "Cloud-only tab groups",
+      cloudTabsHelpShared:
+        "The popup restore view and this page read the same canonical cloud tab dataset.",
     },
     "zh-CN": {},
   };
@@ -593,6 +606,19 @@
     restoreSummaryDeferred: "已恢复未分组标签页；云端标签组保持按需打开。",
     plainStorageNote:
       "同步数据由当前选择的云端提供商保存；支持的提供商使用其历史记录进行回滚。",
+    refreshFromCloud: "从云端刷新",
+    cloudStateSourceRemote: "数据来源：实时读取云端",
+    cloudStateSourceCache: "数据来源：云端读取缓存",
+    cloudStateStale: "缓存已过期",
+    cloudStateSummary: "{windows} 个窗口 · {groups} 个标签组 · {tabs} 个标签页",
+    cloudStateFetchedAt: "读取时间",
+    cloudStateWarning: "云端读取失败，正在显示缓存数据",
+    cloudRefreshDone: "云端标签页已刷新",
+    cloudTabsRefreshing: "正在读取最新的云端标签页状态…",
+    cloudTabsRefreshed: "已从云端提供商重新读取标签页状态",
+    cloudOnlyGroups: "仅存在于云端的标签组",
+    cloudTabsHelpShared:
+      "弹窗中的恢复视图与本页面读取的是同一份规范化的云端标签页数据。",
   };
   let current = "en";
   function normalize(v) {

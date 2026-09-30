@@ -19,6 +19,13 @@ import { parseAndValidateCloudState } from "./schema.js";
 import { readLocal, writeLocal, removeLocal } from "./storage.js";
 import { detectBrowserCapabilities } from "./browser-capabilities.js";
 import {
+  CLOUD_TAB_STATE_CACHE_KEY,
+  CLOUD_TAB_STATE_VERSION,
+  buildCanonicalCloudTabState,
+  isCacheUsable,
+  isCanonicalCloudTabState,
+} from "./cloud-tab-state.js";
+import {
   classifySyncError,
   getSyncDiagnostics,
   saveSyncDiagnostics,
@@ -171,6 +178,11 @@ const KEYS = {
   WEBDAV_PASS: "webdavSyncPassword",
   RESTORE_GROUP_MODE: "restoreGroupMode",
 };
+/**
+ * Kept out of KEYS on purpose: getSettings() reads every KEYS value on each
+ * call and the canonical cloud-tab projection is far too large to drag along.
+ */
+const CLOUD_TAB_CACHE_KEY = CLOUD_TAB_STATE_CACHE_KEY;
 const LEGACY_LOCAL_KEYS = [
   "deviceId",
   "deviceName",
@@ -926,6 +938,7 @@ async function pushSnapshot() {
         throw Error("云端并发修改过于频繁，已停止重试；请再次同步");
       continue;
     }
+    await publishCanonicalCloudTabState(verify.state);
     await setSettings({
       [KEYS.GIST_ID]:
         (await getSettings())[KEYS.GIST_ID] ||
@@ -974,6 +987,217 @@ async function pullState() {
     [KEYS.ETAG]: loaded.raw.etag || "",
   });
   return loaded.state;
+}
+
+/* ---------------------------------------------------------------------------
+ * Canonical cloud tab state (single source of truth for popup + management UI)
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Notify every open extension surface that the canonical cloud-tab dataset
+ * changed, so the popup restore view and the Settings management view can never
+ * drift apart after a refresh or a mutation.
+ */
+function broadcastCloudTabState(canonical) {
+  const payload = {
+    type: "cloudTabStateChanged",
+    provider: canonical.provider,
+    revision: canonical.revision,
+    fetchedAt: canonical.fetchedAt,
+    checksum: canonical.checksum,
+    source: canonical.source,
+    stale: canonical.stale === true,
+    counts: canonical.counts,
+  };
+  try {
+    const result = chrome.runtime.sendMessage(payload);
+    if (result && typeof result.catch === "function") result.catch(() => {});
+  } catch {
+    /* no listener (popup closed) is not an error */
+  }
+}
+
+async function readCloudTabCache() {
+  const s = await readLocal([CLOUD_TAB_CACHE_KEY]);
+  const cached = s[CLOUD_TAB_CACHE_KEY];
+  return isCanonicalCloudTabState(cached) ? cached : null;
+}
+
+async function writeCloudTabCache(canonical) {
+  await writeLocal({ [CLOUD_TAB_CACHE_KEY]: canonical });
+}
+
+async function invalidateCloudTabCache() {
+  await removeLocal([CLOUD_TAB_CACHE_KEY]);
+}
+
+/** Diagnostics summary of the cached canonical projection (never the payload). */
+async function cloudTabCacheSummary() {
+  const cached = await readCloudTabCache();
+  if (!cached) return { present: false };
+  const provider = await activeProvider();
+  return {
+    present: true,
+    provider: cached.provider,
+    matchesActiveProvider: cached.provider === provider,
+    usable: isCacheUsable(cached, provider),
+    fetchedAt: cached.fetchedAt,
+    revision: cached.revision,
+    checksum: cached.checksum,
+    counts: cached.counts,
+  };
+}
+
+/**
+ * Resolve the canonical cloud-tab dataset.
+ *
+ * `forceRemote: true` gives the action an unambiguous "force remote refresh"
+ * semantic: the cached projection is ignored, the active provider is read, the
+ * cache is replaced with the fetched state, and listeners are notified. Without
+ * it a fresh cache may be reused; a cache that is stale or belongs to another
+ * provider is never presented as cloud state.
+ */
+async function resolveCanonicalCloudTabState(options = {}) {
+  const forceRemote = options.forceRemote === true;
+  const provider = await activeProvider();
+  if (!(await providerBound())) {
+    await invalidateCloudTabCache();
+    throw Error("尚未配置云同步后端");
+  }
+
+  if (!forceRemote) {
+    const cached = await readCloudTabCache();
+    if (cached && isCacheUsable(cached, provider)) {
+      return { ...cached, source: "cache", stale: false };
+    }
+  }
+
+  try {
+    const state = await pullState();
+    const canonical = buildCanonicalCloudTabState(state, {
+      provider,
+      source: "remote",
+      fetchedAt: new Date().toISOString(),
+      stale: false,
+    });
+    await writeCloudTabCache(canonical);
+    broadcastCloudTabState(canonical);
+    return canonical;
+  } catch (error) {
+    if (forceRemote) throw error;
+    const cached = await readCloudTabCache();
+    if (cached && cached.provider === provider)
+      return {
+        ...cached,
+        source: "cache",
+        stale: true,
+        warning: error?.message || String(error),
+      };
+    throw error;
+  }
+}
+
+/**
+ * Publish a canonical projection built from a state that was just read back
+ * from the provider (post-write verification), so the cache always mirrors the
+ * committed cloud state instead of an optimistic local guess.
+ */
+async function publishCanonicalCloudTabState(state) {
+  try {
+    const provider = await activeProvider();
+    const canonical = buildCanonicalCloudTabState(state, {
+      provider,
+      source: "remote",
+      fetchedAt: new Date().toISOString(),
+      stale: false,
+    });
+    await writeCloudTabCache(canonical);
+    broadcastCloudTabState(canonical);
+    return canonical;
+  } catch (error) {
+    await invalidateCloudTabCache();
+    console.warn("Canonical cloud tab publish failed", error);
+    return null;
+  }
+}
+
+/**
+ * Every mutation of the cloud state must refresh the canonical projection so
+ * the next reader (popup or management page) observes the same dataset.
+ */
+async function refreshCanonicalCloudTabStateAfterMutation(providerOverride = "") {
+  try {
+    if (!(await providerBound())) {
+      await invalidateCloudTabCache();
+      return null;
+    }
+    const provider = providerOverride || (await activeProvider());
+    const state = await readRemoteStateOnly();
+    const canonical = buildCanonicalCloudTabState(state, {
+      provider,
+      source: "remote",
+      fetchedAt: new Date().toISOString(),
+      stale: false,
+    });
+    await writeCloudTabCache(canonical);
+    broadcastCloudTabState(canonical);
+    return canonical;
+  } catch (error) {
+    await invalidateCloudTabCache();
+    console.warn("Canonical cloud tab refresh failed", error);
+    return null;
+  }
+}
+
+async function readRemoteStateOnly() {
+  const loaded = await readRemote();
+  return loaded.state;
+}
+
+/** Local browser context shown next to the canonical cloud dataset. */
+async function localCloudTabContext() {
+  const local = await createSnapshot();
+  const localEntities = extractEntities(local);
+  return {
+    mode: await getTabSyncMode(),
+    localTabIds: [...localEntities.keys()]
+      .filter((key) => key.startsWith("tabs:"))
+      .map((key) => key.slice("tabs:".length)),
+    localGroupIds: [...localEntities.keys()]
+      .filter((key) => key.startsWith("groups:"))
+      .map((key) => key.slice("groups:".length)),
+  };
+}
+
+/**
+ * Single payload shape shared by the popup and the Settings management page so
+ * both surfaces render the identical canonical dataset.
+ */
+function canonicalCloudTabPayload(canonical, local) {
+  return {
+    version: CLOUD_TAB_STATE_VERSION,
+    mode: local.mode,
+    localTabIds: local.localTabIds,
+    localGroupIds: local.localGroupIds,
+    // Canonical reconciliation of windows + groups.
+    windows: canonical.windows,
+    groups: canonical.groups,
+    detachedGroups: canonical.detachedGroups,
+    tabs: canonical.tabs,
+    counts: canonical.counts,
+    // Reconciled snapshot: identical for restore and management paths.
+    // Tombstones are already applied by the canonical projection.
+    snapshot: canonical.snapshot,
+    tombstonesApplied: true,
+    revision: canonical.revision,
+    updatedAt: canonical.updatedAt,
+    checksum: canonical.checksum,
+    provider: canonical.provider,
+    source: canonical.source,
+    stale: canonical.stale,
+    warning: canonical.warning || "",
+    fetchedAt: canonical.fetchedAt,
+  };
 }
 async function restoreTabs(windows, options = {}) {
   const mode = String(
@@ -1067,8 +1291,9 @@ async function restoreTabs(windows, options = {}) {
     return { windows: wc, tabs: tc, groups: 0, skipped, groupsDeferred: true };
 }
 async function restoreGroup(groupSyncId) {
-  const state = await pullState();
-  const g = (state.snapshot?.groups || []).find(
+  // Restore exactly what the canonical projection shows in both UIs.
+  const canonical = await resolveCanonicalCloudTabState({});
+  const g = (canonical.snapshot?.groups || []).find(
     (x) => x.syncId === groupSyncId,
   );
   if (!g) throw Error("云端没有这个标签组");
@@ -1292,6 +1517,7 @@ async function saveState(gistId, loaded, nextState) {
     };
   state.snapshot.updatedAt = now;
   await writeRemote(state, loaded.raw);
+  await refreshCanonicalCloudTabStateAfterMutation();
   await setSettings({
     [KEYS.BASE_SNAPSHOT]: state.snapshot,
     [KEYS.BASE_REVISION]: revision,
@@ -1350,6 +1576,7 @@ async function updateManagedCloudState(mutator) {
       Number(verify.state.revision) === revision &&
       checksum(verify.state) === checksum(state)
     ) {
+      await publishCanonicalCloudTabState(verify.state);
       await setSettings({
         [KEYS.BASE_SNAPSHOT]: verify.state.snapshot,
         [KEYS.BASE_REVISION]: verify.state.revision,
@@ -1746,6 +1973,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           [KEYS.GIST_ID]: m.gistId,
           [KEYS.ETAG]: r.headers.get("ETag") || "",
         });
+        await invalidateCloudTabCache();
         return { gistId: m.gistId };
       }
       case "createGist": {
@@ -1765,56 +1993,88 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           [KEYS.BASE_REVISION]: 1,
           [KEYS.LAST_SYNC]: snap.updatedAt,
         });
+        await publishCanonicalCloudTabState(state);
         return { id: g.id, revision: 1 };
       }
       case "snapshot":
         return createSnapshot();
       case "sync":
         return runSyncWithDiagnostics();
-      case "pull":
-        return (await pullState()).snapshot;
-      case "pullState":
-        return pullState();
+      case "pull": {
+        // The popup restore view reads the canonical projection so it can never
+        // show a different cloud tab set than the management page.
+        const canonical = await resolveCanonicalCloudTabState({
+          forceRemote: m.forceRemote === true,
+        });
+        return canonical.snapshot;
+      }
+      case "pullState": {
+        const canonical = await resolveCanonicalCloudTabState({
+          forceRemote: m.forceRemote === true,
+        });
+        return {
+          schemaVersion: canonical.snapshot.schemaVersion,
+          revision: canonical.revision,
+          updatedAt: canonical.updatedAt,
+          snapshot: canonical.snapshot,
+          source: canonical.source,
+          stale: canonical.stale,
+          provider: canonical.provider,
+          fetchedAt: canonical.fetchedAt,
+        };
+      }
       case "restoreTabs":
         return restoreTabs(m.windows, {
           includeGroups: m.includeGroups === true,
           restoreGroupMode: m.restoreGroupMode,
         });
       case "cloudGroups": {
-        const s = await pullState();
-        return (s.snapshot?.groups || []).map((g) => ({
-          syncId: g.syncId,
-          title: g.title || "",
-          color: g.color || "grey",
-          collapsed: !!g.collapsed,
-          tabCount: (g.tabs || []).length,
-          updatedAt: g.updatedAt || "",
-          tabs: (g.tabs || []).map((tab) => ({
-            syncId: tab.syncId,
-            title: tab.title || "",
-            url: tab.url || "",
-            index: Number.isFinite(tab.index) ? tab.index : 0,
-            pinned: !!tab.pinned,
+        const canonical = await resolveCanonicalCloudTabState({
+          forceRemote: m.forceRemote === true,
+        });
+        return {
+          groups: canonical.groups.map((g) => ({
+            syncId: g.syncId,
+            title: g.title || "",
+            color: g.color || "grey",
+            collapsed: !!g.collapsed,
+            windowSyncId: g.windowSyncId || "",
+            tabCount: g.tabs.length,
+            updatedAt: g.updatedAt || "",
+            tabs: g.tabs.map((tab) => ({
+              syncId: tab.syncId,
+              title: tab.title || "",
+              url: tab.url || "",
+              index: Number.isFinite(tab.index) ? tab.index : 0,
+              pinned: !!tab.pinned,
+            })),
           })),
-        }));
+          counts: canonical.counts,
+          source: canonical.source,
+          stale: canonical.stale,
+          warning: canonical.warning || "",
+          provider: canonical.provider,
+          revision: canonical.revision,
+          fetchedAt: canonical.fetchedAt,
+          checksum: canonical.checksum,
+        };
       }
+      case "refreshCloudTabState":
+        // Explicit force-remote-refresh semantic for the management UI.
+        return canonicalCloudTabPayload(
+          await resolveCanonicalCloudTabState({ forceRemote: true }),
+          await localCloudTabContext(),
+        );
       case "restoreGroup":
         return restoreGroup(m.groupSyncId);
       case "cloudTabState": {
-        const state = await pullState();
-        const local = await createSnapshot();
-        const localEntities = extractEntities(local);
-        return {
-          mode: await getTabSyncMode(),
-          snapshot: state.snapshot,
-          tombstones: state.tombstones || [],
-          localTabIds: [...localEntities.keys()]
-            .filter((key) => key.startsWith("tabs:"))
-            .map((key) => key.slice("tabs:".length)),
-          localGroupIds: [...localEntities.keys()]
-            .filter((key) => key.startsWith("groups:"))
-            .map((key) => key.slice("groups:".length)),
-        };
+        const canonical = await resolveCanonicalCloudTabState({
+          forceRemote: m.forceRemote === true,
+        });
+        return canonicalCloudTabPayload(
+          canonical,
+          await localCloudTabContext(),
+        );
       }
       case "addCurrentTabsToCloud": {
         const local = await createSnapshot();
@@ -1852,9 +2112,9 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         });
       }
       case "restoreCloudTab": {
-        const state = await pullState();
+        const canonical = await resolveCanonicalCloudTabState({});
         const found = findCloudTab(
-          state.snapshot,
+          canonical.snapshot,
           m.syncId,
         );
         if (!found)
@@ -2158,6 +2418,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             s[KEYS.RESTORE_GROUP_MODE] || "ondemand",
           ),
           tabSyncMode: await getTabSyncMode(),
+          cloudTabCache: await cloudTabCacheSummary(),
         };
       }
       case "setProvider": {
@@ -2165,6 +2426,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           ? String(m.provider)
           : "gist";
         await setSettings({ [KEYS.PROVIDER]: value });
+        await invalidateCloudTabCache();
         await setupAlarms();
         return { provider: value };
       }
@@ -2173,8 +2435,11 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           String(m.clientId || ""),
           String(m.clientSecret || ""),
         );
-      case "disconnectGdrive":
-        return disconnectGoogleDrive();
+      case "disconnectGdrive": {
+        await disconnectGoogleDrive();
+        await invalidateCloudTabCache();
+        return { ok: true };
+      }
       case "testProvider": {
         const p = await activeProvider();
         if (p === "gist") {
@@ -2204,6 +2469,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           [KEYS.WEBDAV_USER]: String(m.user || ""),
           [KEYS.WEBDAV_PASS]: String(m.pass || ""),
         });
+        await invalidateCloudTabCache();
         return { ok: true };
       }
       case "setRestoreGroupMode": {

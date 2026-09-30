@@ -549,15 +549,86 @@ function createCloudUngroupedSection(tabs, localTabIds, windowSyncId) {
   return section;
 }
 
-async function refreshCloudTabs() {
+function cloudTabsMetaText(payload) {
+  const providerNames = {
+    gist: i.t("providerGist"),
+    gdrive: i.t("providerGdrive"),
+    webdav: i.t("providerWebdav"),
+  };
+  const provider =
+    providerNames[payload.provider] || payload.provider || i.t("unknown");
+  const counts = payload.counts || {};
+  const parts = [
+    payload.source === "cache"
+      ? i.t("cloudStateSourceCache")
+      : i.t("cloudStateSourceRemote"),
+    `${i.t("provider")}: ${provider}`,
+    `${i.t("revision")} ${payload.revision ?? 0}`,
+    i.t("cloudStateSummary", {
+      windows: counts.windows ?? 0,
+      groups: counts.groups ?? 0,
+      tabs: counts.tabs ?? 0,
+    }),
+  ];
+  if (payload.fetchedAt) {
+    try {
+      parts.push(
+        `${i.t("cloudStateFetchedAt")} ${new Date(payload.fetchedAt).toLocaleString()}`,
+      );
+    } catch {
+      /* keep the remaining metadata */
+    }
+  }
+  if (payload.stale) parts.unshift(i.t("cloudStateStale"));
+  return parts.join(" · ");
+}
+
+function ensureCloudTabsMeta() {
+  if (!cloudTabsManager) return null;
+  let meta = $("cloudTabsStateMeta");
+  if (!meta) {
+    meta = document.createElement("div");
+    meta.id = "cloudTabsStateMeta";
+    meta.className = "cloud-state-meta section-note";
+    cloudTabsManager.append(meta);
+  }
+  return meta;
+}
+
+/**
+ * Render the canonical cloud-tab dataset.
+ *
+ * `forceRemote` is the unambiguous "force remote refresh" semantic required by
+ * the Refresh action: the background ignores its cached projection, re-reads
+ * windows/tabs/groups from the active provider, replaces the cache, and
+ * broadcasts the new dataset so the popup observes the same state.
+ */
+async function refreshCloudTabs(forceRemote = false) {
   if (!cloudTabsManager)
     return;
 
   cloudTabsManager.replaceChildren();
+  const meta = ensureCloudTabsMeta();
+  if (meta) {
+    meta.hidden = false;
+    meta.classList.remove("cloud-state-meta-stale");
+    meta.textContent = forceRemote
+      ? i.t("cloudTabsRefreshing")
+      : i.t("loading");
+  }
 
   try {
-    const data = await request("cloudTabState");
-    const snapshot = data.snapshot || {};
+    const data = await request("cloudTabState", {
+      forceRemote: forceRemote === true,
+    });
+
+    if (meta) {
+      meta.hidden = false;
+      meta.textContent = cloudTabsMetaText(data);
+      meta.classList.toggle("cloud-state-meta-stale", data.stale === true);
+      if (data.warning)
+        meta.textContent += ` · ${i.t("cloudStateWarning")}: ${data.warning}`;
+    }
 
     if ((data.mode || "overwrite") !== "incremental") {
       const note = document.createElement("div");
@@ -568,15 +639,12 @@ async function refreshCloudTabs() {
     }
 
     const localTabIds = new Set(data.localTabIds || []);
-    const groupsById = new Map(
-      (snapshot.groups || []).map((group) => [
-        group.syncId,
-        group,
-      ]),
-    );
-    const windows = snapshot.windows || [];
+    const windows = Array.isArray(data.windows) ? data.windows : [];
+    const detachedGroups = Array.isArray(data.detachedGroups)
+      ? data.detachedGroups
+      : [];
 
-    if (!windows.length) {
+    if (!windows.length && !detachedGroups.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
       empty.textContent = i.t("cloudTabsEmpty");
@@ -584,12 +652,12 @@ async function refreshCloudTabs() {
       return;
     }
 
-    for (const [windowIndex, window] of windows.entries()) {
+    for (const [windowIndex, cloudWindow] of windows.entries()) {
       const windowSection = document.createElement("details");
       windowSection.className = "cloud-window-section";
       windowSection.open = windowIndex === 0;
 
-      const windowTabs = window.tabs || [];
+      const windowTabs = cloudWindow.tabs || [];
 
       windowSection.append(
         createCloudDisclosureSummary(
@@ -611,41 +679,50 @@ async function refreshCloudTabs() {
         continue;
       }
 
-      const grouped = new Map();
-      const ungrouped = [];
+      for (const group of cloudWindow.groups || [])
+        body.append(
+          createCloudGroupSection(group, group.tabs || [], localTabIds),
+        );
 
-      for (const tab of windowTabs) {
-        const groupId = tab.group?.syncId || null;
-        if (!groupId) {
-          ungrouped.push(tab);
-          continue;
-        }
-        if (!grouped.has(groupId))
-          grouped.set(groupId, []);
-        grouped.get(groupId).push(tab);
-      }
-
-      for (const [groupId, tabs] of grouped.entries()) {
-        const group = groupsById.get(groupId) || {
-          syncId: groupId,
-          title: "",
-          color: "grey",
-          collapsed: false,
-        };
-        body.append(createCloudGroupSection(group, tabs, localTabIds));
-      }
-
+      const ungrouped = cloudWindow.ungroupedTabs || [];
       if (ungrouped.length)
         body.append(
           createCloudUngroupedSection(
             ungrouped,
             localTabIds,
-            window.syncId,
+            cloudWindow.syncId,
           ),
         );
 
       windowSection.append(body);
       cloudTabsManager.append(windowSection);
+    }
+
+    // Groups that exist in the cloud without any window reference are part of
+    // the same canonical dataset the popup lists, so they are rendered too.
+    if (detachedGroups.length) {
+      const detachedSection = document.createElement("details");
+      detachedSection.className = "cloud-detached-section";
+      detachedSection.open = false;
+      detachedSection.append(
+        createCloudDisclosureSummary(
+          i.t("cloudOnlyGroups"),
+          i.t("groupTabCount", {
+            count: detachedGroups.reduce(
+              (total, group) => total + (group.tabs || []).length,
+              0,
+            ),
+          }),
+        ),
+      );
+      const body = document.createElement("div");
+      body.className = "cloud-window-body";
+      for (const group of detachedGroups)
+        body.append(
+          createCloudGroupSection(group, group.tabs || [], localTabIds),
+        );
+      detachedSection.append(body);
+      cloudTabsManager.append(detachedSection);
     }
   } catch (e) {
     showError(e);
@@ -657,7 +734,29 @@ bindAction("addCurrentTabsToCloud", async (_e, b) => {
   try { await request("addCurrentTabsToCloud"); showFeedback("success", i.t("tabsAddedToCloud"), ""); await refreshCloudTabs(); }
   finally { b.disabled = false; b.textContent = old; }
 });
-bindAction("refreshCloudTabs", () => refreshCloudTabs());
+bindAction("refreshCloudTabs", async (_e, b) => {
+  const old = b.textContent;
+  b.disabled = true;
+  b.textContent = i.t("processing");
+  try {
+    await refreshCloudTabs(true);
+    showFeedback("success", i.t("cloudTabsRefreshed"), i.t("cloudStateSourceRemote"));
+  } catch (e) {
+    showError(e);
+  } finally {
+    b.disabled = false;
+    b.textContent = old;
+  }
+});
+
+// Observe canonical cloud-tab changes published by the service worker (popup
+// refresh, sync, delete/move) so both surfaces converge on the same dataset.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== "cloudTabStateChanged") return;
+  const panel = $("panel-cloud-tabs");
+  if (!panel || panel.classList.contains("hidden")) return;
+  void refreshCloudTabs();
+});
 function setupTabs() {
   const tabs = [...document.querySelectorAll(".nav-tab")],
     panels = [...document.querySelectorAll(".tab-panel")],
@@ -673,7 +772,7 @@ function setupTabs() {
       for (const p of panels)
         p.classList.toggle("hidden", p.id !== t.dataset.target);
       if (hash) history.replaceState(null, "", `#${id.replace(/^panel-/, "")}`);
-      if (id === "panel-cloud-tabs") void refreshCloudTabs();
+      if (id === "panel-cloud-tabs") void refreshCloudTabs(false);
     };
   for (const t of tabs) {
     t.addEventListener("click", () => act(t.dataset.target));

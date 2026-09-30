@@ -17,6 +17,7 @@
   "files": [
     "src/runtime/background.ts",
     "src/runtime/browser-capabilities.ts",
+    "src/runtime/cloud-tab-state.ts",
     "src/runtime/diagnostics.ts",
     "src/runtime/legacy-crypto.ts",
     "src/runtime/schema.ts",
