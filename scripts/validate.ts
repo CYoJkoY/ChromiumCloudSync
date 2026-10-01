@@ -42,6 +42,10 @@ const sourceFiles = [
   "src/runtime/schema.ts",
   "src/runtime/storage.ts",
   "src/runtime/browser-capabilities.ts",
+  "src/runtime/cloud-files.ts",
+  "src/runtime/cloud-gist.ts",
+  "src/runtime/sync-modules.ts",
+  "src/runtime/cloud-tab-state.ts",
   "src/runtime/diagnostics.ts",
   "src/runtime/legacy-crypto.ts",
   "src/runtime/background.ts",
@@ -49,6 +53,8 @@ const sourceFiles = [
   "src/runtime/cloud-webdav.ts",
   "src/features/extension-storage.ts",
   "src/features/extension-storage-watch.ts",
+  "src/features/package-index.ts",
+  "src/features/gdrive-packages.ts",
   "src/features/update.ts",
   "src/ui/extensions.ts",
   "src/ui/guide.ts",
@@ -85,6 +91,8 @@ const requiredRefs = {
     "runtime.js",
     "theme.js",
     "i18n.js",
+    "package-index.js",
+    "gdrive-packages.js",
     "extension-storage.js",
     "options.js",
   ],
@@ -95,6 +103,10 @@ const requiredRefs = {
 const runtimeFiles = [
   "background.js",
   "browser-capabilities.js",
+  "cloud-files.js",
+  "cloud-gist.js",
+  "sync-modules.js",
+  "cloud-tab-state.js",
   "diagnostics.js",
   "legacy-crypto.js",
   "schema.js",
@@ -103,6 +115,8 @@ const runtimeFiles = [
   "types.js",
   "extension-storage.js",
   "extension-storage-watch.js",
+  "package-index.js",
+  "gdrive-packages.js",
   "update.js",
   "extensions.js",
   "guide.js",
@@ -215,16 +229,345 @@ const bg = fs.readFileSync(
   "utf8",
 );
 const bgCompact = compactSource(bg);
-if (bgCompact.includes(`[LEGACY_ENCRYPTED_FILE]:{content:null}`))
+
+/* ---------------------------------------------------------------------------
+ * Issue #21: modular per-module storage layout
+ * ------------------------------------------------------------------------- */
+const syncModules = fs.readFileSync(
+  path.join(root, "src/runtime/sync-modules.ts"),
+  "utf8",
+);
+for (const required of [
+  'extensions: "extensions.json"',
+  'bookmarks: "bookmarks.json"',
+  'tabs: "tabs.json"',
+  'export const MANIFEST_FILE = "manifest.json"',
+  'export const META_FILE = "meta.json"',
+  'export const HISTORY_INDEX_FILE = "history/index.json"',
+  "export function splitCloudState",
+  "export function combineModularState",
+  "export function migrateLegacyToModular",
+  "export function diffModuleChanges",
+  "export function bumpModuleRevisions",
+  "export function mergeModularCloudState",
+  "export function isLegacyMonolithicPayload",
+])
+  if (!syncModules.includes(required))
+    throw new Error("Modular storage contract is missing " + required);
+
+const cloudFiles = fs.readFileSync(
+  path.join(root, "src/runtime/cloud-files.ts"),
+  "utf8",
+);
+for (const required of [
+  "export async function readRemoteModularState",
+  "export async function writeRemoteModularState",
+  "export async function readHistoryEntryState",
+  "export async function persistLegacyMigration",
+  "export interface FileStore",
+  "export interface FileStoreHistory",
+])
+  if (!cloudFiles.includes(required))
+    throw new Error("Provider file protocol is missing " + required);
+// The legacy monolithic payload must be preserved as a migration archive.
+if (!/removals\.delete\(LEGACY_MONOLITHIC_FILE\)/.test(cloudFiles))
   throw new Error(
-    "Invalid Gist PATCH payload: legacy encrypted file must be deleted with a null file value, not null content",
+    "Modular write path may delete the legacy current.json archive; migration must preserve cloud data",
   );
+
+for (const provider of [
+  ["src/runtime/cloud-gist.ts", "createGistFileStore"],
+  ["src/runtime/cloud-gdrive.ts", "createGdriveFileStore"],
+  ["src/runtime/cloud-webdav.ts", "createWebdavFileStore"],
+]) {
+  const [file, factory] = provider;
+  const text = fs.readFileSync(path.join(root, file), "utf8");
+  if (!text.includes(`export function ${factory}`))
+    throw new Error(`${file} must export ${factory}`);
+  for (const required of ["read(", "write(", "remove(", "list(", "history:"])
+    if (!text.includes(required))
+      throw new Error(`${file} FileStore is missing ${required}`);
+}
+
+const gistTransport = fs.readFileSync(
+  path.join(root, "src/runtime/cloud-gist.ts"),
+  "utf8",
+);
+const gistCompact = compactSource(gistTransport);
+// Gist deletions must use a null file value, never `{ content: null }`.
+if (!gistCompact.includes("payload[name]=null"))
+  throw new Error(
+    "Gist transport must delete files with a null file value in the PATCH payload",
+  );
+if (/\{content:null\}/.test(gistCompact))
+  throw new Error(
+    "Invalid Gist PATCH payload: a null content value does not delete a file",
+  );
+if (!gistCompact.includes("truncated") || !gistCompact.includes("raw_url"))
+  throw new Error(
+    "Gist transport must resolve truncated file content through raw_url",
+  );
+
+// Legacy encrypted payload cleanup stays guarded by presence in prior files.
 if (
-  !/if\(Object\.prototype\.hasOwnProperty\.call\(existingFiles\|\|\{\},LEGACY_ENCRYPTED_FILE,?\)\)files\[LEGACY_ENCRYPTED_FILE\]=null;/.test(
-    bgCompact,
+  !bgCompact.includes(
+    "names.includes(LEGACY_ENCRYPTED_FILE))removals.push(LEGACY_ENCRYPTED_FILE)",
   )
 )
   throw new Error("Missing legacy encrypted file cleanup guard");
+// #21 criterion 4: the legacy monolithic payloads are read-only migration
+// archives. No source may add one to a removal set, in any spelling — the local
+// alias, the canonical constant, or a bare string literal. Matching only one
+// spelling let a rename or an inlined literal reintroduce silent cloud-data
+// deletion without tripping the gate.
+{
+  const legacyArchiveNames = [
+    "CURRENT_FILE",
+    "LEGACY_MONOLITHIC_FILE",
+    "LEGACY_ALT_FILE",
+    '"current.json"',
+    "'current.json'",
+    '"chromium-cloud-sync.json"',
+    "'chromium-cloud-sync.json'",
+  ];
+  for (const dir of ["src/runtime", "src/features"]) {
+    for (const entry of fs.readdirSync(path.join(root, dir))) {
+      if (!entry.endsWith(".ts")) continue;
+      const text = fs.readFileSync(path.join(root, dir, entry), "utf8");
+      for (const name of legacyArchiveNames) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`removals\\.push\\(${escaped}\\)`).test(text))
+          throw new Error(
+            `${dir}/${entry} adds ${name} to the removal set; the legacy monolithic payload must be preserved as a migration archive and never deleted`,
+          );
+      }
+    }
+  }
+}
+
+for (const required of [
+  "readRemoteModularState(store, validatedState)",
+  "writeRemoteModularState(store, modular",
+  "diffModuleChanges(",
+  "bumpModuleRevisions(",
+  "mergeModularCloudState({",
+  "serializeModularState(",
+  "listRemoteHistory(store)",
+  "readHistoryEntryState(store",
+])
+  if (!bg.includes(required))
+    throw new Error(
+      "Background worker does not use the modular storage protocol: " + required,
+    );
+
+/* ---------------------------------------------------------------------------
+ * Issue #22: browser-managed Google Drive OAuth
+ * ------------------------------------------------------------------------- */
+const gdrive = fs.readFileSync(
+  path.join(root, "src/runtime/cloud-gdrive.ts"),
+  "utf8",
+);
+for (const required of [
+  "export const GDRIVE_SCOPE = \"https://www.googleapis.com/auth/drive.file\"",
+  "export async function connectGoogleDriveBrowser",
+  "export async function connectGoogleDriveManual",
+  "export function supportsBrowserManagedDriveAuth",
+  "export class DriveAuthError",
+  "getAuthToken",
+  "removeCachedAuthToken",
+  "clearAllCachedAuthTokens",
+  "getAccounts",
+])
+  if (!gdrive.includes(required))
+    throw new Error("Google Drive auth is missing " + required);
+// The minimum scope must be the only one requested.
+if (/auth\/drive(?!\.file)/.test(gdrive))
+  throw new Error(
+    "Google Drive must request only the minimum drive.file scope",
+  );
+// Browser-managed auth must be the default; manual client config is a fallback.
+if (!/interactive,\s*\n?\s*scopes: IDENTITY_SCOPES/.test(gdrive))
+  throw new Error(
+    "Drive tokens must be minted through chrome.identity.getAuthToken with an explicit scope list",
+  );
+if (!gdrive.includes("readAuthState()") || !gdrive.includes("writeAuthState("))
+  throw new Error("Drive authorization state must be stored locally");
+
+const capabilities = fs.readFileSync(
+  path.join(root, "src/runtime/browser-capabilities.ts"),
+  "utf8",
+);
+for (const required of [
+  "identityGetAuthToken: boolean",
+  "identityTokenCache: boolean",
+  "identityGetAuthToken: hasFunction(identity, \"getAuthToken\")",
+])
+  if (!capabilities.includes(required))
+    throw new Error("Browser capabilities are missing " + required);
+
+// The synchronization payload must never carry provider credentials.
+if (!cloudFiles.includes("export function assertNoCredentialsInPayload"))
+  throw new Error("Missing credential guard for the synchronization payload");
+if (!/assertNoCredentialsInPayload\(serialized\)/.test(cloudFiles))
+  throw new Error(
+    "writeRemoteModularState must reject payloads containing OAuth credentials",
+  );
+
+const bgSource = bg;
+for (const required of [
+  "connectGoogleDriveBrowser",
+  "connectGoogleDriveManual",
+  "gdriveAuthState",
+  "gdriveBrowserManaged",
+  'case "gdriveAuth":',
+])
+  if (!bgSource.includes(required))
+    throw new Error("Background worker is missing Drive auth wiring " + required);
+// An empty connect payload must select the browser-managed flow.
+if (!/clientId\s*\n?\s*\?\s*\n?\s*await connectGoogleDriveManual/.test(bgSource))
+  throw new Error(
+    "connectGdrive must default to browser-managed OAuth and use the manual client only when one is supplied",
+  );
+
+const manifestText = fs.readFileSync(path.join(root, "manifest.json"), "utf8");
+if (!/"identity"/.test(manifestText))
+  throw new Error("manifest.json must declare the identity permission");
+
+/* ---------------------------------------------------------------------------
+ * Issue #23: Google Drive as a package-backup backend
+ * ------------------------------------------------------------------------- */
+const packageIndex = fs.readFileSync(
+  path.join(root, "src/features/package-index.ts"),
+  "utf8",
+);
+for (const required of [
+  "window.CCSyncPackageIndex",
+  "PACKAGE_INDEX_SCHEMA",
+  "packageFolder",
+  "packagePath",
+  "resolveUniqueFileName",
+  "derivePackageSource",
+  "buildPackageRecord",
+  "packageMetadata",
+  "upsertIndexEntry",
+  "takenNamesInFolder",
+  "mergeIndexWithListing",
+  "normalizeIndex",
+])
+  if (!packageIndex.includes(required))
+    throw new Error("Package index domain is missing " + required);
+
+const gdrivePackages = fs.readFileSync(
+  path.join(root, "src/features/gdrive-packages.ts"),
+  "utf8",
+);
+for (const required of [
+  "window.CCSyncGdrivePackages",
+  "createGdrivePackages",
+  // App-managed destination, deliberately not the synchronization folder.
+  'const GDRIVE_PACKAGES_ROOT = "Chromium Cloud Sync Packages"',
+  "destination",
+  // Packages are large binaries: resumable upload, streamed download.
+  "uploadType=resumable",
+  "X-Upload-Content-Length",
+  "X-Upload-Content-Type",
+  "download",
+  // Listing reconciles the provider with the index.
+  "listPackages",
+  "GDRIVE_LIST_DEPTH",
+  // The session is reused from the sync provider, never re-authorized here.
+  'request("gdrivePackageSession")',
+  // Drive limits/quota/permission errors are classified, not bare statuses.
+  'request("describeDriveError"',
+  "DRIVE_ERROR_MESSAGE_KEYS",
+  "quota",
+  "too-large",
+  "permission",
+])
+  if (!gdrivePackages.includes(required))
+    throw new Error("Drive package transport is missing " + required);
+
+// The package transport must not grow its own Google authorization flow.
+for (const forbidden of [
+  "chrome.identity.getAuthToken",
+  "launchWebAuthFlow",
+  "accounts.google.com/o/oauth2",
+])
+  if (gdrivePackages.includes(forbidden))
+    throw new Error(
+      "Package backup must reuse the authorized Drive session, not authorize again: " +
+        forbidden,
+    );
+
+const extStorage = fs.readFileSync(
+  path.join(root, "src/features/extension-storage.ts"),
+  "utf8",
+);
+for (const required of [
+  // Google Drive is a selectable package-backup backend.
+  '<option value="gdrive">',
+  'gdriveFolder: "extensionBackupGdriveFolder"',
+  'if (cfg.backend === "gdrive")',
+  // The transport is injected, so it stays testable outside a page.
+  "window.CCSyncGdrivePackages.createGdrivePackages",
+  "gdriveDestination",
+  "gdriveDownload",
+  "gdriveListPackages",
+  // Index and selection stay separate from the browser-state sync payload.
+  'gdriveReadJson(cfg, "index.json"',
+  'gdriveUpload(cfg, "selection.json"',
+  // Duplicate names/versions must not silently overwrite unrelated backups.
+  "resolveUniqueFileName",
+  "takenNamesInFolder",
+  "upsertIndexEntry",
+  // Required metadata fields.
+  "buildPackageRecord",
+  "packageMetadata",
+  // Drive failures reach the UI as classified, localized messages.
+  "driveQuota",
+  "driveTooLarge",
+  "drivePermission",
+])
+  if (!extStorage.includes(required))
+    throw new Error("Drive package backup is missing " + required);
+
+// The package backup reuses the sync Drive session instead of adding a second
+// authorization mechanism.
+if (!extStorage.includes("gdrive.session()"))
+  throw new Error(
+    "Drive package backup must reuse the authorized sync session",
+  );
+for (const forbidden of [
+  "chrome.identity.getAuthToken",
+  "launchWebAuthFlow",
+  "oauth2.googleapis.com/token",
+  "accounts.google.com",
+])
+  if (extStorage.includes(forbidden))
+    throw new Error(
+      "Package backup must not implement its own Google authorization flow: " +
+        forbidden,
+    );
+
+// The package-backup backend is independently selectable from the sync provider.
+if (/"syncProvider"/.test(extStorage))
+  throw new Error(
+    "Package backup must not read or change the browser-state sync provider",
+  );
+
+// Package data must never be written into the browser-state sync payload.
+if (/writeRemoteModularState|readRemoteModularState/.test(extStorage))
+  throw new Error(
+    "Package backup must stay separate from the modular sync file protocol",
+  );
+
+for (const required of [
+  'case "gdrivePackageSession":',
+  'case "describeDriveError":',
+  "describeDriveErrorMessage",
+])
+  if (!bg.includes(required))
+    throw new Error("Background worker is missing package-backup support " + required);
 
 const optionsHtml = fs.readFileSync(
   path.join(root, "src/ui/pages/options.html"),
@@ -243,9 +586,47 @@ for (const required of [
   'id="panel-cloud-tabs"',
   'id="cloudTabsManager"',
   'id="addCurrentTabsToCloud"',
+  'id="gdriveConnectBrowser"',
+  'id="gdriveAuthState"',
+  'id="gdriveManualDetails"',
+  'id="gdriveManualNotice"',
 ])
   if (!optionsHtml.includes(required))
     throw new Error("Options page is missing required UI anchor " + required);
+{
+  const manualSection = optionsHtml.indexOf('id="gdriveManualDetails"');
+  const clientIdField = optionsHtml.indexOf('id="gdriveClientId"');
+  const browserButton = optionsHtml.indexOf('id="gdriveConnectBrowser"');
+  if (manualSection < 0 || clientIdField < 0 || browserButton < 0)
+    throw new Error("Google Drive card is missing an authorization control");
+  if (!(browserButton < manualSection && manualSection < clientIdField))
+    throw new Error(
+      "Browser-managed connection must be the primary control and the manual OAuth client must stay inside the advanced fallback section",
+    );
+}
+// extension-storage.js resolves both globals at load time, so a page that loads
+// it without the domain module and Drive transport throws during evaluation and
+// silently loses the whole package-backup UI. Check every page, not one page, so
+// a new host page cannot reintroduce that failure.
+let packageUiPages = 0;
+for (const file of htmlFiles) {
+  const html = fs.readFileSync(path.join(root, "src/ui/pages", file), "utf8");
+  const storageTag = html.indexOf('<script src="extension-storage.js">');
+  if (storageTag < 0) continue;
+  packageUiPages++;
+  const packageIndexTag = html.indexOf('<script src="package-index.js">');
+  const gdriveTag = html.indexOf('<script src="gdrive-packages.js">');
+  if (packageIndexTag < 0 || gdriveTag < 0)
+    throw new Error(
+      `${file} loads extension-storage.js but must also load package-index.js and gdrive-packages.js`,
+    );
+  if (!(packageIndexTag < gdriveTag && gdriveTag < storageTag))
+    throw new Error(
+      `${file} must load package-index.js and gdrive-packages.js before extension-storage.js`,
+    );
+}
+if (packageUiPages < 1)
+  throw new Error("No page hosts the package backup UI");
 if (optionsHtml.includes("extension-storage-layout.js"))
   throw new Error("Obsolete extension storage layout shim is still loaded");
 for (const required of [
@@ -269,11 +650,84 @@ for (const required of [
   "githubCard.hidden",
   "gdriveCard.hidden",
   "webdavCard.hidden",
+  "renderGdriveAuthState",
+  'request("connectGdrive", {})',
 ])
   if (!optionsSource.includes(required))
     throw new Error(
       "Options controller is missing required implementation " + required,
     );
+
+/* ---------------------------------------------------------------------------
+ * Issue #20: the popup restore view and the Cloud Tabs management page must
+ * read one canonical dataset, and Refresh must force a remote read.
+ * ------------------------------------------------------------------------- */
+for (const required of [
+  "buildCanonicalCloudTabState",
+  "resolveCanonicalCloudTabState",
+  "publishCanonicalCloudTabState",
+  "broadcastCloudTabState",
+  "invalidateCloudTabCache",
+  "isCacheUsable",
+  "canonicalCloudTabPayload",
+  'case "refreshCloudTabState":',
+  "forceRemote: true",
+])
+  if (!bg.includes(required))
+    throw new Error(
+      "Background worker is missing canonical cloud-tab state support: " +
+        required,
+    );
+
+// Every cloud-tab reader must go through the canonical projection.
+for (const message of ["cloudGroups", "cloudTabState", "restoreGroup"]) {
+  const caseStart = bg.indexOf(`case "${message}"`);
+  if (caseStart < 0)
+    throw new Error(`Background worker lost the ${message} message handler`);
+}
+if (/case "cloudGroups":[\s\S]{0,400}await pullState\(\)/.test(bg))
+  throw new Error(
+    "cloudGroups must read the canonical cloud-tab projection, not pullState()",
+  );
+if (/case "cloudTabState":[\s\S]{0,400}await pullState\(\)/.test(bg))
+  throw new Error(
+    "cloudTabState must read the canonical cloud-tab projection, not pullState()",
+  );
+
+const popupSource = fs.readFileSync(
+  path.join(root, "src/ui/popup.ts"),
+  "utf8",
+);
+for (const required of [
+  "renderCloudGroups",
+  "cloudTabStateChanged",
+  "refreshCloudGroups",
+  "forceRemote",
+])
+  if (!popupSource.includes(required))
+    throw new Error("Popup is missing canonical cloud-tab support: " + required);
+
+for (const required of [
+  "refreshCloudTabs(true)",
+  "cloudTabStateChanged",
+  "detachedGroups",
+  "forceRemote",
+])
+  if (!optionsSource.includes(required))
+    throw new Error(
+      "Options controller is missing canonical cloud-tab support: " + required,
+    );
+
+const popupHtml = fs.readFileSync(
+  path.join(root, "src/ui/pages/popup.html"),
+  "utf8",
+);
+for (const required of ['id="refreshCloudGroups"', 'id="cloudGroupsMeta"'])
+  if (!popupHtml.includes(required))
+    throw new Error("Popup page is missing anchor " + required);
+for (const required of ['data-i18n="refreshFromCloud"', 'data-i18n="cloudTabsHelpShared"'])
+  if (!optionsHtml.includes(required))
+    throw new Error("Options page is missing anchor " + required);
 
 const buildLocalStateStart = bg.indexOf("async function buildLocalState(");
 const buildLocalStateEnd = bg.indexOf(
@@ -341,6 +795,119 @@ if (!storageCompact.includes("String(a.davPass||'')===String(b.davPass||'')"))
   throw new Error(
     "WebDAV extension-backup selection matching does not include the password",
   );
+
+// ---------------------------------------------------------------------------
+// Translation key completeness.
+//
+// Three separate translation mechanisms coexist here: the shared DICT in
+// ui/i18n.ts (reached through CCSyncI18n.t), a file-local `dict` in
+// ui/extensions.ts, and a file-local `text` object of bilingual closures in
+// features/extension-storage.ts whose `t` is injected into gdrive-packages.ts.
+//
+// Referencing a key that its own file's table does not define is not an error at
+// runtime — every one of the three lookups ends in `?? key`, so the UI silently
+// renders the raw identifier ("searchCrxsoso") instead of a sentence. That is
+// invisible to the type checker because the keys are plain strings. Resolve each
+// literal reference against the table the referencing file actually uses.
+// ---------------------------------------------------------------------------
+{
+  const readLines = (file: string): string[] =>
+    fs.readFileSync(path.join(root, file), "utf8").split("\n");
+
+  const plainKey = /^\s*"?([A-Za-z0-9_]+)"?\s*:/;
+  const closureKey = /^\s*([A-Za-z0-9_]+)\s*:\s*\(\)\s*=>/;
+
+  const keysUntil = (
+    lines: string[],
+    startIndex: number,
+    endTest: (line: string) => boolean,
+    pattern: RegExp,
+    label: string,
+  ): Set<string> => {
+    if (startIndex < 0)
+      throw new Error(`Translation gate cannot locate the start of ${label}`);
+    const found = new Set<string>();
+    for (let index = startIndex + 1; index < lines.length; index += 1) {
+      if (endTest(lines[index])) return found;
+      const match = pattern.exec(lines[index]);
+      if (match) found.add(match[1]);
+    }
+    throw new Error(`Translation gate cannot locate the end of ${label}`);
+  };
+
+  const i18nLines = readLines("src/ui/i18n.ts");
+  const sharedDict = keysUntil(
+    i18nLines,
+    i18nLines.findIndex((line) => /^\s*en:\s*\{/.test(line)),
+    (line) => line.includes('"zh-CN"'),
+    plainKey,
+    "the shared DICT.en block in src/ui/i18n.ts",
+  );
+
+  const extensionLines = readLines("src/ui/extensions.ts");
+  const extensionDictStart = extensionLines.findIndex((line) =>
+    /^\s*const dict = \{/.test(line),
+  );
+  const extensionDict = keysUntil(
+    extensionLines,
+    extensionLines.findIndex(
+      (line, index) => index > extensionDictStart && /^\s*en:\s*\{/.test(line),
+    ),
+    (line) => line.includes('"zh-CN"'),
+    plainKey,
+    "the local dict.en block in src/ui/extensions.ts",
+  );
+
+  const storageLines = readLines("src/features/extension-storage.ts");
+  const storageText = keysUntil(
+    storageLines,
+    storageLines.findIndex((line) => /^\s*const text = \{/.test(line)),
+    (line) => line.includes("const t = (k) =>"),
+    closureKey,
+    "the local text block in src/features/extension-storage.ts",
+  );
+
+  // gdrive-packages.ts has no table of its own: extension-storage.ts injects its
+  // `t`, so its keys must resolve against that file's `text` object.
+  const consumers: Array<[string, Set<string>]> = [
+    ["src/ui/popup.ts", sharedDict],
+    ["src/ui/options.ts", sharedDict],
+    ["src/ui/history.ts", sharedDict],
+    ["src/ui/extensions.ts", extensionDict],
+    ["src/features/extension-storage.ts", storageText],
+    ["src/features/gdrive-packages.ts", storageText],
+  ];
+
+  const reference = /\bt\(\s*"([A-Za-z0-9_]+)"/g;
+  for (const [file, table] of consumers) {
+    const source = fs.readFileSync(path.join(root, file), "utf8");
+    for (const match of source.matchAll(reference))
+      if (!table.has(match[1]))
+        throw new Error(
+          `${file} renders t("${match[1]}") but its translation table does not define that key, so the UI would show the raw identifier instead of a localized string`,
+        );
+  }
+
+  // A new page that translates strings must be added to the table above rather
+  // than escape the check entirely.
+  const covered = new Set(consumers.map(([file]) => file));
+  const mentionsTranslation = /\bt\(\s*"[A-Za-z0-9_]+"/;
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory()
+        ? walk(`${dir}/${entry.name}`)
+        : entry.name.endsWith(".ts")
+          ? [`${dir}/${entry.name}`]
+          : [],
+    );
+  for (const file of walk("src")) {
+    if (covered.has(file)) continue;
+    if (mentionsTranslation.test(fs.readFileSync(path.join(root, file), "utf8")))
+      throw new Error(
+        `${file} references translation keys but is not covered by the translation completeness gate`,
+      );
+  }
+}
 
 console.log(
   `Validation passed for organized TypeScript sources and generated runtime ${baseVersion}`,

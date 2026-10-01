@@ -80,6 +80,8 @@ export interface ConflictRecord extends UnknownRecord {
   status: "resolved" | "unresolved" | "ignored" | string;
   winner?: "local" | "remote" | string;
   strategy?: string;
+  /** Owning module file when the conflict came from a module-scoped merge. */
+  module?: "extensions" | "bookmarks" | "tabs" | string;
 }
 
 export interface CloudState {

@@ -233,11 +233,19 @@
   <section class="card sync-section" id="gdriveCard" hidden>
     <div class="card-title"><span data-i18n="gdriveTitle">Google Drive</span></div>
     <p class="card-desc" data-i18n="gdriveHelp">Store the synchronization state in a private Google Drive file.</p>
-    <div class="ccsync-ext-grid">
-      <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientId">OAuth Client ID</span><input class="field" id="gdriveClientId" type="text" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com" /></label>
-      <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientSecret">Client Secret (optional)</span><input class="field" id="gdriveClientSecret" type="password" autocomplete="off" /></label>
-    </div>
-    <div class="btn-row backend-actions"><button class="primary" data-i18n="gdriveConnect" id="gdriveConnect" type="button">Connect Google Drive</button><button class="secondary" data-i18n="gdriveDisconnect" id="gdriveDisconnect" type="button">Disconnect</button><button class="secondary" data-i18n="testConnection" id="providerTest" type="button">Test connection</button></div>
+    <p class="card-desc" data-i18n="gdriveBrowserHelp">Authorize with your Google account through the browser's own account chooser. Only the app-created-files scope is requested, and the resulting session stays in this browser profile.</p>
+    <div class="status-box section-note" id="gdriveAuthState" data-i18n="gdriveNotConnected">Not connected</div>
+    <div class="btn-row backend-actions"><button class="primary" data-i18n="gdriveConnectBrowser" id="gdriveConnectBrowser" type="button">Connect with Google account</button><button class="secondary" data-i18n="gdriveDisconnect" id="gdriveDisconnect" type="button">Disconnect</button><button class="secondary" data-i18n="testConnection" id="providerTest" type="button">Test connection</button></div>
+    <div class="note section-note" id="gdriveManualNotice" hidden></div>
+    <details class="gdrive-manual" id="gdriveManualDetails">
+      <summary data-i18n="gdriveManualTitle">Advanced: use your own OAuth client</summary>
+      <p class="card-desc" data-i18n="gdriveManualHelp">Only needed where this browser cannot authorize the extension itself, such as an unpacked development build or a Chromium derivative without identity.getAuthToken. Otherwise use the browser account button above; no client configuration is required.</p>
+      <div class="ccsync-ext-grid">
+        <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientId">OAuth Client ID</span><input class="field" id="gdriveClientId" type="text" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com" /></label>
+        <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientSecret">Client Secret (optional)</span><input class="field" id="gdriveClientSecret" type="password" autocomplete="off" /></label>
+      </div>
+      <div class="btn-row backend-actions"><button class="primary" data-i18n="gdriveConnect" id="gdriveConnect" type="button">Connect with OAuth client</button></div>
+    </details>
   </section>
   <section class="card sync-section" id="webdavCard" hidden>
     <div class="card-title"><span data-i18n="webdavTitle">WebDAV</span></div>
@@ -282,10 +290,11 @@
   <section class="card cloud-tabs-panel">
     <div class="card-title"><span data-i18n="cloudTabsTitle">Cloud tab collection</span></div>
     <p class="card-desc" data-i18n="cloudTabsHelp">Manage persistent cloud tabs and tab groups without restoring the entire browser state.</p>
+    <p class="card-desc" data-i18n="cloudTabsHelpShared">The popup restore view and this page read the same canonical cloud tab dataset.</p>
     <div class="cloud-tabs-toolbar">
       <div class="btn-row">
         <button class="primary" id="addCurrentTabsToCloud" data-i18n="addCurrentTabs" type="button">Add current browser tabs to cloud</button>
-        <button class="secondary" id="refreshCloudTabs" data-i18n="refresh" type="button">Refresh</button>
+        <button class="secondary" id="refreshCloudTabs" data-i18n="refreshFromCloud" type="button">Refresh from cloud</button>
       </div>
     </div>
     <div id="cloudTabsManager"></div>
@@ -318,6 +327,22 @@
                   keeps the Gist revision history for rollback.
                 </div>
               </section>
+              <section class="card" id="storageLayoutCard">
+                <div class="card-title">
+                  <span data-i18n="storageLayoutTitle">Cloud storage layout</span>
+                </div>
+                <p class="card-desc" data-i18n="storageLayoutHelp">
+                  Synchronized data is stored as independent module files:
+                  extensions.json, bookmarks.json, and tabs.json, plus
+                  manifest.json and meta.json control files.
+                </p>
+                <div class="status-box" id="storageLayoutSummary"></div>
+                <div class="section-stack" id="storageModuleList"></div>
+                <div class="note section-note" id="storageLegacyNote" hidden></div>
+                <div class="btn-row">
+                  <button class="secondary" id="refreshStorageLayout" data-i18n="refresh" type="button">Refresh</button>
+                </div>
+              </section>
             </div>
           </main>
         </div>
@@ -326,6 +351,8 @@
     <script src="runtime.js"></script>
     <script src="theme.js"></script>
     <script src="i18n.js"></script>
+    <script src="package-index.js"></script>
+    <script src="gdrive-packages.js"></script>
     <script src="extension-storage.js"></script>
     <script src="options.js"></script>
   </body>

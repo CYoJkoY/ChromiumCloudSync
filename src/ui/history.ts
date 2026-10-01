@@ -112,10 +112,24 @@ function renderHistoryPage() {
     main.className = "history-main";
     const title = document.createElement("div");
     title.className = "history-title";
-    title.textContent = `${i.t("revision")} ${item.sha ? item.sha.slice(0, 12) : ""}${item.current ? ` · ${i.t("current")}` : ""}`;
+    // A modular history entry carries its own revision number; provider-native
+    // entries (Gist commits) are identified by SHA.
+    const label = Number(item.revision) > 0
+      ? `${Number(item.revision)}`
+      : item.sha
+        ? item.sha.slice(0, 12)
+        : "";
+    title.textContent = `${i.t("revision")} ${label}${item.current ? ` · ${i.t("current")}` : ""}`;
     const meta = document.createElement("div");
     meta.className = "history-meta";
-    meta.textContent = `${fmt(item.createdAt)} · ${item.user || ""}`;
+    // Module-scoped history: which independent module files this revision moved.
+    const modules = Array.isArray(item.modules) ? item.modules : [];
+    const moduleText = modules.length
+      ? ` · ${i.t("historyModules")}: ${modules
+          .map((moduleId) => i.t(`module_${moduleId}`))
+          .join(", ")}`
+      : "";
+    meta.textContent = `${fmt(item.createdAt)}${item.user ? ` · ${item.user}` : ""}${moduleText}`;
     main.append(title, meta);
     const btn = document.createElement("button");
     btn.type = "button";

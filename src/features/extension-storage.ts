@@ -9,7 +9,19 @@
     davFolder: "extensionBackupWebdavFolder",
     davUser: "extensionBackupWebdavUsername",
     davPass: "extensionBackupWebdavPassword",
+    gdriveFolder: "extensionBackupGdriveFolder",
     selected: "extensionBackupSelectedIds",
+  };
+  /**
+   * Local caches for the Drive package destination.
+   *
+   * Kept out of `K` on purpose: `getCfg()` reads every `K` value as user
+   * configuration, and resolved folder/file ids are derived state that belongs
+   * to the connected account, not to the saved settings.
+   */
+  const KC = {
+    rootId: "extensionBackupGdriveRootId",
+    folderIds: "extensionBackupGdriveFolderIds",
   };
   const D = {
     backend: "disabled",
@@ -21,6 +33,7 @@
     davFolder: "",
     davUser: "",
     davPass: "",
+    gdriveFolder: "",
     selected: [],
   };
   const MAX = 95 * 1024 * 1024;
@@ -116,6 +129,68 @@
       zh()
         ? "超过 95 MB 的文件不会通过当前 GitHub Contents API 上传。"
         : "Files larger than 95 MB are rejected by the current GitHub Contents API path.",
+    gdrive: () => (zh() ? "Google Drive" : "Google Drive"),
+    gdriveFolder: () =>
+      zh() ? "Drive 子文件夹（可选）" : "Drive subfolder (optional)",
+    gdriveHelp: () =>
+      zh()
+        ? "扩展包保存到 Google Drive 中由本扩展管理的“Chromium Cloud Sync Packages”文件夹，与浏览器状态同步文件完全分开，并复用同步设置里已授权的 Google 账号。"
+        : "Packages are stored in the app-managed \u201cChromium Cloud Sync Packages\u201d folder on Google Drive, completely separate from the browser-state sync files, reusing the Google account already authorized in sync settings.",
+    gdriveNotConnected: () =>
+      zh()
+        ? "尚未连接 Google Drive。请先在“云端同步提供方”中选择 Google Drive 并完成授权。"
+        : "Google Drive is not connected yet. Choose Google Drive under Cloud sync provider and authorize it first.",
+    gdriveConnectedAs: () =>
+      zh() ? "已连接 Google 账号：{email}" : "Connected Google account: {email}",
+    gdriveSeparate: () =>
+      zh()
+        ? "扩展包备份与同步提供方相互独立：可以在不更改主同步提供方的情况下使用 Google Drive 备份扩展包。"
+        : "Package backup is independent of the sync provider: Google Drive can back up packages without changing the main sync provider.",
+    needGdrive: () =>
+      zh()
+        ? "请先连接 Google Drive 后再使用扩展包备份。"
+        : "Connect Google Drive before using package backup.",
+    source: () => (zh() ? "来源" : "Source"),
+    storedAt: () => (zh() ? "备份时间" : "Backed up"),
+    unindexed: () =>
+      zh() ? "云端存在但未登记" : "On provider but not indexed",
+    missingFile: () =>
+      zh() ? "云端文件缺失" : "Missing on provider",
+    sourceChromeWebStore: () => (zh() ? "Chrome 应用商店" : "Chrome Web Store"),
+    sourceEdgeAddOns: () => (zh() ? "Edge 外接程序" : "Edge Add-ons"),
+    sourceSelfHosted: () => (zh() ? "自托管更新地址" : "Self-hosted update URL"),
+    sourceUnpacked: () => (zh() ? "未打包（开发模式）" : "Unpacked (development)"),
+    sourceSideLoaded: () => (zh() ? "旁加载" : "Side-loaded"),
+    sourcePolicy: () => (zh() ? "策略安装" : "Installed by policy"),
+    sourceUnknown: () => (zh() ? "未知来源" : "Unknown source"),
+    driveQuota: () =>
+      zh()
+        ? "Google Drive 存储空间或配额不足，无法上传扩展包。"
+        : "Google Drive is out of storage or quota; the package cannot be uploaded.",
+    driveRateLimit: () =>
+      zh()
+        ? "Google Drive 请求过于频繁，请稍后重试。"
+        : "Google Drive is rate-limiting requests; try again shortly.",
+    driveAuth: () =>
+      zh()
+        ? "Google Drive 授权已过期，请在同步设置中重新连接。"
+        : "Google Drive authorization expired; reconnect it in sync settings.",
+    drivePermission: () =>
+      zh()
+        ? "Google Drive 权限不足，无法访问该扩展包位置。"
+        : "Google Drive permissions are insufficient for this package location.",
+    driveNotFound: () =>
+      zh()
+        ? "Google Drive 上找不到该文件或文件夹，可能已被删除。"
+        : "The file or folder was not found on Google Drive; it may have been deleted.",
+    driveTooLarge: () =>
+      zh()
+        ? "扩展包超过 Google Drive 上传大小限制。"
+        : "The package exceeds the Google Drive upload size limit.",
+    driveServer: () =>
+      zh()
+        ? "Google Drive 服务暂时不可用，请稍后重试。"
+        : "Google Drive is temporarily unavailable; try again later.",
   };
   const t = (k) => text[k]?.() || k;
   const getCfg = async () => ({
@@ -324,22 +399,62 @@
     if (!r.ok) throw Error(`WebDAV download failed: HTTP ${r.status}`);
     return new Uint8Array(await r.arrayBuffer());
   }
+  /* --------------------------------------------------------------------------
+   * Google Drive package transport.
+   *
+   * The transport itself lives in `gdrive-packages.ts`, which takes injected
+   * dependencies so it can be exercised without a DOM or a network. This layer
+   * only wires it to the page's runtime bridge, localization, and caches.
+   * ------------------------------------------------------------------------ */
+  const PI = () => window.CCSyncPackageIndex;
+  const gdrive = window.CCSyncGdrivePackages.createGdrivePackages({
+    request: (type, extra) => CCSyncRuntime.request(type, extra),
+    storageGet: (keys) => CCSyncRuntime.storageGet(keys),
+    storageSet: (values) => CCSyncRuntime.storageSet(values),
+    fetch: (url, init) => fetch(url, init),
+    t,
+    cacheKeys: KC,
+  });
+  const gdriveSession = () => gdrive.session();
+  const gdriveDestination = (cfg) => gdrive.destination(cfg);
+  const gdriveUpload = (cfg, relative, bytes, mimeType) =>
+    gdrive.upload(cfg, relative, bytes, mimeType);
+  const gdriveDownload = (cfg, relative) => gdrive.download(cfg, relative);
+  const gdriveReadJson = (cfg, relative, fallback) =>
+    gdrive.readJson(cfg, relative, fallback);
+  const gdriveWriteJson = (cfg, relative, value) =>
+    gdrive.writeJson(cfg, relative, value);
+  const gdriveListPackages = (cfg) => gdrive.listPackages(cfg);
+
+  /**
+   * The package index is always stored separately from browser-state sync data:
+   * a different file, and for Drive a different app-managed folder.
+   */
   async function readIndex(cfg) {
+    const pi = PI();
+    if (cfg.backend === "gdrive")
+      return pi.normalizeIndex(
+        await gdriveReadJson(cfg, "index.json", pi.emptyIndex()),
+      );
     if (cfg.backend === "github")
-      return githubReadJson(cfg, join(normFolder(cfg.folder), "index.json"), {
-        schemaVersion: 2,
-        backups: [],
-      });
+      return pi.normalizeIndex(
+        await githubReadJson(
+          cfg,
+          join(normFolder(cfg.folder), "index.json"),
+          pi.emptyIndex(),
+        ),
+      );
     try {
-      return JSON.parse(decode(await davGet(cfg, "index.json")));
+      return pi.normalizeIndex(JSON.parse(decode(await davGet(cfg, "index.json"))));
     } catch (e) {
-      if (e.message.includes("HTTP 404"))
-        return { schemaVersion: 2, backups: [] };
+      if (e.message.includes("HTTP 404")) return pi.emptyIndex();
       throw e;
     }
   }
   async function writeIndex(cfg, index) {
     const bytes = new TextEncoder().encode(JSON.stringify(index, null, 2));
+    if (cfg.backend === "gdrive")
+      return gdriveUpload(cfg, "index.json", bytes, "application/json");
     return cfg.backend === "github"
       ? githubPut(
           cfg,
@@ -349,7 +464,38 @@
         )
       : davPut(cfg, "index.json", bytes, "application/json");
   }
+  /**
+   * Backups as the provider actually holds them.
+   *
+   * Drive is listed so packages uploaded from another profile — or left behind by
+   * an interrupted index write — still appear, and index entries whose file is
+   * gone are reported instead of being offered as restorable.
+   */
+  async function listBackups(cfg) {
+    const pi = PI(),
+      index = await readIndex(cfg);
+    if (cfg.backend !== "gdrive")
+      return {
+        schemaVersion: index.schemaVersion,
+        updatedAt: index.updatedAt,
+        backups: index.backups.slice().reverse(),
+        unindexed: [],
+        missing: [],
+      };
+    const merged = pi.mergeIndexWithListing(index, await gdriveListPackages(cfg));
+    return {
+      schemaVersion: merged.schemaVersion,
+      updatedAt: merged.updatedAt,
+      backups: [...merged.backups.slice().reverse(), ...merged.unindexed],
+      unindexed: merged.unindexed,
+      missing: merged.missing,
+    };
+  }
   async function readSelection(cfg) {
+    if (cfg.backend === "gdrive") {
+      const x = await gdriveReadJson(cfg, "selection.json", null);
+      return Array.isArray(x?.selectedIds) ? x.selectedIds.map(String) : null;
+    }
     if (cfg.backend === "github") {
       return githubReadJson(
         cfg,
@@ -374,6 +520,8 @@
       selectedIds: [...new Set(ids.map(String))].sort(),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(payload, null, 2));
+    if (cfg.backend === "gdrive")
+      return gdriveUpload(cfg, "selection.json", bytes, "application/json");
     return cfg.backend === "github"
       ? githubPut(
           cfg,
@@ -383,82 +531,91 @@
         )
       : davPut(cfg, "selection.json", bytes, "application/json");
   }
+  /**
+   * Store one package.
+   *
+   * The record carries the filename, extension id, extension version, source
+   * information, timestamp, size, and SHA-256 checksum. Duplicate names and
+   * versions never silently overwrite an unrelated backup: when the same
+   * name/version already holds different bytes, the checksum prefix is folded
+   * into the file name so both packages survive. Re-uploading identical bytes
+   * updates the existing entry instead of growing the index.
+   */
   async function putPackage(cfg, ext, bytes, fileName) {
+    const pi = PI(),
+      limit = backendMaxBytes(cfg);
+    if (bytes.length > limit) throw Error(backendMaxMessage(cfg));
     const hash = await sha256(bytes),
-      folder = join(
-        "extensions",
-        seg(ext.id),
-        `v${seg(ext.version || "unknown")}`,
-      ),
-      path = join(folder, seg(fileName)),
-      item = {
-        extensionId: ext.id,
-        name: ext.name || ext.id,
-        version: ext.version || "",
-        fileName,
-        format: /\.zip$/i.test(fileName) ? "zip" : "crx",
+      index = await readIndex(cfg),
+      folder = pi.packageFolder(ext.id, ext.version || ""),
+      taken = pi.takenNamesInFolder(index, ext.id, ext.version || ""),
+      safeName = pi.resolveUniqueFileName(seg(fileName), taken, hash),
+      path = pi.join(folder, safeName),
+      item = pi.buildPackageRecord({
+        extension: ext,
+        fileName: safeName,
         size: bytes.length,
         sha256: hash,
         path,
         storedAt: new Date().toISOString(),
-      };
-    if (cfg.backend === "github") {
+        backend: cfg.backend,
+      }),
+      metadata = pi.packageMetadata(item),
+      metadataBytes = new TextEncoder().encode(
+        JSON.stringify(metadata, null, 2),
+      ),
+      packageType =
+        item.format === "zip"
+          ? "application/zip"
+          : "application/x-chrome-extension";
+    if (cfg.backend === "gdrive") {
+      await gdriveUpload(cfg, path, bytes, packageType);
+      await gdriveWriteJson(cfg, pi.join(folder, "metadata.json"), metadata);
+    } else if (cfg.backend === "github") {
       const root = normFolder(cfg.folder);
       await githubPut(
         cfg,
         join(root, path),
         bytes,
-        `Back up ${ext.name || ext.id} v${ext.version || ""}`,
+        `Back up ${item.name} v${item.version}`,
       );
       await githubPut(
         cfg,
         join(root, folder, "metadata.json"),
-        new TextEncoder().encode(
-          JSON.stringify(
-            {
-              schemaVersion: 1,
-              type: "chromium-cloud-sync-extension-package",
-              package: item,
-            },
-            null,
-            2,
-          ),
-        ),
+        metadataBytes,
         "Update extension backup metadata",
       );
     } else {
-      await davPut(cfg, path, bytes);
+      await davPut(cfg, path, bytes, packageType);
       await davPut(
         cfg,
         join(folder, "metadata.json"),
-        new TextEncoder().encode(
-          JSON.stringify(
-            {
-              schemaVersion: 1,
-              type: "chromium-cloud-sync-extension-package",
-              package: item,
-            },
-            null,
-            2,
-          ),
-        ),
+        metadataBytes,
         "application/json",
       );
     }
-    const index = await readIndex(cfg);
-    index.schemaVersion = 2;
-    index.updatedAt = new Date().toISOString();
-    index.backups = (Array.isArray(index.backups) ? index.backups : []).filter(
-      (x) =>
-        `${x.extensionId}:${x.version}:${x.sha256}` !==
-        `${item.extensionId}:${item.version}:${item.sha256}`,
-    );
-    index.backups.push(item);
-    index.backups = index.backups.slice(-200);
-    await writeIndex(cfg, index);
+    await writeIndex(cfg, pi.upsertIndexEntry(index, item));
     return item;
   }
+  /**
+   * Per-backend size limit.
+   *
+   * The GitHub Contents API base64 path caps at 95 MB; Drive and WebDAV stream
+   * the bytes, so they are bounded by the provider instead — Drive reports its
+   * own limit as a classified `too-large` failure.
+   */
+  function backendMaxBytes(cfg) {
+    return cfg?.backend === "github" ? MAX : Number.MAX_SAFE_INTEGER;
+  }
+  function backendMaxMessage(cfg) {
+    return cfg?.backend === "github"
+      ? t("max")
+      : zh()
+        ? "扩展包超过当前存储后端允许的大小。"
+        : "The package exceeds the size allowed by the selected storage backend.";
+  }
   async function getPackage(cfg, item) {
+    if (cfg.backend === "gdrive") return gdriveDownload(cfg, item.path);
     return cfg.backend === "github"
       ? githubRaw(
           cfg,
@@ -468,6 +625,14 @@
   }
   async function test(cfg) {
     if (cfg.backend === "disabled") return true;
+    if (cfg.backend === "gdrive") {
+      // Reuses the sync provider's Drive session; no second authorization.
+      const session = await gdriveSession();
+      if (!session?.token) throw Error(t("gdriveNotConnected"));
+      await gdriveDestination(cfg);
+      await gdriveReadJson(cfg, "index.json", PI().emptyIndex());
+      return true;
+    }
     if (cfg.backend === "github") {
       await githubInfo(cfg);
       return true;
@@ -501,6 +666,22 @@
     i.placeholder = placeholder;
     l.append(s, i);
     return { l, i, s };
+  }
+  const SOURCE_LABELS = {
+    "chrome-web-store": "sourceChromeWebStore",
+    "edge-add-ons": "sourceEdgeAddOns",
+    "self-hosted": "sourceSelfHosted",
+    unpacked: "sourceUnpacked",
+    "side-loaded": "sourceSideLoaded",
+    policy: "sourcePolicy",
+  };
+  function sourceLabel(source) {
+    const key = SOURCE_LABELS[String(source || "")];
+    return key ? t(key) : String(source || t("sourceUnknown"));
+  }
+  function fmtDate(value) {
+    const when = new Date(value);
+    return Number.isNaN(when.getTime()) ? String(value || "") : when.toLocaleString();
   }
   function addStyles() {
     if ($("ccsync-extension-storage-styles")) return;
@@ -584,6 +765,7 @@
       davFolder: $("extensionStorageWebdavFolder")?.value?.trim() || "",
       davUser: $("extensionStorageWebdavUsername")?.value || "",
       davPass: $("extensionStorageWebdavPassword")?.value || "",
+      gdriveFolder: $("extensionStorageGdriveFolder")?.value?.trim() || "",
     };
   }
   function sameStorageConfig(a, b) {
@@ -601,6 +783,10 @@
         normDav(a.davFolder) === normDav(b.davFolder) &&
         String(a.davUser || "") === String(b.davUser || "") &&
         String(a.davPass || "") === String(b.davPass || "")
+      );
+    if (a.backend === "gdrive")
+      return (
+        normFolder(a.gdriveFolder) === normFolder(b.gdriveFolder)
       );
     return true;
   }
@@ -626,7 +812,7 @@
     const grid = document.createElement("div");
     grid.className = "ccsync-ext-grid";
     const backend = field(t("backend"), "extensionStorageBackend");
-    backend.i.outerHTML = `<select class="field" id="extensionStorageBackend"><option value="disabled">${t("disabled")}</option><option value="github">${t("github")}</option><option value="webdav">WebDAV</option></select>`;
+    backend.i.outerHTML = `<select class="field" id="extensionStorageBackend"><option value="disabled">${t("disabled")}</option><option value="github">${t("github")}</option><option value="webdav">WebDAV</option><option value="gdrive">${t("gdrive")}</option></select>`;
     backend.i = backend.l.querySelector("select");
     const repo = field(
         t("repo"),
@@ -670,6 +856,17 @@
       ),
       user = field(t("user"), "extensionStorageWebdavUsername"),
       pass = field(t("pass"), "extensionStorageWebdavPassword", "password");
+    const gdriveFolder = field(
+      t("gdriveFolder"),
+      "extensionStorageGdriveFolder",
+      "text",
+      zh() ? "留空 = 应用托管根目录" : "Leave blank = app-managed root",
+    );
+    const gdriveHelp = document.createElement("div");
+    gdriveHelp.className = "ccsync-ext-token-help";
+    const gdriveState = document.createElement("div");
+    gdriveState.className = "ccsync-ext-token-help";
+    gdriveState.id = "ccsyncGdrivePackageState";
     grid.append(
       backend.l,
       repo.l,
@@ -681,6 +878,9 @@
       davFolder.l,
       user.l,
       pass.l,
+      gdriveFolder.l,
+      gdriveHelp,
+      gdriveState,
     );
     card.append(grid);
     const actions = document.createElement("div");
@@ -709,6 +909,7 @@
     davFolder.i.value = saved.davFolder;
     user.i.value = saved.davUser;
     pass.i.value = saved.davPass;
+    gdriveFolder.i.value = saved.gdriveFolder;
     const refreshOuterText = () => {
       const nav = $("extensionStorageNavLabel"),
         pt = $("extensionStoragePanelTitle"),
@@ -726,6 +927,8 @@
         t("disabled");
       backend.i.querySelector('option[value="github"]').textContent =
         t("github");
+      backend.i.querySelector('option[value="gdrive"]').textContent =
+        t("gdrive");
       repo.s.textContent = t("repo");
       branch.s.textContent = t("branch");
       folder.s.textContent = t("folder");
@@ -737,6 +940,12 @@
       davFolder.s.textContent = t("davFolder");
       user.s.textContent = t("user");
       pass.s.textContent = t("pass");
+      gdriveFolder.s.textContent = t("gdriveFolder");
+      gdriveHelp.textContent = `${t("gdriveHelp")} ${t("gdriveSeparate")}`;
+      gdriveFolder.i.placeholder = zh()
+        ? "留空 = 应用托管根目录"
+        : "Leave blank = app-managed root";
+      void refreshGdriveState();
       testBtn.textContent = t("test");
       saveBtn.textContent = t("save");
       note.textContent = t("manual");
@@ -749,13 +958,17 @@
       const mode = backend.i.value,
         gh = mode === "github",
         dv = mode === "webdav",
-        active = gh || dv;
+        gd = mode === "gdrive",
+        active = gh || dv || gd;
       for (const el of [repo.l, branch.l, folder.l, token.l, tokenHelp])
         setHidden(el, !gh);
       for (const el of [davUrl.l, davFolder.l, user.l, pass.l])
         setHidden(el, !dv);
+      for (const el of [gdriveFolder.l, gdriveHelp, gdriveState])
+        setHidden(el, !gd);
       setHidden(actions, !active);
       setHidden(note, !active);
+      if (gd) void refreshGdriveState();
     };
     const refreshVisible = async () => {
       toggle();
@@ -799,6 +1012,11 @@
           next.davUrl = String(next.davUrl).trim();
           next.davFolder = normDav(next.davFolder);
           if (!next.davUrl) throw Error(t("needDav"));
+        } else if (next.backend === "gdrive") {
+          next.gdriveFolder = normFolder(next.gdriveFolder);
+          // Reuse the Drive session authorized in sync settings; verify it works
+          // for the package destination before saving.
+          await test(next);
         } else {
           next.repo = "";
           next.branch = "";
@@ -808,6 +1026,7 @@
           next.davFolder = "";
           next.davUser = "";
           next.davPass = "";
+          next.gdriveFolder = "";
         }
         await CCSyncRuntime.storageSet({
           [K.backend]: next.backend,
@@ -819,6 +1038,7 @@
           [K.davFolder]: next.davFolder,
           [K.davUser]: next.davUser,
           [K.davPass]: next.davPass,
+          [K.gdriveFolder]: next.gdriveFolder,
         });
         Object.assign(saved, next);
         status.hidden = false;
@@ -836,6 +1056,28 @@
       }
     });
   }
+  /**
+   * Report which Google account the package backup will use.
+   *
+   * Package backup reuses the sync provider's Drive session instead of adding a
+   * second authorization, so the UI has to say which account that is — and say
+   * clearly when Drive is not connected yet.
+   */
+  async function refreshGdriveState() {
+    const el = $("ccsyncGdrivePackageState");
+    if (!el) return;
+    try {
+      const session = await CCSyncRuntime.request("gdrivePackageSession");
+      el.textContent = session?.email
+        ? t("gdriveConnectedAs").replace("{email}", session.email)
+        : t("gdrive");
+      el.classList.remove("error");
+    } catch {
+      el.textContent = t("gdriveNotConnected");
+      el.classList.add("error");
+    }
+  }
+
   async function render(cfg) {
     const card = $("extensionStorageSettings");
     if (!card) return;
@@ -976,10 +1218,9 @@
     ct.textContent = t("cloud");
     cloud.append(ct);
     try {
-      const index = await readIndex(cfg),
-        backups = Array.isArray(index.backups)
-          ? index.backups.slice().reverse()
-          : [];
+      const listed = await listBackups(cfg),
+        backups = Array.isArray(listed.backups) ? listed.backups : [],
+        missing = new Set(Array.isArray(listed.missing) ? listed.missing : []);
       if (!backups.length) {
         const n = document.createElement("div");
         n.className = "ccsync-ext-note";
@@ -995,12 +1236,30 @@
         n.className = "ccsync-ext-cloud-name";
         n.textContent = item.name || item.extensionId;
         meta.className = "ccsync-ext-cloud-meta";
-        meta.textContent = `v${item.version || "?"} · ${fmt(item.size)} · ${(item.format || "file").toUpperCase()} · ${item.extensionId}`;
+        // Source information and provider state are part of the record so a
+        // backup can be traced back to where the package came from.
+        const parts = [
+          `v${item.version || "?"}`,
+          fmt(item.size),
+          `${(item.format || "file").toUpperCase()}`,
+          item.sha256 ? `SHA-256 ${String(item.sha256).slice(0, 12)}…` : "",
+          item.source ? `${t("source")}: ${sourceLabel(item.source)}` : "",
+          item.storedAt ? `${t("storedAt")}: ${fmtDate(item.storedAt)}` : "",
+          item.extensionId,
+        ].filter(Boolean);
+        if (item.indexed === false) parts.unshift(t("unindexed"));
+        if (missing.has(item.path) || item.present === false)
+          parts.unshift(t("missingFile"));
+        meta.textContent = parts.join(" · ");
         m.append(n, meta);
         const b = document.createElement("button");
         b.className = "secondary";
         b.type = "button";
         b.textContent = t("download");
+        if (missing.has(item.path) || item.present === false) {
+          b.disabled = true;
+          b.title = t("driveNotFound");
+        }
         b.addEventListener("click", async () => {
           try {
             b.disabled = true;

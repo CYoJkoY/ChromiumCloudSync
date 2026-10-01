@@ -93,7 +93,51 @@ function createPopupCloudTabRow(tab) {
   return row;
 }
 
-async function renderCloudGroups() {
+function cloudStateMetaText(payload) {
+  const providerNames = {
+    gist: i.t("providerGist"),
+    gdrive: i.t("providerGdrive"),
+    webdav: i.t("providerWebdav"),
+  };
+  const provider =
+    providerNames[payload.provider] || payload.provider || i.t("unknown");
+  const counts = payload.counts || {};
+  const parts = [
+    payload.source === "cache"
+      ? i.t("cloudStateSourceCache")
+      : i.t("cloudStateSourceRemote"),
+    `${i.t("provider")}: ${provider}`,
+    `${i.t("revision")} ${payload.revision ?? 0}`,
+    i.t("cloudStateSummary", {
+      windows: counts.windows ?? 0,
+      groups: counts.groups ?? 0,
+      tabs: counts.tabs ?? 0,
+    }),
+  ];
+  if (payload.fetchedAt) {
+    try {
+      parts.push(
+        `${i.t("cloudStateFetchedAt")} ${new Date(payload.fetchedAt).toLocaleString()}`,
+      );
+    } catch {
+      /* keep the remaining metadata */
+    }
+  }
+  if (payload.stale) parts.unshift(i.t("cloudStateStale"));
+  return parts.join(" · ");
+}
+
+function renderCloudStateMeta(payload) {
+  const meta = $("cloudGroupsMeta");
+  if (!meta) return;
+  meta.hidden = false;
+  meta.textContent = cloudStateMetaText(payload);
+  meta.classList.toggle("cloud-state-meta-stale", payload.stale === true);
+  if (payload.warning)
+    meta.textContent += ` · ${i.t("cloudStateWarning")}: ${payload.warning}`;
+}
+
+async function renderCloudGroups(forceRemote = false) {
   const card = $("cloudGroupsCard");
   const list = $("cloudGroups");
 
@@ -104,7 +148,17 @@ async function renderCloudGroups() {
     `<div class="empty">${escapeHtml(i.t("loading"))}</div>`;
 
   try {
-    const groups = await request("cloudGroups");
+    const result = await request("cloudGroups", {
+      forceRemote: forceRemote === true,
+    });
+    // The canonical payload is an object; tolerate the legacy array shape so a
+    // stale service worker can never blank the popup restore view.
+    const payload = Array.isArray(result)
+      ? { groups: result, counts: {}, source: "remote", revision: 0 }
+      : result || { groups: [] };
+    const groups = Array.isArray(payload.groups) ? payload.groups : [];
+
+    renderCloudStateMeta(payload);
 
     if (!groups.length) {
       list.innerHTML =
@@ -202,6 +256,26 @@ async function renderCloudGroups() {
       `<div class="empty error-copy">${escapeHtml(error?.message || String(error))}</div>`;
   }
 }
+
+bindAction("refreshCloudGroups", async (_event, button) =>
+  withButton(button, async () => {
+    await renderCloudGroups(true);
+    setStatus(
+      "ok",
+      i.t("cloudRefreshDone"),
+      i.t("cloudStateSourceRemote"),
+      "",
+    );
+  }),
+);
+
+// A cloud-tab change triggered anywhere (Settings refresh, sync, delete, move)
+// must be observed here so the popup restore view and the management page can
+// never present two different datasets.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== "cloudTabStateChanged") return;
+  void renderCloudGroups();
+});
 
 bindAction("sync", async (_event, button) =>
   withButton(button, async () => {
@@ -314,7 +388,6 @@ bindAction("checkExtensions", async (_event, button) =>
       a.target = "_blank";
       a.rel = "noreferrer";
       a.className = "secondary";
-      a.textContent = i.t("openInstall");
       row.append(main, a);
       wrap.append(row);
     }
