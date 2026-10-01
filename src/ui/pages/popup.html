@@ -291,7 +291,13 @@
       </section>
 
       <section class="card" id="cloudGroupsCard" hidden>
-        <p class="section-label" data-i18n="cloudGroups">Cloud tab groups</p>
+        <div class="popup-cloud-groups-head">
+          <p class="section-label" data-i18n="cloudGroups">Cloud tab groups</p>
+          <button type="button" class="secondary popup-cloud-refresh" id="refreshCloudGroups" data-i18n="refreshFromCloud">
+            Refresh from cloud
+          </button>
+        </div>
+        <div id="cloudGroupsMeta" class="cloud-state-meta" hidden></div>
         <div id="cloudGroups" class="cloud-group-list"></div>
       </section>
 

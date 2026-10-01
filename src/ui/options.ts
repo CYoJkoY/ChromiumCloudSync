@@ -16,7 +16,23 @@ const providerEl = $("provider"),
   restoreModeEl = $("restoreGroupMode"),
   tabSyncModeEl = $("tabSyncMode"),
   tabSyncModeDescriptionEl = $("tabSyncModeDescription"),
-  cloudTabsManager = $("cloudTabsManager");
+  cloudTabsManager = $("cloudTabsManager"),
+  storageLayoutSummaryEl = $("storageLayoutSummary"),
+  storageModuleListEl = $("storageModuleList"),
+  storageLegacyNoteEl = $("storageLegacyNote"),
+  gdriveAuthStateEl = $("gdriveAuthState"),
+  gdriveConnectBrowserEl = $("gdriveConnectBrowser"),
+  gdriveManualDetailsEl = $("gdriveManualDetails"),
+  gdriveManualNoticeEl = $("gdriveManualNotice");
+
+function providerLabel(provider) {
+  const names = {
+    gist: i.t("providerGist"),
+    gdrive: i.t("providerGdrive"),
+    webdav: i.t("providerWebdav"),
+  };
+  return names[provider] || provider || i.t("unknown");
+}
 
 function toggleProvider() {
   const value = providerEl?.value || "gist";
@@ -43,19 +59,61 @@ providerEl?.addEventListener("change", async () => {
     showError(e);
   }
 });
-$("gdriveConnect")?.addEventListener("click", async () => {
+/**
+ * Browser-managed authorization: no client configuration is requested, so
+ * Chromium's own account chooser handles Google account selection and consent.
+ */
+$("gdriveConnectBrowser")?.addEventListener("click", async () => {
+  const button = gdriveConnectBrowserEl;
+  if (button) {
+    button.disabled = true;
+    button.textContent = i.t("gdriveConnecting");
+  }
   try {
-    await request("connectGdrive", {
-      clientId: $("gdriveClientId")?.value || "",
+    const auth = await request("connectGdrive", {});
+    showFeedback(
+      "success",
+      auth?.email
+        ? i.t("gdriveConnectedAs", { email: auth.email })
+        : i.t("gdriveConnected"),
+      "",
+    );
+    await refresh();
+  } catch (e) {
+    showError(e);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = i.t("gdriveConnectBrowser");
+    }
+  }
+});
+/** Explicit fallback: developer-provided OAuth client, shown only when needed. */
+$("gdriveConnect")?.addEventListener("click", async () => {
+  const clientId = $("gdriveClientId")?.value || "";
+  if (!String(clientId).trim()) {
+    showError(new Error(i.t("gdriveClientIdRequired")));
+    return;
+  }
+  try {
+    const auth = await request("connectGdrive", {
+      clientId,
       clientSecret: $("gdriveClientSecret")?.value || "",
     });
-    showFeedback("success", i.t("gdriveConnected"), "");
+    showFeedback(
+      "success",
+      auth?.email
+        ? i.t("gdriveConnectedAs", { email: auth.email })
+        : i.t("gdriveConnected"),
+      "",
+    );
     await refresh();
   } catch (e) {
     showError(e);
   }
 });
 $("gdriveDisconnect")?.addEventListener("click", async () => {
+  if (!confirm(i.t("gdriveDisconnectConfirm"))) return;
   try {
     await request("disconnectGdrive");
     showFeedback("success", i.t("gdriveDisconnected"), "");
@@ -159,6 +217,51 @@ function refreshIntervalLabels() {
   for (const option of syncIntervalEl.options)
     option.textContent = `${option.value} ${suffix}`;
 }
+/**
+ * Show the connected Google account and connection state.
+ *
+ * Browser-managed OAuth is presented as the normal path. The manual OAuth
+ * client section is only surfaced when this browser cannot authorize the
+ * extension itself, and it says so explicitly rather than looking like the
+ * default setup step.
+ */
+function renderGdriveAuthState(r) {
+  if (gdriveAuthStateEl) {
+    if (!r.gdriveConnected) {
+      gdriveAuthStateEl.textContent = i.t("gdriveNotConnected");
+    } else {
+      const account =
+        r.gdriveEmail || r.gdriveDisplayName || i.t("gdriveUnknownAccount");
+      const lines = [
+        i.t("gdriveConnectedAs", { email: account }),
+        `${i.t("gdriveAuthMode")}: ${
+          r.gdriveMode === "manual"
+            ? i.t("gdriveAuthModeManual")
+            : i.t("gdriveAuthModeBrowser")
+        }`,
+        `${i.t("gdriveScope")}: ${r.gdriveScope || "drive.file"}`,
+      ];
+      if (r.gdriveConnectedAt)
+        lines.push(
+          `${i.t("gdriveConnectedAt")} ${new Date(r.gdriveConnectedAt).toLocaleString()}`,
+        );
+      gdriveAuthStateEl.textContent = lines.join("\n");
+      gdriveAuthStateEl.style.whiteSpace = "pre-line";
+    }
+  }
+  const browserManaged = r.gdriveBrowserManaged !== false;
+  if (gdriveManualNoticeEl) {
+    gdriveManualNoticeEl.hidden = browserManaged;
+    if (!browserManaged)
+      gdriveManualNoticeEl.textContent = i.t("gdriveManualRequired");
+  }
+  if (gdriveManualDetailsEl && !browserManaged)
+    gdriveManualDetailsEl.open = true;
+  // Without browser-managed OAuth the account button cannot work, so it is
+  // disabled instead of failing after the user clicks it.
+  if (gdriveConnectBrowserEl) gdriveConnectBrowserEl.disabled = !browserManaged;
+}
+
 async function refresh() {
   try {
     const r = await request("status");
@@ -191,6 +294,7 @@ async function refresh() {
             minutes: r.autoSyncIntervalMinutes ?? 5,
           });
     }
+    renderGdriveAuthState(r);
     if (tabSyncModeEl)
       tabSyncModeEl.value =
         r.tabSyncMode || tabSyncModeEl.value || "overwrite";
@@ -215,6 +319,7 @@ async function load() {
     refreshIntervalLabels();
     await loadProvider();
     await refresh();
+    await refreshStorageLayout();
   } catch (e) {
     showError(e);
   }
@@ -549,15 +654,86 @@ function createCloudUngroupedSection(tabs, localTabIds, windowSyncId) {
   return section;
 }
 
-async function refreshCloudTabs() {
+function cloudTabsMetaText(payload) {
+  const providerNames = {
+    gist: i.t("providerGist"),
+    gdrive: i.t("providerGdrive"),
+    webdav: i.t("providerWebdav"),
+  };
+  const provider =
+    providerNames[payload.provider] || payload.provider || i.t("unknown");
+  const counts = payload.counts || {};
+  const parts = [
+    payload.source === "cache"
+      ? i.t("cloudStateSourceCache")
+      : i.t("cloudStateSourceRemote"),
+    `${i.t("provider")}: ${provider}`,
+    `${i.t("revision")} ${payload.revision ?? 0}`,
+    i.t("cloudStateSummary", {
+      windows: counts.windows ?? 0,
+      groups: counts.groups ?? 0,
+      tabs: counts.tabs ?? 0,
+    }),
+  ];
+  if (payload.fetchedAt) {
+    try {
+      parts.push(
+        `${i.t("cloudStateFetchedAt")} ${new Date(payload.fetchedAt).toLocaleString()}`,
+      );
+    } catch {
+      /* keep the remaining metadata */
+    }
+  }
+  if (payload.stale) parts.unshift(i.t("cloudStateStale"));
+  return parts.join(" · ");
+}
+
+function ensureCloudTabsMeta() {
+  if (!cloudTabsManager) return null;
+  let meta = $("cloudTabsStateMeta");
+  if (!meta) {
+    meta = document.createElement("div");
+    meta.id = "cloudTabsStateMeta";
+    meta.className = "cloud-state-meta section-note";
+    cloudTabsManager.append(meta);
+  }
+  return meta;
+}
+
+/**
+ * Render the canonical cloud-tab dataset.
+ *
+ * `forceRemote` is the unambiguous "force remote refresh" semantic required by
+ * the Refresh action: the background ignores its cached projection, re-reads
+ * windows/tabs/groups from the active provider, replaces the cache, and
+ * broadcasts the new dataset so the popup observes the same state.
+ */
+async function refreshCloudTabs(forceRemote = false) {
   if (!cloudTabsManager)
     return;
 
   cloudTabsManager.replaceChildren();
+  const meta = ensureCloudTabsMeta();
+  if (meta) {
+    meta.hidden = false;
+    meta.classList.remove("cloud-state-meta-stale");
+    meta.textContent = forceRemote
+      ? i.t("cloudTabsRefreshing")
+      : i.t("loading");
+  }
 
   try {
-    const data = await request("cloudTabState");
-    const snapshot = data.snapshot || {};
+    const data = await request("cloudTabState", {
+      forceRemote: forceRemote === true,
+    });
+
+    if (meta) {
+      meta.hidden = false;
+      meta.textContent = cloudTabsMetaText(data);
+      meta.classList.toggle("cloud-state-meta-stale", data.stale === true);
+      if (data.warning)
+        meta.textContent += ` · ${i.t("cloudStateWarning")}: ${data.warning}`;
+    }
 
     if ((data.mode || "overwrite") !== "incremental") {
       const note = document.createElement("div");
@@ -568,15 +744,12 @@ async function refreshCloudTabs() {
     }
 
     const localTabIds = new Set(data.localTabIds || []);
-    const groupsById = new Map(
-      (snapshot.groups || []).map((group) => [
-        group.syncId,
-        group,
-      ]),
-    );
-    const windows = snapshot.windows || [];
+    const windows = Array.isArray(data.windows) ? data.windows : [];
+    const detachedGroups = Array.isArray(data.detachedGroups)
+      ? data.detachedGroups
+      : [];
 
-    if (!windows.length) {
+    if (!windows.length && !detachedGroups.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
       empty.textContent = i.t("cloudTabsEmpty");
@@ -584,12 +757,12 @@ async function refreshCloudTabs() {
       return;
     }
 
-    for (const [windowIndex, window] of windows.entries()) {
+    for (const [windowIndex, cloudWindow] of windows.entries()) {
       const windowSection = document.createElement("details");
       windowSection.className = "cloud-window-section";
       windowSection.open = windowIndex === 0;
 
-      const windowTabs = window.tabs || [];
+      const windowTabs = cloudWindow.tabs || [];
 
       windowSection.append(
         createCloudDisclosureSummary(
@@ -611,41 +784,50 @@ async function refreshCloudTabs() {
         continue;
       }
 
-      const grouped = new Map();
-      const ungrouped = [];
+      for (const group of cloudWindow.groups || [])
+        body.append(
+          createCloudGroupSection(group, group.tabs || [], localTabIds),
+        );
 
-      for (const tab of windowTabs) {
-        const groupId = tab.group?.syncId || null;
-        if (!groupId) {
-          ungrouped.push(tab);
-          continue;
-        }
-        if (!grouped.has(groupId))
-          grouped.set(groupId, []);
-        grouped.get(groupId).push(tab);
-      }
-
-      for (const [groupId, tabs] of grouped.entries()) {
-        const group = groupsById.get(groupId) || {
-          syncId: groupId,
-          title: "",
-          color: "grey",
-          collapsed: false,
-        };
-        body.append(createCloudGroupSection(group, tabs, localTabIds));
-      }
-
+      const ungrouped = cloudWindow.ungroupedTabs || [];
       if (ungrouped.length)
         body.append(
           createCloudUngroupedSection(
             ungrouped,
             localTabIds,
-            window.syncId,
+            cloudWindow.syncId,
           ),
         );
 
       windowSection.append(body);
       cloudTabsManager.append(windowSection);
+    }
+
+    // Groups that exist in the cloud without any window reference are part of
+    // the same canonical dataset the popup lists, so they are rendered too.
+    if (detachedGroups.length) {
+      const detachedSection = document.createElement("details");
+      detachedSection.className = "cloud-detached-section";
+      detachedSection.open = false;
+      detachedSection.append(
+        createCloudDisclosureSummary(
+          i.t("cloudOnlyGroups"),
+          i.t("groupTabCount", {
+            count: detachedGroups.reduce(
+              (total, group) => total + (group.tabs || []).length,
+              0,
+            ),
+          }),
+        ),
+      );
+      const body = document.createElement("div");
+      body.className = "cloud-window-body";
+      for (const group of detachedGroups)
+        body.append(
+          createCloudGroupSection(group, group.tabs || [], localTabIds),
+        );
+      detachedSection.append(body);
+      cloudTabsManager.append(detachedSection);
     }
   } catch (e) {
     showError(e);
@@ -657,7 +839,103 @@ bindAction("addCurrentTabsToCloud", async (_e, b) => {
   try { await request("addCurrentTabsToCloud"); showFeedback("success", i.t("tabsAddedToCloud"), ""); await refreshCloudTabs(); }
   finally { b.disabled = false; b.textContent = old; }
 });
-bindAction("refreshCloudTabs", () => refreshCloudTabs());
+bindAction("refreshCloudTabs", async (_e, b) => {
+  const old = b.textContent;
+  b.disabled = true;
+  b.textContent = i.t("processing");
+  try {
+    await refreshCloudTabs(true);
+    showFeedback("success", i.t("cloudTabsRefreshed"), i.t("cloudStateSourceRemote"));
+  } catch (e) {
+    showError(e);
+  } finally {
+    b.disabled = false;
+    b.textContent = old;
+  }
+});
+
+// Observe canonical cloud-tab changes published by the service worker (popup
+// refresh, sync, delete/move) so both surfaces converge on the same dataset.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== "cloudTabStateChanged") return;
+  const panel = $("panel-cloud-tabs");
+  if (!panel || panel.classList.contains("hidden")) return;
+  void refreshCloudTabs();
+});
+/**
+ * Coherent overall view of the split provider storage.
+ *
+ * The cloud payload is several independent module files now, so this panel
+ * reports the layout, every module file with its own revision, and whether a
+ * legacy archive is still preserved.
+ */
+async function refreshStorageLayout() {
+  if (!storageLayoutSummaryEl || !storageModuleListEl) return;
+  storageLayoutSummaryEl.textContent = i.t("loading");
+  storageLayoutSummaryEl.style.whiteSpace = "pre-line";
+  storageModuleListEl.replaceChildren();
+  if (storageLegacyNoteEl) storageLegacyNoteEl.hidden = true;
+
+  try {
+    const layout = await request("storageLayout");
+    if (!layout || !layout.bound) {
+      storageLayoutSummaryEl.textContent = i.t("storageLayoutUnavailable");
+      return;
+    }
+    if (layout.error) {
+      storageLayoutSummaryEl.textContent = `${i.t("operationFailed")}: ${layout.error}`;
+      return;
+    }
+    storageLayoutSummaryEl.textContent = [
+      `${i.t("provider")}: ${providerLabel(layout.provider)}`,
+      `${i.t("storageLayoutLabel")}: ${
+        layout.layout === "modular"
+          ? i.t("storageLayoutModular")
+          : i.t("storageLayoutLegacy")
+      }`,
+      `${i.t("storageSchemaVersion")}: ${layout.schemaVersion} · ${i.t("storageFormatVersion")}: ${layout.formatVersion}`,
+      `${i.t("revision")}: ${layout.revision}`,
+      layout.updatedAt
+        ? `${i.t("lastSync")} ${new Date(layout.updatedAt).toLocaleString()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    for (const entry of layout.modules || []) {
+      const row = document.createElement("div");
+      row.className = "history-row";
+      const main = document.createElement("div");
+      main.className = "history-main";
+      const title = document.createElement("div");
+      title.className = "history-title mono";
+      title.textContent = entry.file;
+      const meta = document.createElement("div");
+      meta.className = "history-meta";
+      meta.textContent = `${i.t("storageModuleRevision")}: ${entry.revision} · ${i.t("storageModuleTombstones")}: ${entry.tombstones} · ${entry.checksum}`;
+      main.append(title, meta);
+      const side = document.createElement("div");
+      side.className = "history-meta";
+      side.textContent = entry.updatedAt
+        ? new Date(entry.updatedAt).toLocaleString()
+        : "";
+      row.append(main, side);
+      storageModuleListEl.append(row);
+    }
+
+    if (layout.legacyArchive && storageLegacyNoteEl) {
+      storageLegacyNoteEl.hidden = false;
+      storageLegacyNoteEl.textContent = i.t("storageLegacyArchive", {
+        file: layout.legacyArchive,
+      });
+    }
+  } catch (e) {
+    showError(e);
+  }
+}
+
+bindAction("refreshStorageLayout", () => refreshStorageLayout());
+
 function setupTabs() {
   const tabs = [...document.querySelectorAll(".nav-tab")],
     panels = [...document.querySelectorAll(".tab-panel")],
@@ -673,7 +951,8 @@ function setupTabs() {
       for (const p of panels)
         p.classList.toggle("hidden", p.id !== t.dataset.target);
       if (hash) history.replaceState(null, "", `#${id.replace(/^panel-/, "")}`);
-      if (id === "panel-cloud-tabs") void refreshCloudTabs();
+      if (id === "panel-cloud-tabs") void refreshCloudTabs(false);
+      if (id === "panel-local") void refreshStorageLayout();
     };
   for (const t of tabs) {
     t.addEventListener("click", () => act(t.dataset.target));
