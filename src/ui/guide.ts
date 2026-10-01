@@ -36,7 +36,7 @@ const DICT = {
       "Use the Extension Recovery Center to review extensions that exist in the cloud inventory but are not installed locally. When a verified Chrome Web Store or Microsoft Edge Add-ons link is available, the page provides a direct installation link. Installation itself remains a manual browser action.",
     packageTitle: "Third-party extension package backup",
     packageBody:
-      "CRX and ZIP backups are separate from browser-state synchronization. Open Settings → Third-party extensions, choose GitHub private repository or WebDAV, enter the required credentials, test and save the backend, then select which installed extensions should have package backups. For each selected extension, choose its CRX or ZIP file to upload. The package index and selection are stored in the configured backend; credentials remain local to the browser. Package installation remains manual.",
+      "CRX and ZIP backups are separate from browser-state synchronization. Open Settings → Third-party extensions, configure a backend, then select which extensions to back up and choose their CRX/ZIP files. Chromium does not let this extension read another extension’s installed directory by ID, so the initial package must be selected by the user; downloading a backup also does not bypass the browser’s install confirmation. Deselecting or uninstalling does not silently delete cloud files: save the desired selection, then use Clean up unused backups to review and permanently remove packages for unselected IDs, including older versions. The index keeps the full inventory so cleanup can find every recorded file.",
     historyTitle: "History and rollback",
     historyBody:
       "History depends on the selected provider: GitHub Gist uses Gist revisions, Google Drive uses file revisions, and WebDAV archives previous current-state files in its history area. The History page can inspect revisions and create a new current revision by rolling back to a selected version.",
@@ -48,7 +48,7 @@ const DICT = {
       "New sync Gists created by the extension are private. The current synchronization payload is normal JSON in the Gist and is not end-to-end encrypted. Treat access to the private Gist as access to the synchronized browser data. For package backups, use a private GitHub repository or a trusted WebDAV server and a least-privilege credential.",
     troubleTitle: "Troubleshooting",
     troubleBody:
-      "If synchronization fails, first open the popup and read the detailed status message. Then verify the GitHub Token and Gist binding in Settings. For package backups, verify the selected backend, its credentials, repository or WebDAV path, and the saved extension selection. Remember that the browser cannot expose another extension’s installed CRX bytes automatically, so the first package backup requires manual file selection.",
+      "If synchronization fails, first open the popup and read the detailed status message. Then verify the GitHub Token and Gist binding in Settings. For package backups, verify the selected backend, its credentials, repository or WebDAV path, and the saved extension selection. The browser cannot expose another extension’s unpacked directory or installed CRX bytes automatically, so package upload requires selecting a CRX/ZIP. To clear backups for removed or deselected extensions, save the current selection and run Clean up unused backups; deletion is confirmed and permanent.",
     scopeTitle: "Synchronization scope",
     scopeBody:
       "Chromium Cloud Sync synchronizes windows, HTTP(S) tabs, tab groups, bookmarks, and third-party extension metadata. It does not synchronize third-party extension settings or private extension storage. Extension package backup is handled separately through the package-backup and recovery workflow.",
@@ -90,7 +90,7 @@ const DICT = {
       "打开“扩展恢复中心”，可以查看云端清单中存在但当前浏览器没有安装的扩展。如果能够确认 Chrome 网上应用店或 Microsoft Edge 加载项链接，页面会提供直接安装入口。扩展安装仍然由用户手动确认。",
     packageTitle: "第三方扩展包备份",
     packageBody:
-      "CRX / ZIP 备份与浏览器状态同步完全分离。打开“设置 → 第三方扩展”，选择“GitHub 私有仓库”或 WebDAV，填写对应凭据，测试并保存后，再选择需要备份的已安装扩展。对于已选择的扩展，点击“备份 CRX / ZIP”并手动选择对应文件上传。扩展包索引和选择结果保存在所选后端；凭据只保存在当前浏览器本地。扩展安装仍然需要手动完成。",
+      "CRX / ZIP 备份与浏览器状态同步完全分离。打开“设置 → 第三方扩展”配置后端并保存，再选择需要备份的扩展，手动选择其 CRX / ZIP 文件上传。Chromium 不允许本扩展按 ID 读取其他扩展安装目录中的解压文件；下载备份后也仍需由浏览器确认安装。取消选择或卸载不会静默删除云端文件：保存当前备份选择后，点击“清理未选扩展备份”即可检查并永久删除未选 ID 的所有扩展包（包括旧版本）。索引会保留完整清单，确保清理时能找到已上传的文件。",
     historyTitle: "历史与回滚",
     historyBody:
       "历史记录取决于所选择的存储后端：GitHub Gist 使用 Gist Revision，Google Drive 使用文件修订历史，WebDAV 会归档之前的当前状态文件并维护 history 索引。“历史”页面可以查看版本，并通过回滚操作创建新的当前 Revision。",
@@ -102,7 +102,7 @@ const DICT = {
       "插件创建的同步 Gist 默认是私有的。当前同步载荷以普通 JSON 保存在 Gist 中，并不是端到端加密。应将能够访问这个私有 Gist 视为能够访问同步的浏览器数据。扩展包备份建议使用私有 GitHub 仓库或可信的 WebDAV 服务，并坚持最小权限原则。",
     troubleTitle: "故障排查",
     troubleBody:
-      "同步失败时，先打开 Popup 查看详细状态信息，然后在设置中检查 GitHub Token 和 Gist 绑定。扩展包备份失败时，检查所选后端、凭据、仓库或 WebDAV 路径，以及已保存的扩展选择。浏览器不能自动向另一个扩展暴露其已安装 CRX 的原始字节，因此首次备份扩展包需要手动选择文件。",
+      "同步失败时，先打开 Popup 查看详细状态信息，然后在设置中检查 GitHub Token 和 Gist 绑定。扩展包备份失败时，检查所选后端、凭据、仓库或 WebDAV 路径，以及已保存的扩展选择。浏览器不会自动向另一个扩展暴露其解压目录或 CRX 字节，因此上传需要手动选择 CRX / ZIP。若要清理已移除或取消选择的扩展，请保存当前备份选择，再运行“清理未选扩展备份”；删除前会再次确认且无法撤销。",
     scopeTitle: "同步范围",
     scopeBody:
       "Chromium Cloud Sync 同步窗口、HTTP(S) 标签页、标签组、书签以及第三方扩展元数据。它不会同步第三方扩展设置或其他扩展的私有存储。扩展安装包通过独立的备份和恢复流程处理。",

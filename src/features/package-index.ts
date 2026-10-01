@@ -13,7 +13,6 @@
   const PACKAGE_INDEX_SCHEMA = 2;
   const PACKAGE_METADATA_SCHEMA = 1;
   const PACKAGE_METADATA_TYPE = "chromium-cloud-sync-extension-package";
-  const MAX_INDEX_ENTRIES = 200;
 
   const seg = (v) =>
     String(v || "")
@@ -43,6 +42,19 @@
   /** Relative path of a package file inside the backup destination. */
   function packagePath(extensionId, version, fileName) {
     return join(packageFolder(extensionId, version), seg(fileName));
+  }
+
+  /**
+   * Validate the exact ID/version/file layout before deleting a remote object.
+   * Cloud indexes are user-controlled JSON, so cleanup must never turn an
+   * arbitrary indexed path into a provider delete request.
+   */
+  function isPackagePath(path, extensionId, version, fileName) {
+    const name = String(fileName || "");
+    return (
+      /\.(crx|zip)$/i.test(name) &&
+      String(path || "") === packagePath(extensionId, version, name)
+    );
   }
 
   function splitFileName(fileName) {
@@ -189,7 +201,8 @@
    *
    * The previous entry for the same extension/version/checksum is replaced, so
    * re-uploading identical bytes does not grow the index; entries with a
-   * different checksum are kept side by side.
+   * different checksum are kept side by side. Never truncate this index: losing
+   * a record without deleting its file would create an unmanageable cloud orphan.
    */
   function upsertIndexEntry(index, record) {
     const current = normalizeIndex(index);
@@ -199,7 +212,41 @@
     return {
       schemaVersion: PACKAGE_INDEX_SCHEMA,
       updatedAt: new Date().toISOString(),
-      backups: backups.slice(-MAX_INDEX_ENTRIES),
+      backups,
+    };
+  }
+
+  /** Packages not in the persisted backup selection are safe cleanup candidates. */
+  function findUnusedPackages(packages, selectedIds) {
+    const selected = new Set(
+      (Array.isArray(selectedIds) ? selectedIds : []).map(String),
+    );
+    const seen = new Set();
+    return (Array.isArray(packages) ? packages : []).filter((entry) => {
+      const id = String(entry?.extensionId || "");
+      const path = String(entry?.path || "");
+      if (
+        !id ||
+        selected.has(id) ||
+        seen.has(path) ||
+        !isPackagePath(path, id, entry?.version, entry?.fileName)
+      )
+        return false;
+      seen.add(path);
+      return true;
+    });
+  }
+
+  /** Remove index entries only after the matching provider files were deleted. */
+  function removeIndexEntries(index, paths) {
+    const current = normalizeIndex(index);
+    const values =
+      paths instanceof Set ? [...paths] : Array.isArray(paths) ? paths : [];
+    const removed = new Set(values.map(String));
+    return {
+      schemaVersion: PACKAGE_INDEX_SCHEMA,
+      updatedAt: new Date().toISOString(),
+      backups: current.backups.filter((entry) => !removed.has(entry.path)),
     };
   }
 
@@ -283,11 +330,11 @@
     PACKAGE_INDEX_SCHEMA,
     PACKAGE_METADATA_SCHEMA,
     PACKAGE_METADATA_TYPE,
-    MAX_INDEX_ENTRIES,
     seg,
     join,
     packageFolder,
     packagePath,
+    isPackagePath,
     packageFormat,
     splitFileName,
     resolveUniqueFileName,
@@ -298,6 +345,8 @@
     emptyIndex,
     normalizeIndex,
     upsertIndexEntry,
+    findUnusedPackages,
+    removeIndexEntries,
     findIndexEntry,
     takenNamesInFolder,
     mergeIndexWithListing,
