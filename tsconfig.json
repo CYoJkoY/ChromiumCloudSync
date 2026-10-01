@@ -30,6 +30,7 @@
     "src/runtime/cloud-gdrive.ts",
     "src/runtime/cloud-webdav.ts",
     "src/features/extension-storage-watch.ts",
+    "src/features/extension-local-source.ts",
     "src/features/extension-storage.ts",
     "src/features/package-index.ts",
     "src/features/gdrive-packages.ts",

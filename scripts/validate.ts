@@ -53,6 +53,7 @@ const sourceFiles = [
   "src/runtime/cloud-webdav.ts",
   "src/features/extension-storage.ts",
   "src/features/extension-storage-watch.ts",
+  "src/features/extension-local-source.ts",
   "src/features/package-index.ts",
   "src/features/gdrive-packages.ts",
   "src/features/update.ts",
@@ -93,6 +94,7 @@ const requiredRefs = {
     "i18n.js",
     "package-index.js",
     "gdrive-packages.js",
+    "extension-local-source.js",
     "extension-storage.js",
     "options.js",
   ],
@@ -115,6 +117,7 @@ const runtimeFiles = [
   "types.js",
   "extension-storage.js",
   "extension-storage-watch.js",
+  "extension-local-source.js",
   "package-index.js",
   "gdrive-packages.js",
   "update.js",
@@ -460,6 +463,54 @@ for (const required of [
   if (!packageIndex.includes(required))
     throw new Error("Package index domain is missing " + required);
 
+const localSource = fs.readFileSync(
+  path.join(root, "src/features/extension-local-source.ts"),
+  "utf8",
+);
+for (const required of [
+  "window.CCSyncExtensionLocalSource",
+  "createZip",
+  "crc32",
+  "packageFileName",
+  "buildLocalPackage",
+  "readZipEntry",
+  "readZipManifestInfo",
+  "parseCrxId",
+  // A folder can be a user-data directory, one Extensions directory, or an
+  // unpacked source tree; all three have to be recognized.
+  "detectLocalLayout",
+  "planLocalPackages",
+  "identifyUploadedPackage",
+  "scanDirectoryHandle",
+  "scanPickedFiles",
+  "readLocalManifests",
+  // Extension IDs use Chromium's a-p alphabet, so a hash read out of a CRX
+  // header has to be converted before it can be matched.
+  "hexToExtensionId",
+  // A stable timestamp keeps a re-packaged archive byte-identical, which is
+  // what lets the index reuse the existing cloud object.
+  "ZIP_DOS_DATE",
+])
+  if (!localSource.includes(required))
+    throw new Error("Local extension source module is missing " + required);
+// Comments legitimately mention chrome.management when explaining why the
+// module exists, so strip them before looking for real API usage.
+const stripComments = (code: string): string =>
+  code
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+const localSourceCode = stripComments(localSource);
+// The local-source module must not become a second translation surface: the
+// options page owns every user-facing string.
+if (/\bt\(\s*["'][A-Za-z0-9_]+["']/.test(localSourceCode))
+  throw new Error(
+    "extension-local-source.ts must not translate its own strings; pass them in from extension-storage.ts",
+  );
+if (/chrome\.(tabs|bookmarks|management|identity|storage|runtime)\b/.test(localSourceCode))
+  throw new Error(
+    "extension-local-source.ts must stay a page-context helper and not call privileged extension APIs",
+  );
+
 const gdrivePackages = fs.readFileSync(
   path.join(root, "src/features/gdrive-packages.ts"),
   "utf8",
@@ -532,6 +583,12 @@ for (const required of [
   "resolveUniqueFileName",
   "takenNamesInFolder",
   "upsertIndexEntry",
+  // Backing up from a local folder replaces the per-extension picker.
+  "window.CCSyncExtensionLocalSource",
+  "localBackupFlow",
+  "uploadPackageFiles",
+  "scanDirectoryHandle",
+  "identifyUploadedPackage",
   // Required metadata fields.
   "buildPackageRecord",
   "packageMetadata",

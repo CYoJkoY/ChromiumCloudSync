@@ -147,6 +147,9 @@
       installType: input?.installType || sourceInfo.installType,
       updateUrl: input?.updateUrl || sourceInfo.updateUrl,
       backend: String(input?.backend || ""),
+      // Where the bytes came from: an uploaded CRX/ZIP, or a package this
+      // extension built from the unpacked files it found on disk.
+      origin: String(input?.origin || ""),
     };
   }
 
@@ -187,6 +190,7 @@
           installType: String(entry.installType || ""),
           updateUrl: String(entry.updateUrl || ""),
           backend: String(entry.backend || ""),
+          origin: String(entry.origin || ""),
         }))
       : [];
     return {
