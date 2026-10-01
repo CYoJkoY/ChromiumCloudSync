@@ -706,6 +706,11 @@
     el.hidden = hidden;
     el.classList.toggle("ccsync-ext-hidden", hidden);
   }
+  // Keep the pending package request outside the input element so calling
+  // input.click() can stay synchronous in the user's click handler. Chromium
+  // blocks file pickers opened after an awaited storage read loses user
+  // activation.
+  let pendingPackageUpload = null;
   function fileInput() {
     let input = $("ccsyncExtensionPackageInput");
     if (input) return input;
@@ -716,25 +721,33 @@
     input.hidden = true;
     document.body.append(input);
     input.addEventListener("change", async () => {
-      const id = input.dataset.extensionId,
-        name = input.dataset.extensionName,
-        version = input.dataset.extensionVersion,
+      const request = pendingPackageUpload,
         file = input.files?.[0];
+      pendingPackageUpload = null;
       input.value = "";
-      if (!id || !file) return;
-      const cfg = await getCfg();
-      if (cfg.backend === "disabled") {
-        alert(
-          zh()
-            ? "请先保存并启用第三方扩展云存储。"
-            : "Save and enable third-party extension cloud storage first.",
-        );
-        return;
-      }
-      const button = document.querySelector(
-        `[data-backup-for="${CSS.escape(id)}"]`,
-      );
+      if (!request || !file) return;
+      const { id, name, version, cfg: expectedCfg, verifyForm } = request;
+      let button = null;
       try {
+        const cfg = await getCfg();
+        if (
+          !sameStorageConfig(cfg, expectedCfg) ||
+          (verifyForm && !sameStorageConfig(uiCfg(cfg), cfg))
+        ) {
+          alert(t("selectionNeedSave"));
+          return;
+        }
+        if (cfg.backend === "disabled") {
+          alert(
+            zh()
+              ? "请先保存并启用第三方扩展云存储。"
+              : "Save and enable third-party extension cloud storage first.",
+          );
+          return;
+        }
+        button = document.querySelector(
+          `[data-backup-for="${CSS.escape(id)}"]`,
+        );
         if (button) {
           button.disabled = true;
           button.textContent = t("uploading");
@@ -985,7 +998,10 @@
     };
     const refreshVisible = async () => {
       toggle();
-      await render(uiCfg(await getCfg()));
+      // The extension list and its actions must always use the persisted
+      // backend configuration. Rendering the form draft here made a newly
+      // selected backend look usable before its settings had been saved.
+      await render(await getCfg());
     };
     backend.i.addEventListener("change", () => void refreshVisible());
     toggle();
@@ -993,8 +1009,7 @@
     refreshLanguage = async () => {
       refreshSettingsText();
       toggle();
-      const current = await getCfg();
-      await render(uiCfg(current));
+      await render(await getCfg());
     };
     const report = (kind, message) => {
       status.hidden = false;
@@ -1059,7 +1074,7 @@
           [K.davPass]: next.davPass,
           [K.gdriveFolder]: next.gdriveFolder,
         });
-        Object.assign(saved, next);
+        Object.assign(saved, await getCfg());
         report("ok", t("saved"));
         refreshSettingsText();
         toggle();
@@ -1070,6 +1085,10 @@
         saveBtn.disabled = false;
       }
     });
+    // Load the saved package-backup view on page open as well. Without this,
+    // users only saw the list after changing the backend selector, which could
+    // accidentally render unsaved form values as though they were active.
+    await render(saved);
   }
   async function refreshGdriveState() {
     const el = $("ccsyncGdrivePackageState");
@@ -1160,25 +1179,30 @@
       b.disabled = !cb.checked;
       b.addEventListener("click", (e) => {
         e.preventDefault();
-        void getCfg().then((s) => {
-          if (!sameStorageConfig(s, cfg)) {
-            alert(t("selectionNeedSave"));
-            return;
-          }
-          if (cfg.backend === "disabled") {
-            alert(
-              zh()
-                ? "请先保存并启用第三方扩展云存储。"
-                : "Save and enable third-party extension cloud storage first.",
-            );
-            return;
-          }
-          const input = fileInput();
-          input.dataset.extensionId = ext.id;
-          input.dataset.extensionName = ext.name || ext.id;
-          input.dataset.extensionVersion = ext.version || "";
-          input.click();
-        });
+        // Read the form synchronously, then open the native picker in this
+        // click event. Awaiting chrome.storage.local first loses the transient
+        // user activation required by Chromium's file chooser.
+        if (!sameStorageConfig(uiCfg(cfg), cfg)) {
+          alert(t("selectionNeedSave"));
+          return;
+        }
+        if (cfg.backend === "disabled") {
+          alert(
+            zh()
+              ? "请先保存并启用第三方扩展云存储。"
+              : "Save and enable third-party extension cloud storage first.",
+          );
+          return;
+        }
+        const input = fileInput();
+        pendingPackageUpload = {
+          id: ext.id,
+          name: ext.name || ext.id,
+          version: ext.version || "",
+          cfg: { ...cfg },
+          verifyForm: Boolean($("extensionStorageBackend")),
+        };
+        input.click();
       });
       cb.addEventListener("change", () => {
         b.disabled = !cb.checked;
@@ -1213,7 +1237,10 @@
     saveSel.addEventListener("click", async () => {
       try {
         const current = await getCfg();
-        if (!sameStorageConfig(current, cfg))
+        if (
+          !sameStorageConfig(current, cfg) ||
+          !sameStorageConfig(uiCfg(current), current)
+        )
           throw Error(t("selectionNeedSave"));
         const ids = [...checks.entries()]
           .filter(([, cb]) => cb.checked)
