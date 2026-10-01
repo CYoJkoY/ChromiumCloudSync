@@ -703,8 +703,25 @@ function ensureCloudTabsMeta() {
   return meta;
 }
 
+/**
+ * Monotonic token for the cloud-tab refresh path.
+ *
+ * A single user action can trigger two concurrent refreshes: the explicit
+ * `refreshCloudTabs(true)` from the "Refresh from cloud" button, and the
+ * `cloudTabStateChanged` broadcast the background worker emits after it
+ * commits the canonical projection. Both call `replaceChildren()` before
+ * awaiting their response, so the slower response would append a second copy
+ * of whatever the render path emits — including the persistent "incremental
+ * mode only" note in overwrite mode. Bumping this token before each refresh
+ * and comparing it after the await lets the stale response return without
+ * touching the DOM.
+ */
+let cloudTabsRefreshToken = 0;
+
 async function refreshCloudTabs(forceRemote = false) {
   if (!cloudTabsManager) return;
+
+  const token = ++cloudTabsRefreshToken;
 
   cloudTabsManager.replaceChildren();
   const meta = ensureCloudTabsMeta();
@@ -720,6 +737,10 @@ async function refreshCloudTabs(forceRemote = false) {
     const data = await request("cloudTabState", {
       forceRemote: forceRemote === true,
     });
+
+    // A newer refresh has already taken over; discard this response so the
+    // older render cannot add a duplicate note or stale metadata.
+    if (token !== cloudTabsRefreshToken) return;
 
     if (meta) {
       meta.hidden = false;
@@ -822,6 +843,9 @@ async function refreshCloudTabs(forceRemote = false) {
       cloudTabsManager.append(detachedSection);
     }
   } catch (e) {
+    // A superseded request must not overwrite the current view with an error
+    // banner either.
+    if (token !== cloudTabsRefreshToken) return;
     showError(e);
   }
 }
