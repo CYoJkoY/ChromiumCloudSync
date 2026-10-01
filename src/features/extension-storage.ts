@@ -106,6 +106,32 @@
       zh()
         ? "请先保存存储设置，再保存扩展备份选择。"
         : "Save the storage settings first, then save the extension backup selection.",
+    saveSelectionFirst: () =>
+      zh()
+        ? "请先保存当前备份选择，再清理未使用的云端扩展包。"
+        : "Save the current backup selection before cleaning up unused cloud packages.",
+    cleanupUnused: () =>
+      zh() ? "清理未选扩展备份" : "Clean up unused backups",
+    cleanupUnusedHelp: () =>
+      zh()
+        ? "取消选择或卸载扩展不会自动删除云端文件。确认后可清理所有未纳入当前备份选择的扩展包及其旧版本；备份选择对同一云端目标的其他设备也生效，请核对确认列表。"
+        : "Deselecting or uninstalling an extension does not delete cloud files automatically. Review and confirm to remove packages and older versions outside the saved selection. The selection is shared by profiles using this destination, so check the confirmation list first.",
+    cleanupConfirm: () =>
+      zh()
+        ? "将从云端永久删除 {count} 个未选扩展包（{size}），涉及：{names}。此操作不可撤销，是否继续？"
+        : "Permanently delete {count} unused cloud package(s) ({size}) for: {names}. This cannot be undone. Continue?",
+    cleanupNothing: () =>
+      zh() ? "没有需要清理的未选扩展包。" : "There are no unused cloud packages to clean up.",
+    cleanupComplete: () =>
+      zh()
+        ? "已清理 {count} 个云端扩展包（{size}）。"
+        : "Cleaned up {count} cloud package(s) ({size}).",
+    cleanupPartial: () =>
+      zh()
+        ? "已删除 {count} 个扩展包；{failed} 个扩展包删除失败并保留在索引中；{metadataFailed} 个元数据文件未能整理。请检查权限或网络后重试。"
+        : "Deleted {count} package(s); {failed} package(s) could not be deleted and remain indexed; {metadataFailed} metadata sidecar(s) could not be reconciled. Check access and retry.",
+    packageFormatInvalid: () =>
+      zh() ? "仅支持 CRX 或 ZIP 扩展包。" : "Only CRX or ZIP extension packages are supported.",
     backup: () => (zh() ? "备份 CRX / ZIP" : "Back up CRX / ZIP"),
     download: () => (zh() ? "下载" : "Download"),
     cloud: () => (zh() ? "云端备份" : "Cloud backups"),
@@ -113,8 +139,8 @@
       zh() ? "暂无云端扩展包。" : "No cloud package backups found.",
     manual: () =>
       zh()
-        ? "操作说明：保存并启用存储后端后，在下方勾选扩展，点击“备份 CRX / ZIP”选择本地安装包上传。浏览器无法导出其他已安装扩展的原始文件；如果没有安装包，请先从扩展发布者获取 CRX / ZIP。"
-        : "After saving and enabling a storage backend, select an extension below and click “Back up CRX / ZIP” to upload a local package. Browsers cannot export other installed extensions’ original files; obtain a CRX / ZIP from the publisher if you do not have one.",
+        ? "操作说明：保存并启用存储后端后，在下方勾选扩展，点击“备份 CRX / ZIP”选择本地安装包上传。扩展无法读取其他扩展按 ID 解压到浏览器配置目录中的文件，必须由用户选择安装包；下载后仍需由浏览器确认安装。取消选择或卸载不会自动删除云端备份，请先保存备份选择，再用下方清理按钮检查并删除未使用包。"
+        : "After saving and enabling a storage backend, select an extension and choose a local CRX/ZIP to upload. Chromium extensions cannot read another extension’s files from the browser profile by ID, so the package must be selected by the user; the browser must also confirm installation after download. Deselecting or uninstalling does not automatically delete cloud data: save the backup selection, then review and clean unused packages below.",
     uploading: () => (zh() ? "上传中…" : "Uploading…"),
     createToken: () =>
       zh()
@@ -207,6 +233,11 @@
         : "Saving storage settings failed. Read the error message above and retry.",
   };
   const t = (k) => text[k]?.() || k;
+  const formatText = (template, values) =>
+    Object.entries(values).reduce(
+      (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+      template,
+    );
   const getCfg = async () => {
     const stored = await CCSyncRuntime.storageGet(Object.values(K));
     // Storage uses namespaced keys; the UI and transports use short names.
@@ -330,8 +361,10 @@
   }
   async function githubFile(cfg, path) {
     try {
+      const ref = String(cfg.branch || "").trim();
+      const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
       return await github(
-        `/repos/${normRepo(cfg.repo)}/contents/${path}`,
+        `/repos/${normRepo(cfg.repo)}/contents/${path}${query}`,
         {},
         cfg.token,
       );
@@ -339,6 +372,22 @@
       if (e.status === 404) return null;
       throw e;
     }
+  }
+  async function githubDelete(cfg, path, message) {
+    const old = await githubFile(cfg, path);
+    if (!old?.sha) return false;
+    const body = { message, sha: old.sha };
+    if (cfg.branch) body.branch = String(cfg.branch).trim();
+    await github(
+      `/repos/${normRepo(cfg.repo)}/contents/${path}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      cfg.token,
+    );
+    return true;
   }
   async function githubPut(cfg, path, bytes, message) {
     if (bytes.length > MAX) throw Error(t("max"));
@@ -358,7 +407,11 @@
     );
   }
   async function githubRaw(cfg, path) {
-    const r = await fetchWithTimeout(`https://api.github.com${path}`, {
+    const ref = String(cfg.branch || "").trim();
+    const query = ref
+      ? `${String(path).includes("?") ? "&" : "?"}ref=${encodeURIComponent(ref)}`
+      : "";
+    const r = await fetchWithTimeout(`https://api.github.com${path}${query}`, {
       headers: {
         Accept: "application/vnd.github.raw+json",
         "X-GitHub-Api-Version": GITHUB_API_VERSION,
@@ -379,6 +432,85 @@
       if (String(e?.message || "").includes("HTTP 404")) return fallback;
       throw e;
     }
+  }
+  function packageFromRepoPath(rawPath, cfg, size = 0) {
+    const root = normFolder(cfg.folder);
+    const full = String(rawPath || "");
+    const relative = root
+      ? full.startsWith(`${root}/`)
+        ? full.slice(root.length + 1)
+        : ""
+      : full;
+    const parts = relative.split("/");
+    if (parts.length !== 4 || parts[0] !== "extensions") return null;
+    const version = parts[2].replace(/^v/, "");
+    if (!PI().isPackagePath(relative, parts[1], version, parts[3])) return null;
+    return {
+      path: relative,
+      name: parts[3],
+      size: Number(size || 0),
+      modifiedTime: "",
+    };
+  }
+  async function githubListPackageFiles(cfg) {
+    const repo = normRepo(cfg.repo);
+    const info = await githubInfo(cfg);
+    const ref = String(cfg.branch || info.default_branch || "").trim();
+    if (!ref) throw Error("GitHub repository has no default branch");
+    let tree;
+    try {
+      tree = await github(
+        `/repos/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+        {},
+        cfg.token,
+      );
+    } catch (error) {
+      // GitHub returns 404 for the default branch of an empty repository.
+      if (error?.status === 404 && ref === info.default_branch) return [];
+      throw error;
+    }
+    if (Array.isArray(tree?.tree) && !tree.truncated) {
+      return tree.tree
+        .filter((entry) => entry?.type === "blob")
+        .map((entry) => packageFromRepoPath(entry.path, cfg, entry.size))
+        .filter(Boolean);
+    }
+
+    // GitHub truncates very large trees. Fall back to the fixed three-level
+    // package layout so cleanup can still find old and interrupted uploads.
+    const root = normFolder(cfg.folder);
+    const branchQuery = `?ref=${encodeURIComponent(ref)}`;
+    const readDirectory = async (relative) => {
+      try {
+        const value = await github(
+          `/repos/${repo}/contents/${join(root, relative)}${branchQuery}`,
+          {},
+          cfg.token,
+        );
+        return Array.isArray(value) ? value : [];
+      } catch (error) {
+        if (error?.status === 404) return [];
+        throw error;
+      }
+    };
+    const out = [];
+    let directories = ["extensions"];
+    for (let depth = 0; depth < 3 && directories.length; depth += 1) {
+      const next = [];
+      for (const directory of directories) {
+        const entries = await readDirectory(directory);
+        for (const entry of entries) {
+          const child = `${directory}/${String(entry.name || "")}`;
+          if (entry.type === "dir") next.push(child);
+          else if (entry.type === "file") {
+            const item = packageFromRepoPath(join(root, child), cfg, entry.size);
+            if (item) out.push(item);
+          }
+        }
+      }
+      directories = next;
+    }
+    return out;
   }
   async function davPermission(url) {
     const u = new URL(url),
@@ -442,6 +574,115 @@
     if (!r.ok) throw Error(`WebDAV download failed: HTTP ${r.status}`);
     return new Uint8Array(await r.arrayBuffer());
   }
+  async function davDelete(cfg, relative) {
+    const r = await dav(cfg, relative, { method: "DELETE" });
+    if ([200, 202, 204].includes(r.status)) return true;
+    if (r.status === 404) return false;
+    throw Error(`WebDAV delete failed: HTTP ${r.status}`);
+  }
+  function webdavTagBody(xml, name) {
+    const match = String(xml).match(
+      new RegExp(
+        `<(?:[A-Za-z_][\\w.-]*:)?${name}\\b[^>]*>([\\s\\S]*?)<\\/(?:[A-Za-z_][\\w.-]*:)?${name}\\s*>`,
+        "i",
+      ),
+    );
+    return match?.[1] || "";
+  }
+  function webdavXmlText(value) {
+    return String(value || "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .trim();
+  }
+  function parseWebdavListing(xml, cfg) {
+    const rootText = `${String(cfg.davUrl || "").replace(/\/+$/, "")}${normDav(cfg.davFolder)}`;
+    const rootUrl = new URL(rootText);
+    const rootPath = decodeURIComponent(rootUrl.pathname).replace(/\/+$/, "");
+    const baseUrl = rootUrl.href.endsWith("/") ? rootUrl.href : `${rootUrl.href}/`;
+    const responsePattern = /<(?:[A-Za-z_][\w.-]*:)?response\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?response\s*>/gi;
+    const entries = [];
+    for (const match of String(xml || "").matchAll(responsePattern)) {
+      const block = match[1];
+      const href = webdavXmlText(webdavTagBody(block, "href"));
+      if (!href) continue;
+      const responseStatus = webdavXmlText(webdavTagBody(block, "status"));
+      if (responseStatus && !/\s2\d\d\s/.test(`${responseStatus} `)) continue;
+      try {
+        const target = new URL(href, baseUrl);
+        if (target.origin !== rootUrl.origin) continue;
+        const targetPath = decodeURIComponent(target.pathname).replace(/\/+$/, "");
+        let path = "";
+        if (targetPath === rootPath) path = "";
+        else if (targetPath.startsWith(`${rootPath}/`))
+          path = targetPath.slice(rootPath.length + 1);
+        else continue;
+        const resourceType = webdavTagBody(block, "resourcetype");
+        entries.push({
+          path,
+          isCollection: /<(?:[A-Za-z_][\w.-]*:)?collection\b/i.test(resourceType),
+          size: Number(webdavXmlText(webdavTagBody(block, "getcontentlength")) || 0),
+          modifiedTime: webdavXmlText(webdavTagBody(block, "getlastmodified")),
+        });
+      } catch {
+        // Ignore malformed or unrelated provider responses, never use them as a
+        // delete path.
+      }
+    }
+    return entries;
+  }
+  const WEBDAV_PROPFIND_BODY =
+    '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>';
+  async function davListPackageFiles(cfg) {
+    const out = [];
+    let directories = ["extensions"];
+    for (let depth = 0; depth < 3 && directories.length; depth += 1) {
+      const next = [];
+      for (const directory of directories) {
+        const response = await dav(cfg, directory, {
+          method: "PROPFIND",
+          headers: {
+            Depth: "1",
+            "Content-Type": "application/xml; charset=UTF-8",
+          },
+          body: WEBDAV_PROPFIND_BODY,
+        });
+        if (response.status === 404) continue;
+        if (![200, 207].includes(response.status))
+          throw Error(`WebDAV listing failed: HTTP ${response.status}`);
+        const entries = parseWebdavListing(await response.text(), cfg);
+        for (const entry of entries) {
+          if (!entry.path || entry.path === directory) continue;
+          const parts = entry.path.split("/");
+          if (
+            entry.isCollection &&
+            parts[0] === "extensions" &&
+            parts.length > 1 &&
+            parts.length <= 3
+          ) {
+            next.push(entry.path);
+            continue;
+          }
+          if (!entry.isCollection && parts.length === 4 && parts[0] === "extensions") {
+            const version = parts[2].replace(/^v/, "");
+            if (PI().isPackagePath(entry.path, parts[1], version, parts[3]))
+              out.push({
+                path: entry.path,
+                name: parts[3],
+                size: entry.size,
+                modifiedTime: entry.modifiedTime,
+              });
+          }
+        }
+      }
+      directories = next;
+    }
+    return out;
+  }
   const PI = () => window.CCSyncPackageIndex;
   const gdrive = window.CCSyncGdrivePackages.createGdrivePackages({
     request: (type, extra) => CCSyncRuntime.request(type, extra),
@@ -456,6 +697,7 @@
   const gdriveUpload = (cfg, relative, bytes, mimeType) =>
     gdrive.upload(cfg, relative, bytes, mimeType);
   const gdriveDownload = (cfg, relative) => gdrive.download(cfg, relative);
+  const gdriveRemove = (cfg, relative) => gdrive.remove(cfg, relative);
   const gdriveReadJson = (cfg, relative, fallback) =>
     gdrive.readJson(cfg, relative, fallback);
   const gdriveWriteJson = (cfg, relative, value) =>
@@ -499,20 +741,15 @@
       : davPut(cfg, "index.json", bytes, "application/json");
   }
   async function listBackups(cfg) {
-    const pi = PI(),
-      index = await readIndex(cfg);
-    if (cfg.backend !== "gdrive")
-      return {
-        schemaVersion: index.schemaVersion,
-        updatedAt: index.updatedAt,
-        backups: index.backups.slice().reverse(),
-        unindexed: [],
-        missing: [],
-      };
-    const merged = pi.mergeIndexWithListing(
-      index,
-      await gdriveListPackages(cfg),
-    );
+    const pi = PI();
+    const index = await readIndex(cfg);
+    const listing =
+      cfg.backend === "gdrive"
+        ? await gdriveListPackages(cfg)
+        : cfg.backend === "github"
+          ? await githubListPackageFiles(cfg)
+          : await davListPackageFiles(cfg);
+    const merged = pi.mergeIndexWithListing(index, listing);
     return {
       schemaVersion: merged.schemaVersion,
       updatedAt: merged.updatedAt,
@@ -564,13 +801,32 @@
   async function putPackage(cfg, ext, bytes, fileName) {
     const pi = PI(),
       limit = backendMaxBytes(cfg);
+    if (!/\.(crx|zip)$/i.test(String(fileName || "")))
+      throw Error(t("packageFormatInvalid"));
     if (bytes.length > limit) throw Error(backendMaxMessage(cfg));
     const hash = await sha256(bytes),
       index = await readIndex(cfg),
       folder = pi.packageFolder(ext.id, ext.version || ""),
+      existing = pi.findIndexEntry(index, {
+        extensionId: ext.id,
+        version: ext.version || "",
+        sha256: hash,
+      }),
+      reusable =
+        existing &&
+        pi.isPackagePath(
+          existing.path,
+          existing.extensionId,
+          existing.version,
+          existing.fileName,
+        )
+          ? existing
+          : null,
       taken = pi.takenNamesInFolder(index, ext.id, ext.version || ""),
-      safeName = pi.resolveUniqueFileName(seg(fileName), taken, hash),
-      path = pi.join(folder, safeName),
+      // Same bytes always reuse their original location. Otherwise a retry
+      // would suffix the filename again and strand the previous cloud object.
+      safeName = reusable?.fileName || pi.resolveUniqueFileName(seg(fileName), taken, hash),
+      path = reusable?.path || pi.join(folder, safeName),
       item = pi.buildPackageRecord({
         extension: ext,
         fileName: safeName,
@@ -635,6 +891,108 @@
           `/repos/${normRepo(cfg.repo)}/contents/${join(normFolder(cfg.folder), item.path)}`,
         )
       : davGet(cfg, item.path);
+  }
+  async function removePackagePath(cfg, relative, message) {
+    if (cfg.backend === "gdrive") return gdriveRemove(cfg, relative);
+    if (cfg.backend === "github")
+      return githubDelete(
+        cfg,
+        join(normFolder(cfg.folder), relative),
+        message || "Remove unused extension package",
+      );
+    return davDelete(cfg, relative);
+  }
+  const sameIds = (left, right) =>
+    [...new Set((Array.isArray(left) ? left : []).map(String))].sort().join("\n") ===
+    [...new Set((Array.isArray(right) ? right : []).map(String))].sort().join("\n");
+
+  /**
+   * Remove only unselected, validated package files. Selection is a user-owned
+   * cloud manifest: deselecting never deletes data implicitly; this maintenance
+   * action first verifies that the saved selection has not changed elsewhere.
+   */
+  async function cleanupUnusedBackups(cfg, expectedSelectedIds) {
+    const current = await getCfg();
+    if (!sameStorageConfig(current, cfg)) throw Error(t("selectionNeedSave"));
+    const selectedIds = await readSelection(cfg);
+    if (
+      !Array.isArray(selectedIds) ||
+      !sameIds(selectedIds, expectedSelectedIds)
+    )
+      throw Error(t("saveSelectionFirst"));
+
+    const pi = PI();
+    const listed = await listBackups(cfg);
+    const candidates = pi.findUnusedPackages(listed.backups, selectedIds);
+    if (!candidates.length) return { cleaned: 0, failed: 0, size: 0 };
+
+    const index = await readIndex(cfg);
+    const removedPaths = new Set();
+    const changedFolders = new Set();
+    const packageFailures = [];
+    const metadataFailures = [];
+    let size = 0;
+
+    for (const item of candidates) {
+      const path = String(item.path);
+      try {
+        // Drive can tell us a file is already missing. Other providers report
+        // that case through their normal delete/not-found response.
+        if (!listed.missing?.includes(path) && item.present !== false)
+          await removePackagePath(cfg, path, `Remove unused package ${item.name || item.extensionId}`);
+        removedPaths.add(path);
+        size += Number(item.size || 0);
+        changedFolders.add(pi.packageFolder(item.extensionId, item.version || ""));
+      } catch (error) {
+        packageFailures.push({ path, error });
+      }
+    }
+
+    const nextIndex = pi.removeIndexEntries(index, removedPaths);
+    if (removedPaths.size) await writeIndex(cfg, nextIndex);
+
+    // metadata.json is a small sidecar per extension/version. Keep it aligned
+    // with the newest surviving package, or remove it when the folder is empty.
+    for (const folder of changedFolders) {
+      const remaining = nextIndex.backups
+        .filter(
+          (item) =>
+            item.path.startsWith(`${folder}/`) &&
+            pi.isPackagePath(item.path, item.extensionId, item.version, item.fileName),
+        )
+        .sort((a, b) => Date.parse(a.storedAt || "") - Date.parse(b.storedAt || ""));
+      const sidecar = pi.join(folder, "metadata.json");
+      try {
+        if (remaining.length) {
+          const record = remaining[remaining.length - 1];
+          const bytes = new TextEncoder().encode(
+            JSON.stringify(pi.packageMetadata(record), null, 2),
+          );
+          if (cfg.backend === "gdrive")
+            await gdriveUpload(cfg, sidecar, bytes, "application/json");
+          else if (cfg.backend === "github")
+            await githubPut(
+              cfg,
+              join(normFolder(cfg.folder), sidecar),
+              bytes,
+              "Update extension backup metadata",
+            );
+          else await davPut(cfg, sidecar, bytes, "application/json");
+        } else {
+          await removePackagePath(cfg, sidecar, "Remove unused extension metadata");
+        }
+      } catch (error) {
+        metadataFailures.push({ path: sidecar, error });
+      }
+    }
+
+    return {
+      cleaned: removedPaths.size,
+      failed: packageFailures.length,
+      metadataFailed: metadataFailures.length,
+      size,
+      failures: [...packageFailures, ...metadataFailures],
+    };
   }
   async function test(cfg) {
     if (cfg.backend === "disabled") return true;
@@ -756,15 +1114,20 @@
           button.disabled = true;
           button.textContent = t("uploading");
         }
+        const remoteSelection = await readSelection(cfg);
         await putPackage(
           cfg,
           { id, name, version },
           new Uint8Array(await file.arrayBuffer()),
           file.name,
         );
-        const selected = new Set(cfg.selected);
+        const selected = new Set(
+          Array.isArray(remoteSelection) ? remoteSelection : cfg.selected,
+        );
         selected.add(id);
-        await CCSyncRuntime.storageSet({ [K.selected]: [...selected] });
+        const selectedIds = [...selected];
+        await CCSyncRuntime.storageSet({ [K.selected]: selectedIds });
+        await writeSelection(cfg, selectedIds);
         if (button) {
           button.disabled = false;
           button.textContent = t("backup");
@@ -1130,6 +1493,10 @@
     }
     if (Array.isArray(remote)) selected = remote;
     else if (!selected.length) selected = installed.map((x) => x.id);
+    let savedSelectionIds = Array.isArray(remote) ? remote.map(String) : null;
+    let cloudBackups = [];
+    let cleanupCandidates = [];
+    let cleanupButton = null;
     const section = document.createElement("section");
     section.className = "ccsync-ext-selection";
     const head = document.createElement("div");
@@ -1161,6 +1528,18 @@
     section.append(head);
     const list = document.createElement("div");
     const checks = new Map();
+    const currentSelectionIds = () =>
+      [...checks.entries()]
+        .filter(([, checkbox]) => checkbox.checked)
+        .map(([id]) => id);
+    const updateCleanupButton = () => {
+      if (!cleanupButton) return;
+      const unchanged =
+        Array.isArray(savedSelectionIds) &&
+        sameIds(currentSelectionIds(), savedSelectionIds);
+      cleanupButton.textContent = `${t("cleanupUnused")} · ${cleanupCandidates.length}`;
+      cleanupButton.disabled = !unchanged || cleanupCandidates.length === 0;
+    };
     for (const ext of installed) {
       const row = document.createElement("label");
       row.className = "ccsync-ext-row";
@@ -1212,6 +1591,7 @@
       cb.addEventListener("change", () => {
         b.disabled = !cb.checked;
         updateCount();
+        updateCleanupButton();
       });
       checks.set(ext.id, cb);
       row.append(cb, main, b);
@@ -1230,6 +1610,7 @@
         if (b) b.disabled = false;
       });
       updateCount();
+      updateCleanupButton();
     });
     none.addEventListener("click", () => {
       checks.forEach((cb) => {
@@ -1238,6 +1619,7 @@
         if (b) b.disabled = true;
       });
       updateCount();
+      updateCleanupButton();
     });
     saveSel.addEventListener("click", async () => {
       try {
@@ -1252,6 +1634,9 @@
           .map(([id]) => id);
         await CCSyncRuntime.storageSet({ [K.selected]: ids });
         await writeSelection(cfg, ids);
+        savedSelectionIds = ids;
+        cleanupCandidates = PI().findUnusedPackages(cloudBackups, ids);
+        updateCleanupButton();
         saveSel.textContent = t("selectionSaved");
         setTimeout(updateCount, 900);
       } catch (e) {
@@ -1261,14 +1646,90 @@
     updateCount();
     const cloud = document.createElement("section");
     cloud.className = "ccsync-ext-cloud";
+    const cloudHead = document.createElement("div");
+    cloudHead.className = "ccsync-ext-head";
     const ct = document.createElement("div");
     ct.className = "subcard-title";
     ct.textContent = t("cloud");
-    cloud.append(ct);
+    cleanupButton = document.createElement("button");
+    cleanupButton.className = "secondary";
+    cleanupButton.type = "button";
+    cleanupButton.textContent = t("cleanupUnused");
+    cleanupButton.disabled = true;
+    cleanupButton.addEventListener("click", async () => {
+      if (
+        !Array.isArray(savedSelectionIds) ||
+        !sameIds(currentSelectionIds(), savedSelectionIds)
+      ) {
+        alert(t("saveSelectionFirst"));
+        return;
+      }
+      try {
+        const current = await getCfg();
+        if (
+          !sameStorageConfig(current, cfg) ||
+          !sameStorageConfig(uiCfg(current), current)
+        )
+          throw Error(t("selectionNeedSave"));
+        const remoteSelection = await readSelection(cfg);
+        if (
+          !Array.isArray(remoteSelection) ||
+          !sameIds(remoteSelection, savedSelectionIds)
+        )
+          throw Error(t("saveSelectionFirst"));
+        const latest = await listBackups(cfg);
+        const candidates = PI().findUnusedPackages(
+          latest.backups,
+          remoteSelection,
+        );
+        if (!candidates.length) {
+          alert(t("cleanupNothing"));
+          return;
+        }
+        const names = [...new Set(candidates.map((item) => item.name || item.extensionId))];
+        const shownNames = `${names.slice(0, 5).join(", ")}${names.length > 5 ? `, +${names.length - 5}` : ""}`;
+        const size = candidates.reduce((total, item) => total + Number(item.size || 0), 0);
+        const confirmText = formatText(t("cleanupConfirm"), {
+          count: candidates.length,
+          size: fmt(size),
+          names: shownNames,
+        });
+        if (!confirm(confirmText)) return;
+        cleanupButton.disabled = true;
+        const result = await cleanupUnusedBackups(cfg, remoteSelection);
+        alert(
+          result.failed || result.metadataFailed
+            ? formatText(t("cleanupPartial"), {
+                count: result.cleaned,
+                failed: result.failed,
+                metadataFailed: result.metadataFailed,
+              })
+            : formatText(t("cleanupComplete"), {
+                count: result.cleaned,
+                size: fmt(result.size),
+              }),
+        );
+        await render(await getCfg());
+      } catch (error) {
+        alert(error.message || String(error));
+      } finally {
+        updateCleanupButton();
+      }
+    });
+    cloudHead.append(ct, cleanupButton);
+    const cleanupHelp = document.createElement("div");
+    cleanupHelp.className = "ccsync-ext-note";
+    cleanupHelp.textContent = t("cleanupUnusedHelp");
+    cloud.append(cloudHead, cleanupHelp);
     try {
       const listed = await listBackups(cfg),
         backups = Array.isArray(listed.backups) ? listed.backups : [],
         missing = new Set(Array.isArray(listed.missing) ? listed.missing : []);
+      cloudBackups = backups;
+      cleanupCandidates = Array.isArray(savedSelectionIds)
+        ? PI().findUnusedPackages(backups, savedSelectionIds)
+        : [];
+      updateCleanupButton();
       if (!backups.length) {
         const n = document.createElement("div");
         n.className = "ccsync-ext-note";

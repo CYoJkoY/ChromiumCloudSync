@@ -163,6 +163,19 @@ function createDrive() {
       return json({ id: node.id, size: String(node.size) });
     }
 
+    // Delete one app-managed file.
+    const filePrefix = "/drive/v3/files/";
+    const deletionId = url.includes(filePrefix)
+      ? decodeURIComponent(url.slice(url.lastIndexOf(filePrefix) + filePrefix.length))
+      : "";
+    if (deletionId && method === "DELETE") {
+      const node = nodes.get(deletionId);
+      if (!node || node.trashed)
+        return json({ error: { message: "notFound" } }, 404);
+      node.trashed = true;
+      return json(null, 204);
+    }
+
     // Download file content.
     const media = /\/drive\/v3\/files\/([^?]+)\?alt=media/.exec(url);
     if (media) {
@@ -423,6 +436,16 @@ const cfg = { backend: "gdrive", gdriveFolder: "" };
     () => h.transport.download(cfg, "extensions/aaa/v1/missing.crx"),
     /NOTFOUND-MESSAGE|not found/i,
     "a missing package is reported, not returned as empty",
+  );
+
+  assert.equal(await h.transport.remove(cfg, "extensions/aaa/v1/pkg.crx"), true);
+  assert.equal(await h.transport.remove(cfg, "extensions/aaa/v1/pkg.crx"), false);
+  const deletion = h.requests.find((request) => request.method === "DELETE");
+  assert.ok(deletion, "cleanup uses the Drive file delete endpoint");
+  await assert.rejects(
+    () => h.transport.download(cfg, "extensions/aaa/v1/pkg.crx"),
+    /NOTFOUND-MESSAGE|not found/i,
+    "a removed package cannot be downloaded",
   );
 }
 

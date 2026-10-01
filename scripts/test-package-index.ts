@@ -23,6 +23,9 @@ const {
   indexKey,
   mergeIndexWithListing,
   normalizeIndex,
+  findUnusedPackages,
+  removeIndexEntries,
+  isPackagePath,
   packageFolder,
   packageFormat,
   packageMetadata,
@@ -71,6 +74,58 @@ assert.equal(packageFormat("a.CRX"), "crx");
   );
 }
 assert.equal(packageFolder(ext.id, ""), `extensions/${ext.id}/vunknown`);
+assert.equal(
+  isPackagePath(packagePath(ext.id, ext.version, "example.crx"), ext.id, ext.version, "example.crx"),
+  true,
+  "canonical package paths are eligible for managed cleanup",
+);
+assert.equal(
+  isPackagePath("../../important.json", ext.id, ext.version, "important.json"),
+  false,
+  "cleanup refuses arbitrary cloud paths",
+);
+
+/* --------------------------------------------------------------------------
+ * Cleanup is scoped to unselected extension IDs and never drops index entries
+ * before a provider file has been removed.
+ * ------------------------------------------------------------------------ */
+{
+  const oldExt = { ...ext, id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", name: "Old extension" };
+  const keep = buildPackageRecord({
+    extension: ext,
+    fileName: "example.crx",
+    size: 10,
+    sha256: "a1",
+  });
+  const unusedV1 = buildPackageRecord({
+    extension: { ...oldExt, version: "1.0.0" },
+    fileName: "old.crx",
+    size: 20,
+    sha256: "b1",
+  });
+  const unusedV2 = buildPackageRecord({
+    extension: { ...oldExt, version: "2.0.0" },
+    fileName: "old.zip",
+    size: 30,
+    sha256: "b2",
+  });
+  const unsafe = { ...unusedV1, path: "../../other.crx" };
+  const unused = findUnusedPackages(
+    [keep, unusedV1, unusedV2, unsafe],
+    [ext.id],
+  );
+  assert.deepEqual(unused.map((item: any) => item.path), [unusedV1.path, unusedV2.path]);
+
+  const index = upsertIndexEntry(
+    upsertIndexEntry(upsertIndexEntry(emptyIndex(), keep), unusedV1),
+    unusedV2,
+  );
+  const next = removeIndexEntries(index, new Set([unusedV1.path]));
+  assert.equal(next.backups.length, 2);
+  assert.equal(next.backups.some((item: any) => item.path === keep.path), true);
+  assert.equal(next.backups.some((item: any) => item.path === unusedV1.path), false);
+  assert.equal(next.backups.some((item: any) => item.path === unusedV2.path), true);
+}
 
 /* --------------------------------------------------------------------------
  * A backup record carries every required metadata field.
@@ -250,7 +305,8 @@ assert.equal(packageFolder(ext.id, ""), `extensions/${ext.id}/vunknown`);
     "another version folder is independent",
   );
 
-  // The index is capped so it cannot grow without bound.
+  // Keep the whole inventory so cleanup can still find every remote object.
+  // Silently truncating index metadata would strand the corresponding package.
   let many = emptyIndex();
   for (let n = 0; n < 260; n += 1)
     many = upsertIndexEntry(
@@ -263,7 +319,7 @@ assert.equal(packageFolder(ext.id, ""), `extensions/${ext.id}/vunknown`);
         backend: "gdrive",
       }),
     );
-  assert.equal(many.backups.length, api.MAX_INDEX_ENTRIES);
+  assert.equal(many.backups.length, 260);
 }
 
 /* --------------------------------------------------------------------------

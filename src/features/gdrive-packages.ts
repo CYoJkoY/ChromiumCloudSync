@@ -290,7 +290,17 @@
           parentId = cached;
           continue;
         }
-        const id = await ensureFolder(part, parentId);
+        let id = "";
+        if (create) {
+          id = await ensureFolder(part, parentId);
+        } else {
+          const found = await query(
+            `name='${escapeQuery(part)}' and mimeType='${GDRIVE_FOLDER_MIME}' and '${escapeQuery(parentId)}' in parents and trashed=false`,
+            "files(id,name)",
+          );
+          id = found[0]?.id ? String(found[0].id) : "";
+          if (!id) return null;
+        }
         cache.ids[key] = id;
         await writeCache(cache);
         parentId = id;
@@ -386,6 +396,28 @@
       const recovered = await readBytes(retry.id, t("download"));
       if (!recovered) throw Error(t("driveNotFound"));
       return recovered;
+    }
+
+    /** Delete one app-managed package file, leaving the containing folders intact. */
+    async function remove(cfg, relative) {
+      const target = await resolveTarget(cfg, relative, false);
+      if (!target?.id) return false;
+      const active = await session();
+      const response = await doFetch(
+        `${GDRIVE_API}/files/${encodeURIComponent(target.id)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${active.token}` },
+        },
+      );
+      if (response.status === 404) {
+        await dropCacheEntry(target);
+        return false;
+      }
+      if (!response.ok)
+        throw await fail(response.status, await safeJson(response), "delete");
+      await dropCacheEntry(target);
+      return true;
     }
 
     async function readJson(cfg, relative, fallback) {
@@ -484,6 +516,7 @@
       query,
       upload,
       download,
+      remove,
       readJson,
       writeJson,
       listPackages,
