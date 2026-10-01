@@ -1,6 +1,6 @@
 {
   "name": "chromium-cloud-sync",
-  "version": "1.9.2",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "scripts": {
