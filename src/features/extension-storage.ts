@@ -113,8 +113,8 @@
       zh() ? "暂无云端扩展包。" : "No cloud package backups found.",
     manual: () =>
       zh()
-        ? "浏览器无法从其他扩展直接读取已安装扩展的原始 CRX，因此首次备份需要手动选择 CRX 或 ZIP。"
-        : "The browser does not expose another extension’s installed CRX bytes, so the first backup requires manual selection of a CRX or ZIP file.",
+        ? "操作说明：保存并启用存储后端后，在下方勾选扩展，点击“备份 CRX / ZIP”选择本地安装包上传。浏览器无法导出其他已安装扩展的原始文件；如果没有安装包，请先从扩展发布者获取 CRX / ZIP。"
+        : "After saving and enabling a storage backend, select an extension below and click “Back up CRX / ZIP” to upload a local package. Browsers cannot export other installed extensions’ original files; obtain a CRX / ZIP from the publisher if you do not have one.",
     uploading: () => (zh() ? "上传中…" : "Uploading…"),
     createToken: () =>
       zh()
@@ -207,10 +207,14 @@
         : "Saving storage settings failed. Read the error message above and retry.",
   };
   const t = (k) => text[k]?.() || k;
-  const getCfg = async () => ({
-    ...D,
-    ...(await CCSyncRuntime.storageGet(Object.values(K))),
-  });
+  const getCfg = async () => {
+    const stored = await CCSyncRuntime.storageGet(Object.values(K));
+    // Storage uses namespaced keys; the UI and transports use short names.
+    // Spreading stored over D silently left every short name at its default.
+    return Object.fromEntries(
+      Object.entries(K).map(([name, key]) => [name, stored[key] ?? D[name]]),
+    );
+  };
   const normRepo = (v) =>
     String(v || "")
       .trim()
@@ -992,7 +996,8 @@
         setHidden(el, !dv);
       for (const el of [gdriveFolder.l, gdriveGuide, gdriveHelp, gdriveState])
         setHidden(el, !gd);
-      setHidden(actions, !active);
+      setHidden(actions, false);
+      setHidden(testBtn, !active);
       setHidden(note, !active);
       if (gd) void refreshGdriveState();
     };
