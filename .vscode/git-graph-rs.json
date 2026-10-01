@@ -1,0 +1,22 @@
+{
+    "issueLinkingConfig": {
+        "issue": "#(\\d+)",
+        "url": "https://github.com/CYoJkoY/ChromiumCloudSync/issues/$1"
+    },
+    "pinnedBranches": [],
+    "pinnedCommits": [],
+    "pullRequestConfig": {
+        "provider": "github",
+        "hostRootUrl": "https://github.com",
+        "sourceRemote": "origin",
+        "sourceOwner": "CYoJkoY",
+        "sourceRepo": "ChromiumCloudSync",
+        "destRemote": "origin",
+        "destOwner": "CYoJkoY",
+        "destRepo": "ChromiumCloudSync",
+        "destProjectId": "",
+        "destBranch": "main",
+        "custom": null
+    },
+    "exportedAt": 1790699928527
+}
