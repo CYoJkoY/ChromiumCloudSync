@@ -63,7 +63,7 @@ The current implementation covers open windows and HTTP(S) tabs, tab groups, boo
 | **Provider-independent sync** | Run manual and automatic synchronization through the selected cloud provider.                                         |
 | **Automatic sync**            | Optional background synchronization with configurable intervals; disabled by default.                                 |
 | **History & rollback**        | Use provider-native history plus a local index of up to 30 recent entries where supported.                            |
-| **Package backup**            | Store selected CRX/ZIP packages separately in a GitHub private repository, WebDAV, or Google Drive.                   |
+| **Package backup**            | Store selected CRX/ZIP packages separately in a GitHub private repository, WebDAV, or Google Drive, including packaging them straight from the browser profile or an unpacked source folder. |
 | **Bilingual UI**              | English and Simplified Chinese interfaces.                                                                            |
 | **Theme controls**            | Explicit theme controls for settings and auxiliary pages.                                                             |
 
@@ -210,6 +210,22 @@ CRX / ZIP      →  GitHub private repository OR WebDAV OR Google Drive
 
 You can back up packages to Google Drive while synchronizing browser state through GitHub Gist, or any other combination — selecting a package backend never changes the sync provider.
 
+### Choosing what to back up
+
+The extension list is opt-in: nothing is selected by default, so a partial backup is the normal case rather than the exception. Search filters by name or ID, **Select all** / **Clear all** / **Invert** act on what is currently visible, and every change saves itself — locally and into the destination's `selection.json` — without a separate save step. Each row shows the extension's version, install type, ID, whether the cloud already holds a backup, and whether files for it were found on this machine.
+
+### Backing up from local files
+
+Chromium will not let one extension read another extension's installed files, but those files are already on disk. **Back up from a local folder** asks for one directory and then does the rest:
+
+1. Pick the browser user-data directory (the one containing `Extensions`), a single `Extensions` directory, or an unpacked extension's source directory. `chrome://version` shows the exact profile path; typical locations are `%LOCALAPPDATA%\Google\Chrome\User Data` on Windows, `~/Library/Application Support/Google/Chrome` on macOS, `~/.config/google-chrome` on Linux, with `Chrome` replaced by `Microsoft/Edge` for Edge.
+2. The folder is scanned and every extension whose files were found is offered in a preview dialog, with the identity it was matched by (extension ID directory, or a `manifest.json` name and version), the file count and size, and the cloud state. Extensions that are no longer installed are offered separately and are opt-in.
+3. Confirming packages each selected extension into a ZIP of its unpacked files and uploads it under its own extension ID and version. Packages are deterministic, so re-running the same backup re-uses the stored object instead of uploading identical bytes twice.
+
+The folder is remembered (through IndexedDB, re-authorized on demand), so a repeat backup is one click; **Change folder** picks a different one. **Upload several CRX / ZIP…** and dropping files onto the list remain available for packages you already have — each archive identifies its own extension (a CRX carries its ID, a ZIP carries its manifest), and anything that cannot be identified is reported instead of being filed under a guessed ID.
+
+A ZIP built from local unpacked files restores through **Load unpacked** and receives a new extension ID, because Chromium derives an unpacked extension's ID from its path. Reinstalling from the store keeps the original ID and is preferred when the extension is still published; the local package remains the fallback for extensions that are not.
+
 ### Google Drive package backup
 
 Packages are uploaded to an application-managed Drive folder, `Chromium Cloud Sync Packages`, which is deliberately **not** the synchronization folder, so package data can never be mixed into the browser-state payload. An optional subfolder organizes backups further.
@@ -225,7 +241,7 @@ Packages are uploaded to an application-managed Drive folder, `Chromium Cloud Sy
 
 The package subsystem keeps an index, selection state, package metadata, and SHA-256 checksums for every backend. The index retains every package record so no cloud binary becomes unreachable because of a metadata cap. Re-uploading the same extension ID, version, and checksum reuses its existing file path instead of creating another copy. The GitHub Contents API path rejects files larger than **95 MiB**; Drive and WebDAV stream the bytes and are bounded by the provider instead.
 
-Chromium exposes extension IDs and metadata through `chrome.management`, but it does not let this extension read another extension's unpacked files from the browser profile. The first backup therefore still requires the user to select a CRX or ZIP, and restore downloads the archive for the user to install through the browser. Deselecting or uninstalling an extension does not silently delete its backups. After saving the desired backup selection, use **Clean up unused backups** to review and permanently remove packages for unselected extension IDs (including older versions). Provider listings also let cleanup find unindexed files left by interrupted uploads. The index and metadata sidecars are updated after cleanup.
+Chromium exposes extension IDs and metadata through `chrome.management`, and the user supplies the package bytes — either by pointing the extension at a local folder, or by selecting CRX/ZIP files directly. Restore downloads the archive for the user to install through the browser. Deselecting or uninstalling an extension does not silently delete its backups. Because the selection now saves itself, use **Clean up unused backups** to review and permanently remove packages for unselected extension IDs (including older versions) whenever the list changes. Provider listings also let cleanup find unindexed files left by interrupted uploads. The index and metadata sidecars are updated after cleanup.
 
 <a name="readme-security"></a>
 
@@ -308,7 +324,8 @@ Chromium Cloud Sync
 │   ├── cloud-gdrive.ts          Google Drive transport
 │   └── cloud-webdav.ts          WebDAV transport
 ├── features/
-│   ├── extension-storage.ts
+│   ├── extension-storage.ts    package-backup UI + GitHub/WebDAV/Drive transports
+│   ├── extension-local-source.ts  local folder scanning, ZIP packaging, archive identity
 │   ├── extension-storage-watch.ts
 │   └── update.ts
 └── ui/

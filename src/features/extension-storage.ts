@@ -94,13 +94,8 @@
         ? "WebDAV 需要允许访问填写的服务器地址。"
         : "WebDAV needs permission to access the configured server origin.",
     choose: () => (zh() ? "选择要备份的扩展" : "Choose extensions to back up"),
-    chooseDesc: () =>
-      zh()
-        ? "这里选择的是第三方扩展包备份范围。扩展设置本身不会同步。"
-        : "This selects which third-party extension packages are backup targets. Extension settings are never synchronized.",
     all: () => (zh() ? "全选" : "Select all"),
     none: () => (zh() ? "全不选" : "Clear all"),
-    saveSelection: () => (zh() ? "保存备份选择" : "Save backup selection"),
     selectionSaved: () => (zh() ? "备份选择已保存" : "Backup selection saved"),
     selectionNeedSave: () =>
       zh()
@@ -139,8 +134,8 @@
       zh() ? "暂无云端扩展包。" : "No cloud package backups found.",
     manual: () =>
       zh()
-        ? "操作说明：保存并启用存储后端后，在下方勾选扩展，点击“备份 CRX / ZIP”选择本地安装包上传。扩展无法读取其他扩展按 ID 解压到浏览器配置目录中的文件，必须由用户选择安装包；下载后仍需由浏览器确认安装。取消选择或卸载不会自动删除云端备份，请先保存备份选择，再用下方清理按钮检查并删除未使用包。"
-        : "After saving and enabling a storage backend, select an extension and choose a local CRX/ZIP to upload. Chromium extensions cannot read another extension’s files from the browser profile by ID, so the package must be selected by the user; the browser must also confirm installation after download. Deselecting or uninstalling does not automatically delete cloud data: save the backup selection, then review and clean unused packages below.",
+        ? "操作说明：① 保存并启用存储后端；② 在下方勾选要备份的扩展（默认不选，勾选后自动保存）；③ 点击“从本地文件夹备份”，选择浏览器的用户数据目录或解包扩展的源码目录，扩展会自动打包并上传其中的文件，也可以改用“上传多个 CRX / ZIP”或直接把文件拖到列表上。扩展包按扩展 ID 和版本保存，内容没有变化时不会重复上传。由本地解包文件打成的 ZIP 需要通过“加载已解压的扩展”恢复，并会得到新的扩展 ID；若该扩展仍在商店上架，优先从商店重新安装以保留原 ID。取消选择或卸载不会自动删除云端备份，请先保存备份选择，再用下方清理按钮检查并删除未使用包。"
+        : "How this works: 1) save and enable a storage backend; 2) check the extensions you want to back up (nothing is selected by default, and the selection saves itself); 3) click “Back up from a local folder” and pick the browser user-data directory or an unpacked extension's source directory — the files found there are packaged and uploaded for you. “Upload several CRX / ZIP”, or dropping files onto the list, remains available for packages you already have. Packages are stored per extension ID and version, and unchanged content is never uploaded twice. A ZIP built from local unpacked files is restored with “Load unpacked” and receives a new extension ID, so prefer reinstalling from the store when the extension is still published. Deselecting or uninstalling does not automatically delete cloud data: save the backup selection, then review and clean unused packages below.",
     uploading: () => (zh() ? "上传中…" : "Uploading…"),
     createToken: () =>
       zh()
@@ -231,6 +226,125 @@
       zh()
         ? "存储设置保存失败。请检查上方红色错误信息，修正后重试。"
         : "Saving storage settings failed. Read the error message above and retry.",
+    /* ----------------------------- selection ----------------------------- */
+    search: () => (zh() ? "搜索扩展" : "Search extensions"),
+    searchPlaceholder: () =>
+      zh() ? "按名称或 ID 搜索" : "Search by name or ID",
+    invert: () => (zh() ? "反选" : "Invert"),
+    selectedCount: () =>
+      zh() ? "已选 {selected} / {total}" : "{selected} of {total} selected",
+    selectionHint: () =>
+      zh()
+        ? "勾选状态会自动保存到云端；默认不选择任何扩展，只备份你真正需要的部分。取消选择不会删除已有云端备份。"
+        : "The selection is saved automatically. Nothing is selected by default, so only the extensions you check are backed up. Deselecting never deletes an existing cloud backup.",
+    selectionSaving: () =>
+      zh() ? "正在保存备份选择…" : "Saving backup selection…",
+    selectionSaved: () => (zh() ? "备份选择已保存" : "Backup selection saved"),
+    selectionUnsaved: () =>
+      zh()
+        ? "勾选任意扩展后会自动保存到云端"
+        : "Toggle any extension to save the selection to the cloud",
+    selectionSaveFailed: () =>
+      zh()
+        ? "备份选择保存失败：{error}"
+        : "Could not save the backup selection: {error}",
+    cloudStateNone: () => (zh() ? "未备份" : "not backed up"),
+    cloudStateSame: () =>
+      (zh() ? "已备份 v{version}" : "backed up v{version}"),
+    cloudStateOther: () =>
+      (zh() ? "云端为 v{version}" : "cloud has v{version}"),
+    localChip: () => (zh() ? "本地可备份" : "found locally"),
+    /* --------------------------- local sources --------------------------- */
+    localButton: () =>
+      zh() ? "从本地文件夹备份" : "Back up from a local folder",
+    localButtonCount: () =>
+      zh()
+        ? "从本地文件夹备份 · 找到 {count} 个"
+        : "Back up from a local folder · {count} found",
+    localButtonBusy: () =>
+      (zh() ? "正在扫描本地文件…" : "Scanning local files…"),
+    localHint: () =>
+      zh()
+        ? "选择浏览器的用户数据目录（包含 Extensions 文件夹），或某个解包扩展的源码目录：Windows 为 %LOCALAPPDATA%\\Google\\Chrome\\User Data，macOS 为 ~/Library/Application Support/Google/Chrome，Linux 为 ~/.config/google-chrome；Edge 把 Chrome 换成 Microsoft/Edge。chrome://version 会显示当前配置文件路径。"
+        : "Pick the browser user-data directory (the one containing the Extensions folder), or an unpacked extension's source directory: %LOCALAPPDATA%\\Google\\Chrome\\User Data on Windows, ~/Library/Application Support/Google/Chrome on macOS, ~/.config/google-chrome on Linux; replace Chrome with Microsoft/Edge for Edge. chrome://version shows the exact profile path.",
+    localRemembered: () =>
+      zh()
+        ? "已记住文件夹：{name}"
+        : "Remembered folder: {name}",
+    localChange: () => (zh() ? "更换文件夹" : "Change folder"),
+    localForget: () => (zh() ? "不再记住" : "Forget"),
+    localScanFailed: () =>
+      zh()
+        ? "读取本地扩展文件失败：{error}"
+        : "Could not read the local extension files: {error}",
+    localNothingFound: () =>
+      zh()
+        ? "所选文件夹里没有找到可备份的扩展文件。请选择包含 Extensions 文件夹的用户数据目录，或解包扩展的源码目录。"
+        : "No backable extension files were found in the selected folder. Pick the user-data directory that contains the Extensions folder, or an unpacked extension's source directory.",
+    localPreviewTitle: () =>
+      zh() ? "选择要备份的本地扩展" : "Choose local extensions to back up",
+    localPreviewDesc: () =>
+      zh()
+        ? "下面是刚才在所选文件夹里找到的扩展文件。扩展包会按扩展 ID 和版本保存，内容没有变化时不会重复上传。"
+        : "These are the extension files found in the selected folder. Packages are stored per extension ID and version, and unchanged content is never uploaded twice.",
+    localFiles: () =>
+      (zh() ? "{count} 个文件 · {size}" : "{count} files · {size}"),
+    localMatchId: () =>
+      (zh() ? "按扩展 ID 匹配" : "matched by extension ID"),
+    localMatchManifest: () =>
+      (zh() ? "按 manifest.json 匹配" : "matched by manifest.json"),
+    localMatchOrphan: () =>
+      (zh() ? "本地文件（当前未安装）" : "local files (not installed)"),
+    localCloudNone: () => (zh() ? "未备份" : "not backed up"),
+    localCloudSame: () =>
+      (zh() ? "云端已有该版本" : "cloud already has this version"),
+    localCloudOther: () =>
+      (zh() ? "云端为 v{version}" : "cloud has v{version}"),
+    localVersionMismatch: () =>
+      zh()
+        ? "本地版本与已安装版本不一致"
+        : "local version differs from the installed one",
+    localMissing: () =>
+      zh()
+        ? "{count} 个已安装扩展在所选文件夹里没有文件：解包/开发模式扩展请直接选择它的源码目录。"
+        : "{count} installed extension(s) had no files in the selected folder: for unpacked or development extensions, pick their source directory directly.",
+    localStart: () => (zh() ? "开始备份 {count} 个" : "Back up {count}"),
+    localCancel: () => (zh() ? "取消" : "Cancel"),
+    localClose: () => (zh() ? "关闭" : "Close"),
+    localProgress: () =>
+      (zh() ? "正在备份 {done}/{total}：{name}" : "Backing up {done}/{total}: {name}"),
+    localItemPending: () => (zh() ? "等待中" : "waiting"),
+    localItemWorking: () => (zh() ? "打包中…" : "packaging…"),
+    localItemUploading: () => (zh() ? "上传中…" : "uploading…"),
+    localItemDone: () => (zh() ? "已备份" : "backed up"),
+    localItemSkipped: () => (zh() ? "内容未变化" : "unchanged"),
+    localItemFailed: () => (zh() ? "失败" : "failed"),
+    localTooManyFiles: () =>
+      zh()
+        ? "该扩展文件过多（超过 {count} 个），已跳过以保证备份完整。"
+        : "This extension has too many files (over {count}) and was skipped so no partial backup is stored.",
+    localSummary: () =>
+      zh()
+        ? "已备份 {done} 个扩展包（{size}）；{skipped} 个内容未变化；{failed} 个失败。"
+        : "Backed up {done} package(s) ({size}); {skipped} unchanged; {failed} failed.",
+    localOrigin: () => (zh() ? "本地解包文件" : "local unpacked files"),
+    /* ---------------------------- batch upload --------------------------- */
+    uploadMany: () =>
+      (zh() ? "上传多个 CRX / ZIP…" : "Upload several CRX / ZIP…"),
+    dropHint: () =>
+      zh()
+        ? "也可以把多个 CRX / ZIP 文件直接拖到上面的列表上"
+        : "You can also drop several CRX / ZIP files straight onto the list above",
+    uploadProgress: () =>
+      (zh() ? "正在上传 {done}/{total}…" : "Uploading {done}/{total}…"),
+    uploadSummary: () =>
+      zh()
+        ? "已上传 {uploaded} 个扩展包；{failed} 个失败。"
+        : "Uploaded {uploaded} package(s); {failed} failed.",
+    uploadUnmatched: () =>
+      zh()
+        ? "{count} 个文件无法识别对应扩展：{names}。请使用行内“备份 CRX / ZIP”按钮单独上传。"
+        : "{count} file(s) could not be matched to an extension: {names}. Use the per-row “Back up CRX / ZIP” button for those.",
   };
   const t = (k) => text[k]?.() || k;
   const formatText = (template, values) =>
@@ -798,14 +912,25 @@
         )
       : davPut(cfg, "selection.json", bytes, "application/json");
   }
-  async function putPackage(cfg, ext, bytes, fileName) {
+  /**
+   * Store one package.
+   *
+   * `options.index` lets a batch pass the index it already read forward, so
+   * backing up twenty extensions does not re-read the index twenty times while
+   * still writing a cumulative one. `options.origin` records where the bytes
+   * came from, which distinguishes a package this extension built from local
+   * unpacked files from an archive the user uploaded.
+   */
+  async function putPackage(cfg, ext, bytes, fileName, options = {}) {
     const pi = PI(),
       limit = backendMaxBytes(cfg);
     if (!/\.(crx|zip)$/i.test(String(fileName || "")))
       throw Error(t("packageFormatInvalid"));
     if (bytes.length > limit) throw Error(backendMaxMessage(cfg));
     const hash = await sha256(bytes),
-      index = await readIndex(cfg),
+      index = options.index
+        ? pi.normalizeIndex(options.index)
+        : await readIndex(cfg),
       folder = pi.packageFolder(ext.id, ext.version || ""),
       existing = pi.findIndexEntry(index, {
         extensionId: ext.id,
@@ -835,6 +960,7 @@
         path,
         storedAt: new Date().toISOString(),
         backend: cfg.backend,
+        origin: String(options.origin || ""),
       }),
       metadata = pi.packageMetadata(item),
       metadataBytes = new TextEncoder().encode(
@@ -1060,7 +1186,7 @@
     const s = document.createElement("style");
     s.id = "ccsync-extension-storage-styles";
     s.textContent =
-      ".ccsync-ext-grid{display:grid;gap:10px}.ccsync-ext-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ccsync-ext-note{color:var(--text-2);font-size:12px;line-height:1.55;margin-top:8px}.ccsync-ext-selection,.ccsync-ext-cloud{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}.ccsync-ext-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.ccsync-ext-tools{display:flex;gap:6px;flex-wrap:wrap}.ccsync-ext-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-row:first-child{border-top:0}.ccsync-ext-name{font-size:13px;font-weight:600;overflow-wrap:anywhere}.ccsync-ext-meta{font-size:11px;color:var(--text-2);margin-top:2px;overflow-wrap:anywhere}.ccsync-ext-status{font-size:12px;line-height:1.55;margin-top:10px}.ccsync-ext-status.ok{color:var(--success)}.ccsync-ext-status.error{color:var(--danger)}.ccsync-ext-cloud-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-cloud-name{font-size:13px;font-weight:600}.ccsync-ext-cloud-meta{font-size:11px;color:var(--text-2);margin-top:2px}.ccsync-ext-token-help{font-size:12px;line-height:1.55;color:var(--text-2)}.ccsync-ext-hidden{display:none!important}@media(max-width:600px){.ccsync-ext-row,.ccsync-ext-cloud-row{grid-template-columns:1fr}.ccsync-ext-row input[type=checkbox]{justify-self:start}.ccsync-ext-row .secondary{justify-self:start}}";
+      ".ccsync-ext-grid{display:grid;gap:10px}.ccsync-ext-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ccsync-ext-note{color:var(--text-2);font-size:12px;line-height:1.55;margin-top:8px}.ccsync-ext-selection,.ccsync-ext-cloud{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}.ccsync-ext-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.ccsync-ext-tools{display:flex;gap:6px;flex-wrap:wrap}.ccsync-ext-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-row:first-child{border-top:0}.ccsync-ext-name{font-size:13px;font-weight:600;overflow-wrap:anywhere}.ccsync-ext-meta{font-size:11px;color:var(--text-2);margin-top:2px;overflow-wrap:anywhere}.ccsync-ext-status{font-size:12px;line-height:1.55;margin-top:10px}.ccsync-ext-status.ok{color:var(--success)}.ccsync-ext-status.error{color:var(--danger)}.ccsync-ext-cloud-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-cloud-name{font-size:13px;font-weight:600}.ccsync-ext-cloud-meta{font-size:11px;color:var(--text-2);margin-top:2px}.ccsync-ext-token-help{font-size:12px;line-height:1.55;color:var(--text-2)}.ccsync-ext-hidden{display:none!important}.ccsync-ext-search{max-width:220px}.ccsync-ext-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.ccsync-ext-chip{display:inline-block;font-size:11px;line-height:1.6;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--text-2);white-space:nowrap}.ccsync-ext-chip.ok{color:var(--success);border-color:color-mix(in srgb,var(--success) 45%,var(--line))}.ccsync-ext-chip.warn{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,var(--line))}.ccsync-ext-row[hidden]{display:none!important}.ccsync-ext-drop{outline:2px dashed var(--accent,#315efb);outline-offset:6px;border-radius:8px}.ccsync-ext-modal{position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.55)}.ccsync-ext-modal[hidden]{display:none}.ccsync-ext-modal-card{display:flex;flex-direction:column;width:100%;max-width:760px;max-height:86vh;background:var(--surface,#fff);color:var(--text-1,#0f172a);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 60px rgba(15,23,42,.3)}.ccsync-ext-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}.ccsync-ext-modal-body{padding:6px 18px 12px;overflow:auto}.ccsync-ext-modal-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line)}.ccsync-ext-local-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-local-row:first-child{border-top:0}@media(max-width:600px){.ccsync-ext-row,.ccsync-ext-cloud-row,.ccsync-ext-local-row{grid-template-columns:1fr}.ccsync-ext-row input[type=checkbox]{justify-self:start}.ccsync-ext-row .secondary{justify-self:start}}";
     document.head.appendChild(s);
   }
   function setHidden(el, hidden) {
@@ -1457,6 +1583,10 @@
     // users only saw the list after changing the backend selector, which could
     // accidentally render unsaved form values as though they were active.
     await render(saved);
+    // Resolving the remembered folder's permission here keeps the folder
+    // button's click handler free of awaits, which Chromium's directory picker
+    // requires.
+    void loadRememberedRoot();
   }
   async function refreshGdriveState() {
     const el = $("ccsyncGdrivePackageState");
@@ -1473,30 +1603,682 @@
     }
   }
 
+  /* ------------------------------------------------------------------ *
+   * Local extension sources.
+   *
+   * Chromium will not hand one extension another extension's files, but the
+   * user can point this page at the folder that holds them — the browser
+   * user-data directory, a single `Extensions` directory, or an unpacked
+   * source tree — once. Everything selected in the backup list that can be
+   * found there is packaged and uploaded in one pass, which replaces the
+   * per-extension CRX/ZIP picker for the common case.
+   * ------------------------------------------------------------------ */
+
+  const LS = () => window.CCSyncExtensionLocalSource;
+  const LOCAL_ROOT_KEY = "ccsync-local-extension-root";
+  /** Latest successful folder scan; feeds the "found locally" row chips. */
+  let lastLocalScan = null;
+  /**
+   * Debounced selection write. Module level so a re-render can cancel a save
+   * that still closes over the previous list: writing it afterwards would
+   * restore checkboxes the user has already changed.
+   */
+  let selectionSaveTimer = null;
+  /**
+   * Remembered folder plus its permission state.
+   *
+   * Chromium's directory picker needs the user gesture that opened it, so the
+   * decision "reuse the remembered folder or open the picker" has to be made
+   * synchronously inside the click handler. The permission state is resolved
+   * once at page load instead of on click, which keeps that decision free of
+   * `await`.
+   */
+  let rememberedRoot = null;
+
+  /* ------------------------------ IndexedDB ------------------------------ */
+
+  /**
+   * A directory handle is a live object, so it cannot live in
+   * `chrome.storage.local`. It is kept in IndexedDB instead, which also means
+   * the remembered folder survives browser restarts.
+   */
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      if (typeof indexedDB === "undefined")
+        return reject(Error("indexedDB is unavailable"));
+      let request;
+      try {
+        request = indexedDB.open("ccsync-extension-backup", 1);
+      } catch (error) {
+        return reject(error);
+      }
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("local-roots"))
+          db.createObjectStore("local-roots");
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || Error("indexedDB failed"));
+      request.onblocked = () => reject(Error("indexedDB is blocked"));
+    });
+  }
+  async function idbRead(key) {
+    try {
+      const db = await idbOpen();
+      return await new Promise((resolve, reject) => {
+        const request = db
+          .transaction("local-roots", "readonly")
+          .objectStore("local-roots")
+          .get(key);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    } catch {
+      return null;
+    }
+  }
+  async function idbWrite(key, value) {
+    try {
+      const db = await idbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction("local-roots", "readwrite");
+        tx.objectStore("local-roots").put(value, key);
+        tx.oncomplete = () => resolve(null);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async function idbRemove(key) {
+    try {
+      const db = await idbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction("local-roots", "readwrite");
+        tx.objectStore("local-roots").delete(key);
+        tx.oncomplete = () => resolve(null);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    } catch {
+      /* Forgetting a folder is best effort. */
+    }
+  }
+
+  /** Re-using a stored handle needs permission to be re-granted each session. */
+  async function directoryPermission(handle) {
+    if (!handle?.queryPermission) return "granted";
+    try {
+      const state = await handle.queryPermission({ mode: "read" });
+      if (state !== "prompt" || typeof handle.requestPermission !== "function")
+        return state;
+      return await handle.requestPermission({ mode: "read" });
+    } catch {
+      return "denied";
+    }
+  }
+
+  /** Resolve the remembered folder's permission once, away from any gesture. */
+  async function loadRememberedRoot() {
+    const stored = await idbRead(LOCAL_ROOT_KEY);
+    if (!stored) {
+      rememberedRoot = null;
+      return;
+    }
+    const state = await directoryPermission(stored);
+    rememberedRoot = { handle: stored, granted: state === "granted" };
+  }
+
+  function rememberRoot(handle) {
+    rememberedRoot = { handle, granted: true };
+    void idbWrite(LOCAL_ROOT_KEY, handle);
+  }
+
+  /**
+   * Ask for one folder: the remembered one when it still has permission,
+   * otherwise the platform picker (or a `webkitdirectory` input where the File
+   * System Access API is missing).
+   *
+   * The picker is opened synchronously so Chromium still sees the click that
+   * asked for it; only the scan that follows is awaited.
+   */
+  function pickLocalRoot() {
+    if (rememberedRoot?.granted && rememberedRoot.handle)
+      return Promise.resolve({
+        name: String(rememberedRoot.handle.name || ""),
+        remembered: true,
+        scan: () => LS().scanDirectoryHandle(rememberedRoot.handle),
+      });
+    if (typeof window.showDirectoryPicker === "function") {
+      const pending = window.showDirectoryPicker({
+        mode: "read",
+        id: LOCAL_ROOT_KEY,
+      });
+      return pending.then((handle) => {
+        if (!handle) return null;
+        rememberRoot(handle);
+        return {
+          name: String(handle.name || ""),
+          remembered: false,
+          scan: () => LS().scanDirectoryHandle(handle),
+        };
+      });
+    }
+    return new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.multiple = true;
+      input.hidden = true;
+      input.setAttribute("webkitdirectory", "");
+      document.body.append(input);
+      input.addEventListener(
+        "change",
+        () => {
+          const picked = Array.from(input.files || []);
+          input.remove();
+          if (!picked.length) return resolve(null);
+          resolve({
+            name: String(
+              (picked[0]?.webkitRelativePath || "").split("/")[0] || "",
+            ),
+            remembered: false,
+            scan: () => LS().scanPickedFiles(picked),
+          });
+        },
+        { once: true },
+      );
+      input.click();
+    });
+  }
+
+  /** Scan the picked folder and plan what can be backed up from it. */
+  async function scanLocalRoot(installed) {
+    const pick = await pickLocalRoot();
+    if (!pick) return null;
+    const scan = await pick.scan();
+    if (!scan?.files?.length) return { ...pick, plan: null };
+    const manifests = await LS().readLocalManifests(scan.files, { installed });
+    const plan = LS().planLocalPackages({
+      files: scan.files,
+      manifests,
+      installed,
+    });
+    return { ...pick, plan, rootName: scan.rootName };
+  }
+
+  /* -------------------------------- modal -------------------------------- */
+
+  function openModal(titleText, descText) {
+    const overlay = document.createElement("div");
+    overlay.className = "ccsync-ext-modal";
+    overlay.hidden = false;
+    const card = document.createElement("div");
+    card.className = "ccsync-ext-modal-card";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    const head = document.createElement("div");
+    head.className = "ccsync-ext-modal-head";
+    const headText = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "subcard-title";
+    title.textContent = titleText;
+    const desc = document.createElement("div");
+    desc.className = "ccsync-ext-note";
+    desc.textContent = descText;
+    headText.append(title, desc);
+    const dismiss = document.createElement("button");
+    dismiss.className = "secondary";
+    dismiss.type = "button";
+    dismiss.textContent = "×";
+    dismiss.setAttribute("aria-label", t("localClose"));
+    head.append(headText, dismiss);
+    const body = document.createElement("div");
+    body.className = "ccsync-ext-modal-body";
+    const foot = document.createElement("div");
+    foot.className = "ccsync-ext-modal-foot";
+    card.append(head, body, foot);
+    overlay.append(card);
+    document.body.append(overlay);
+    return { overlay, body, foot, dismiss };
+  }
+
+  /* --------------------------- local backup flow -------------------------- */
+
+  /**
+   * Package and upload every selected extension that exists on disk.
+   *
+   * The preview step matters: the user sees which extensions were found, under
+   * which identity, and whether the cloud already holds the same bytes, before
+   * anything is uploaded.
+   */
+  async function localBackupFlow(cfg, installed, selectedIds) {
+    let scan = null;
+    try {
+      scan = await scanLocalRoot(installed);
+    } catch (error) {
+      // A dismissed directory picker surfaces as AbortError.
+      if (error?.name === "AbortError") return null;
+      alert(formatText(t("localScanFailed"), { error: error?.message || String(error) }));
+      return null;
+    }
+    if (!scan) return null;
+    lastLocalScan = scan;
+    if (!scan.plan || !scan.plan.packages.length) {
+      alert(t("localNothingFound"));
+      return null;
+    }
+    const plan = scan.plan;
+    let cloud = { backups: [] };
+    try {
+      cloud = await listBackups(cfg);
+    } catch {
+      cloud = { backups: [] };
+    }
+    const cloudById = new Map();
+    for (const item of Array.isArray(cloud.backups) ? cloud.backups : []) {
+      const id = String(item.extensionId || "");
+      if (!id) continue;
+      const current = cloudById.get(id);
+      if (
+        !current ||
+        LS().compareVersions(String(item.version || ""), String(current.version || "")) >= 0
+      )
+        cloudById.set(id, item);
+    }
+    const selected = new Set((selectedIds || []).map(String));
+    const modal = openModal(t("localPreviewTitle"), t("localPreviewDesc"));
+    const rows = [];
+    const body = modal.body;
+
+    const ordered = [
+      ...plan.packages.filter((item) => item.installed),
+      ...plan.packages.filter((item) => !item.installed),
+    ];
+    for (const item of ordered) {
+      const row = document.createElement("label");
+      row.className = "ccsync-ext-local-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = item.installed ? selected.has(item.extensionId) : false;
+      const main = document.createElement("div");
+      const name = document.createElement("div");
+      name.className = "ccsync-ext-name";
+      name.textContent = item.name || item.extensionId;
+      const meta = document.createElement("div");
+      meta.className = "ccsync-ext-meta";
+      const remote = cloudById.get(item.extensionId);
+      const chips = [
+        `v${item.version || "?"}`,
+        formatText(t("localFiles"), {
+          count: item.fileCount,
+          size: fmt(item.totalSize),
+        }),
+        item.matchKind === "id"
+          ? t("localMatchId")
+          : item.matchKind === "manifest"
+            ? t("localMatchManifest")
+            : t("localMatchOrphan"),
+        !remote
+          ? t("localCloudNone")
+          : String(remote.version || "") === String(item.version || "")
+            ? t("localCloudSame")
+            : formatText(t("localCloudOther"), { version: remote.version || "?" }),
+        item.versionMismatch ? t("localVersionMismatch") : "",
+      ].filter(Boolean);
+      meta.textContent = chips.join(" · ");
+      main.append(name, meta);
+      const state = document.createElement("span");
+      state.className = "ccsync-ext-chip";
+      state.textContent = t("localItemPending");
+      row.append(cb, main, state);
+      body.append(row);
+      rows.push({ item, cb, state });
+    }
+
+    if (plan.missing.length) {
+      const note = document.createElement("div");
+      note.className = "ccsync-ext-note";
+      note.textContent = formatText(t("localMissing"), {
+        count: plan.missing.length,
+      });
+      body.append(note);
+    }
+    if (scan.remembered) {
+      const note = document.createElement("div");
+      note.className = "ccsync-ext-note";
+      note.textContent = formatText(t("localRemembered"), { name: scan.name });
+      body.append(note);
+    }
+
+    const cancel = document.createElement("button");
+    cancel.className = "secondary";
+    cancel.type = "button";
+    cancel.textContent = t("localCancel");
+    const change = document.createElement("button");
+    change.className = "secondary";
+    change.type = "button";
+    change.textContent = t("localChange");
+    const forget = document.createElement("button");
+    forget.className = "secondary";
+    forget.type = "button";
+    forget.textContent = t("localForget");
+    forget.hidden = !scan.remembered;
+    const start = document.createElement("button");
+    start.className = "primary";
+    start.type = "button";
+    const chosen = () => rows.filter((row) => row.cb.checked);
+    const refreshStart = () => {
+      start.textContent = formatText(t("localStart"), {
+        count: chosen().length,
+      });
+      start.disabled = chosen().length === 0;
+    };
+    rows.forEach((row) =>
+      row.cb.addEventListener("change", () => refreshStart()),
+    );
+    refreshStart();
+    const status = document.createElement("div");
+    status.className = "ccsync-ext-note";
+    modal.foot.append(change, forget, cancel, start);
+    body.append(status);
+
+    const decision = await new Promise((resolve) => {
+      modal.dismiss.addEventListener("click", () => resolve(null), { once: true });
+      cancel.addEventListener("click", () => resolve(null), { once: true });
+      change.addEventListener("click", () => resolve("change"), { once: true });
+      forget.addEventListener("click", async () => {
+        rememberedRoot = null;
+        await idbRemove(LOCAL_ROOT_KEY);
+        forget.hidden = true;
+      });
+      start.addEventListener("click", () => resolve("start"), { once: true });
+    });
+    if (decision === "change") {
+      // Drop the remembered folder so the next pass opens the picker again.
+      rememberedRoot = null;
+      modal.overlay.remove();
+      return await localBackupFlow(cfg, installed, selectedIds);
+    }
+    if (decision !== "start") {
+      modal.overlay.remove();
+      return null;
+    }
+    return await runLocalBackup(cfg, chosen(), selected, {
+      modal,
+      rows,
+      status,
+      start,
+      cancel,
+      change,
+      forget,
+    });
+  }
+
+  /** Upload the chosen local packages, reporting per-item progress. */
+  async function runLocalBackup(cfg, chosen, selected, ui) {
+    const pi = PI();
+    const total = chosen.length;
+    let done = 0,
+      skipped = 0,
+      failed = 0,
+      size = 0;
+    const failures = [];
+    let index = null;
+    try {
+      index = await readIndex(cfg);
+    } catch {
+      index = pi.emptyIndex();
+    }
+    ui.change.disabled = true;
+    ui.forget.disabled = true;
+    ui.start.disabled = true;
+    ui.start.hidden = true;
+    ui.cancel.textContent = t("localClose");
+    for (const row of chosen) {
+      row.cb.disabled = true;
+      row.state.textContent = t("localItemWorking");
+      row.state.className = "ccsync-ext-chip";
+      ui.status.textContent = formatText(t("localProgress"), {
+        done,
+        total,
+        name: row.item.name || row.item.extensionId,
+      });
+      try {
+        const built = await LS().buildLocalPackage(row.item);
+        const hash = await sha256(built.bytes);
+        const existing = pi.findIndexEntry(index, {
+          extensionId: row.item.extensionId,
+          version: row.item.version,
+          sha256: hash,
+        });
+        if (
+          existing &&
+          pi.isPackagePath(
+            existing.path,
+            existing.extensionId,
+            existing.version,
+            existing.fileName,
+          )
+        ) {
+          // Identical bytes are already stored: keep the existing object.
+          skipped += 1;
+          row.state.textContent = t("localItemSkipped");
+          row.state.className = "ccsync-ext-chip ok";
+        } else {
+          row.state.textContent = t("localItemUploading");
+          const record = await putPackage(
+            cfg,
+            {
+              id: row.item.extensionId,
+              name: row.item.name || row.item.extensionId,
+              version: row.item.version,
+            },
+            built.bytes,
+            built.fileName,
+            { index, origin: "local-unpacked" },
+          );
+          index = pi.upsertIndexEntry(index, record);
+          done += 1;
+          size += Number(record.size || 0);
+          row.state.textContent = t("localItemDone");
+          row.state.className = "ccsync-ext-chip ok";
+        }
+        selected.add(row.item.extensionId);
+      } catch (error) {
+        failed += 1;
+        failures.push({
+          name: row.item.name || row.item.extensionId,
+          error:
+            error?.message === "too-many-files"
+              ? formatText(t("localTooManyFiles"), {
+                  count: LS().MAX_PACKAGE_FILES,
+                })
+              : error?.message || String(error),
+        });
+        row.state.textContent = t("localItemFailed");
+        row.state.className = "ccsync-ext-chip warn";
+      }
+    }
+    for (const row of chosen) row.cb.disabled = false;
+    const ids = [...selected];
+    try {
+      await CCSyncRuntime.storageSet({ [K.selected]: ids });
+      if (cfg.backend !== "disabled") await writeSelection(cfg, ids);
+    } catch {
+      /* The cloud selection is re-saved by the next explicit change. */
+    }
+    ui.status.textContent = formatText(t("localSummary"), {
+      done,
+      skipped,
+      failed,
+      size: fmt(size),
+    });
+    if (failures.length)
+      ui.status.textContent += ` ${failures
+        .map((item) => `${item.name}: ${item.error}`)
+        .join("; ")}`;
+    await new Promise((resolve) => {
+      ui.cancel.addEventListener("click", () => resolve(null), { once: true });
+      ui.modal.dismiss.addEventListener("click", () => resolve(null), { once: true });
+    });
+    ui.modal.overlay.remove();
+    await render(await getCfg());
+    return { done, skipped, failed, size };
+  }
+
+  /* ---------------------------- batch uploading --------------------------- */
+
+  /**
+   * Upload several CRX/ZIP files at once.
+   *
+   * Each archive identifies its own extension — a CRX carries the ID, a ZIP
+   * carries its manifest — so the user never has to rename files or pick an
+   * extension first. Anything that cannot be identified is reported instead of
+   * being filed under a guessed ID.
+   */
+  async function uploadPackageFiles(cfg, installed, files, baseSelectedIds) {
+    const list = Array.from(files || []);
+    if (!list.length) return null;
+    const status = $("ccsyncExtUploadStatus");
+    if (status) {
+      status.hidden = false;
+      status.className = "ccsync-ext-status";
+      status.textContent = formatText(t("uploadProgress"), {
+        done: 0,
+        total: list.length,
+      });
+    }
+    const selected = new Set(
+      (Array.isArray(baseSelectedIds) && baseSelectedIds.length
+        ? baseSelectedIds
+        : Array.isArray(cfg.selected)
+          ? cfg.selected
+          : []
+      ).map(String),
+    );
+    let uploaded = 0,
+      failed = 0,
+      at = 0;
+    const unmatched = [];
+    const problems = [];
+    for (const file of list) {
+      at += 1;
+      if (status)
+        status.textContent = formatText(t("uploadProgress"), {
+          done: at - 1,
+          total: list.length,
+        });
+      let bytes;
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer());
+      } catch {
+        failed += 1;
+        continue;
+      }
+      let target = null;
+      try {
+        const identified = await LS().identifyUploadedPackage({
+          fileName: file.name,
+          bytes,
+          installed,
+        });
+        target = identified?.extension || null;
+      } catch {
+        target = null;
+      }
+      if (!target) {
+        unmatched.push(file.name);
+        continue;
+      }
+      try {
+        await putPackage(cfg, target, bytes, file.name);
+        uploaded += 1;
+        selected.add(target.id);
+      } catch (error) {
+        failed += 1;
+        problems.push(`${file.name}: ${error?.message || String(error)}`);
+      }
+    }
+    try {
+      await CCSyncRuntime.storageSet({ [K.selected]: [...selected] });
+      if (cfg.backend !== "disabled") await writeSelection(cfg, [...selected]);
+    } catch {
+      /* Selection persistence is best effort here; the row state still shows. */
+    }
+    const message = [
+      formatText(t("uploadSummary"), { uploaded, failed }),
+      unmatched.length
+        ? formatText(t("uploadUnmatched"), {
+            count: unmatched.length,
+            names: unmatched.slice(0, 5).join(", "),
+          })
+        : "",
+      problems.length ? problems.slice(0, 5).join("; ") : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (status) {
+      status.className = `ccsync-ext-status ${failed || unmatched.length ? "error" : "ok"}`;
+      status.textContent = message;
+    }
+    alert(message);
+    await render(await getCfg());
+    return { uploaded, failed, unmatched };
+  }
+
   async function render(cfg) {
     const card = $("extensionStorageSettings");
     if (!card) return;
+    if (selectionSaveTimer) {
+      clearTimeout(selectionSaveTimer);
+      selectionSaveTimer = null;
+    }
     card
-      .querySelectorAll(".ccsync-ext-selection,.ccsync-ext-cloud")
+      .querySelectorAll(".ccsync-ext-selection,.ccsync-ext-cloud,.ccsync-ext-modal")
       .forEach((x) => x.remove());
     if (!cfg || cfg.backend === "disabled") return;
     const installed = await getInstalled();
     let selected = Array.isArray(cfg.selected) ? cfg.selected.map(String) : [];
-    let remote = null;
+    let savedSelectionIds = null;
     const persisted = await getCfg();
     if (sameStorageConfig(cfg, persisted)) {
       try {
-        remote = await readSelection(cfg);
+        const remote = await readSelection(cfg);
+        if (Array.isArray(remote)) {
+          selected = remote.map(String);
+          savedSelectionIds = remote.map(String);
+        }
       } catch {
-        remote = null;
+        savedSelectionIds = null;
       }
     }
-    if (Array.isArray(remote)) selected = remote;
-    else if (!selected.length) selected = installed.map((x) => x.id);
-    let savedSelectionIds = Array.isArray(remote) ? remote.map(String) : null;
     let cloudBackups = [];
-    let cleanupCandidates = [];
-    let cleanupButton = null;
+    let missingPaths = new Set();
+    const cloudById = new Map();
+    try {
+      const listed = await listBackups(cfg);
+      cloudBackups = Array.isArray(listed.backups) ? listed.backups : [];
+      missingPaths = new Set(
+        (Array.isArray(listed.missing) ? listed.missing : []).map(String),
+      );
+    } catch {
+      cloudBackups = [];
+    }
+    for (const item of cloudBackups) {
+      const id = String(item.extensionId || "");
+      if (!id) continue;
+      const current = cloudById.get(id);
+      if (
+        !current ||
+        LS().compareVersions(String(item.version || ""), String(current.version || "")) >= 0
+      )
+        cloudById.set(id, item);
+    }
+    const localById = new Map(
+      (lastLocalScan?.plan?.packages || []).map((item) => [item.extensionId, item]),
+    );
     const section = document.createElement("section");
     section.className = "ccsync-ext-selection";
     const head = document.createElement("div");
@@ -1507,10 +2289,16 @@
     title.textContent = t("choose");
     const desc = document.createElement("div");
     desc.className = "ccsync-ext-note";
-    desc.textContent = t("chooseDesc");
+    desc.textContent = t("selectionHint");
     copy.append(title, desc);
     const tools = document.createElement("div");
     tools.className = "ccsync-ext-tools";
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "field ccsync-ext-search";
+    search.id = "ccsyncExtensionSearch";
+    search.placeholder = t("searchPlaceholder");
+    search.setAttribute("aria-label", t("search"));
     const all = document.createElement("button");
     all.className = "secondary";
     all.type = "button";
@@ -1519,30 +2307,30 @@
     none.className = "secondary";
     none.type = "button";
     none.textContent = t("none");
-    const saveSel = document.createElement("button");
-    saveSel.className = "primary";
-    saveSel.type = "button";
-    saveSel.textContent = t("saveSelection");
-    tools.append(all, none, saveSel);
+    const invert = document.createElement("button");
+    invert.className = "secondary";
+    invert.type = "button";
+    invert.textContent = t("invert");
+    tools.append(search, all, none, invert);
     head.append(copy, tools);
     section.append(head);
+
     const list = document.createElement("div");
     const checks = new Map();
     const currentSelectionIds = () =>
       [...checks.entries()]
         .filter(([, checkbox]) => checkbox.checked)
         .map(([id]) => id);
-    const updateCleanupButton = () => {
-      if (!cleanupButton) return;
-      const unchanged =
-        Array.isArray(savedSelectionIds) &&
-        sameIds(currentSelectionIds(), savedSelectionIds);
-      cleanupButton.textContent = `${t("cleanupUnused")} · ${cleanupCandidates.length}`;
-      cleanupButton.disabled = !unchanged || cleanupCandidates.length === 0;
-    };
+    const visibleIds = () =>
+      installed
+        .filter((ext) => matchesFilter(ext, search.value))
+        .map((ext) => ext.id);
+
     for (const ext of installed) {
       const row = document.createElement("label");
       row.className = "ccsync-ext-row";
+      row.dataset.extensionId = ext.id;
+      row.dataset.search = `${ext.name || ""} ${ext.id}`.toLowerCase();
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = selected.includes(ext.id);
@@ -1554,7 +2342,24 @@
       const meta = document.createElement("div");
       meta.className = "ccsync-ext-meta";
       meta.textContent = `v${ext.version || "?"} · ${ext.installType || "unknown"} · ${ext.id}`;
-      main.append(name, meta);
+      const chips = document.createElement("div");
+      chips.className = "ccsync-ext-chips";
+      const remote = cloudById.get(ext.id);
+      const cloudChip = document.createElement("span");
+      cloudChip.className = `ccsync-ext-chip${remote ? " ok" : ""}`;
+      cloudChip.textContent = !remote
+        ? t("cloudStateNone")
+        : String(remote.version || "") === String(ext.version || "")
+          ? formatText(t("cloudStateSame"), { version: remote.version || "?" })
+          : formatText(t("cloudStateOther"), { version: remote.version || "?" });
+      chips.append(cloudChip);
+      if (localById.has(ext.id)) {
+        const localChip = document.createElement("span");
+        localChip.className = "ccsync-ext-chip ok";
+        localChip.textContent = t("localChip");
+        chips.append(localChip);
+      }
+      main.append(name, meta, chips);
       const b = document.createElement("button");
       b.className = "secondary";
       b.type = "button";
@@ -1578,7 +2383,6 @@
           );
           return;
         }
-        const input = fileInput();
         pendingPackageUpload = {
           id: ext.id,
           name: ext.name || ext.id,
@@ -1586,64 +2390,177 @@
           cfg: { ...cfg },
           verifyForm: Boolean($("extensionStorageBackend")),
         };
-        input.click();
+        fileInput().click();
       });
       cb.addEventListener("change", () => {
         b.disabled = !cb.checked;
         updateCount();
-        updateCleanupButton();
+        queueSelectionSave();
       });
       checks.set(ext.id, cb);
       row.append(cb, main, b);
       list.append(row);
     }
     section.append(list);
-    card.append(section);
-    function updateCount() {
-      const n = [...checks.values()].filter((x) => x.checked).length;
-      saveSel.textContent = `${t("saveSelection")} · ${n}`;
+
+    /* ------------------------------- toolbar ------------------------------ */
+    function matchesFilter(ext, value) {
+      const needle = String(value || "").trim().toLowerCase();
+      if (!needle) return true;
+      return (
+        String(ext.name || "").toLowerCase().includes(needle) ||
+        String(ext.id || "").toLowerCase().includes(needle)
+      );
     }
-    all.addEventListener("click", () => {
-      checks.forEach((cb) => {
-        cb.checked = true;
-        const b = cb.closest(".ccsync-ext-row")?.querySelector("button");
-        if (b) b.disabled = false;
-      });
+    const applyFilter = () => {
+      const visible = new Set(visibleIds());
+      for (const row of list.querySelectorAll(".ccsync-ext-row"))
+        row.hidden = !visible.has(row.dataset.extensionId);
       updateCount();
-      updateCleanupButton();
-    });
-    none.addEventListener("click", () => {
-      checks.forEach((cb) => {
-        cb.checked = false;
-        const b = cb.closest(".ccsync-ext-row")?.querySelector("button");
-        if (b) b.disabled = true;
-      });
+    };
+    search.addEventListener("input", () => applyFilter());
+    const setVisible = (value) => {
+      for (const id of visibleIds()) {
+        const cb = checks.get(id);
+        if (!cb) continue;
+        cb.checked = value;
+        const button = cb
+          .closest(".ccsync-ext-row")
+          ?.querySelector("button[data-backup-for]");
+        if (button) button.disabled = !value;
+      }
       updateCount();
-      updateCleanupButton();
+      queueSelectionSave();
+    };
+    all.addEventListener("click", () => setVisible(true));
+    none.addEventListener("click", () => setVisible(false));
+    invert.addEventListener("click", () => {
+      for (const id of visibleIds()) {
+        const cb = checks.get(id);
+        if (!cb) continue;
+        cb.checked = !cb.checked;
+        const button = cb
+          .closest(".ccsync-ext-row")
+          ?.querySelector("button[data-backup-for]");
+        if (button) button.disabled = !cb.checked;
+      }
+      updateCount();
+      queueSelectionSave();
     });
-    saveSel.addEventListener("click", async () => {
+
+    const count = document.createElement("div");
+    count.className = "ccsync-ext-note";
+    const saveState = document.createElement("div");
+    saveState.className = "ccsync-ext-status";
+    saveState.id = "ccsyncExtSelectionState";
+    const uploadStatus = document.createElement("div");
+    uploadStatus.className = "ccsync-ext-status";
+    uploadStatus.id = "ccsyncExtUploadStatus";
+    uploadStatus.hidden = true;
+    section.append(count, saveState, uploadStatus);
+
+    function updateCount() {
+      const visible = visibleIds().length;
+      const chosen = currentSelectionIds().length;
+      count.textContent = formatText(t("selectedCount"), {
+        selected: chosen,
+        total: visible,
+      });
+    }
+    let saving = false;
+    function queueSelectionSave() {
+      if (selectionSaveTimer) clearTimeout(selectionSaveTimer);
+      saveState.hidden = false;
+      saveState.className = "ccsync-ext-status";
+      saveState.textContent = t("selectionSaving");
+      selectionSaveTimer = setTimeout(() => void persistSelection(), 350);
+    }
+    async function persistSelection() {
+      if (selectionSaveTimer) {
+        clearTimeout(selectionSaveTimer);
+        selectionSaveTimer = null;
+      }
+      if (saving) return;
+      saving = true;
+      const ids = currentSelectionIds();
       try {
-        const current = await getCfg();
-        if (
-          !sameStorageConfig(current, cfg) ||
-          !sameStorageConfig(uiCfg(current), current)
-        )
-          throw Error(t("selectionNeedSave"));
-        const ids = [...checks.entries()]
-          .filter(([, cb]) => cb.checked)
-          .map(([id]) => id);
         await CCSyncRuntime.storageSet({ [K.selected]: ids });
-        await writeSelection(cfg, ids);
+        if (cfg.backend !== "disabled") await writeSelection(cfg, ids);
         savedSelectionIds = ids;
-        cleanupCandidates = PI().findUnusedPackages(cloudBackups, ids);
+        saveState.className = "ccsync-ext-status ok";
+        saveState.textContent = t("selectionSaved");
         updateCleanupButton();
-        saveSel.textContent = t("selectionSaved");
-        setTimeout(updateCount, 900);
-      } catch (e) {
-        alert(e.message || String(e));
+      } catch (error) {
+        saveState.className = "ccsync-ext-status error";
+        saveState.textContent = formatText(t("selectionSaveFailed"), {
+          error: error?.message || String(error),
+        });
+      } finally {
+        saving = false;
+      }
+    }
+    saveState.hidden = false;
+    saveState.className = "ccsync-ext-status";
+    saveState.textContent = savedSelectionIds
+      ? t("selectionSaved")
+      : t("selectionUnsaved");
+
+    /* ---------------------------- batch actions --------------------------- */
+    const actions = document.createElement("div");
+    actions.className = "ccsync-ext-actions";
+    const localButton = document.createElement("button");
+    localButton.className = "primary";
+    localButton.type = "button";
+    localButton.textContent = localById.size
+      ? formatText(t("localButtonCount"), { count: localById.size })
+      : t("localButton");
+    localButton.addEventListener("click", async () => {
+      localButton.disabled = true;
+      const label = localButton.textContent;
+      localButton.textContent = t("localButtonBusy");
+      try {
+        await localBackupFlow(cfg, installed, currentSelectionIds());
+      } finally {
+        localButton.disabled = false;
+        localButton.textContent = label;
       }
     });
-    updateCount();
+    const uploadMany = document.createElement("button");
+    uploadMany.className = "secondary";
+    uploadMany.type = "button";
+    uploadMany.textContent = t("uploadMany");
+    uploadMany.addEventListener("click", () => {
+      pendingPackageUpload = {
+        cfg: { ...cfg },
+        verifyForm: Boolean($("extensionStorageBackend")),
+        multiple: true,
+      };
+      batchFileInput().click();
+    });
+    actions.append(localButton, uploadMany);
+    const hint = document.createElement("div");
+    hint.className = "ccsync-ext-note";
+    hint.textContent = `${t("localHint")} ${t("dropHint")}`;
+    section.append(actions, hint);
+
+    section.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      section.classList.add("ccsync-ext-drop");
+    });
+    section.addEventListener("dragleave", () =>
+      section.classList.remove("ccsync-ext-drop"),
+    );
+    section.addEventListener("drop", (event) => {
+      event.preventDefault();
+      section.classList.remove("ccsync-ext-drop");
+      const dropped = Array.from(event.dataTransfer?.files || []).filter(
+        (file) => /\.(crx|zip)$/i.test(file.name),
+      );
+      if (dropped.length)
+        void uploadPackageFiles(cfg, installed, dropped, currentSelectionIds());
+    });
+
+    /* ------------------------- cloud backups section ---------------------- */
     const cloud = document.createElement("section");
     cloud.className = "ccsync-ext-cloud";
     const cloudHead = document.createElement("div");
@@ -1651,11 +2568,19 @@
     const ct = document.createElement("div");
     ct.className = "subcard-title";
     ct.textContent = t("cloud");
-    cleanupButton = document.createElement("button");
+    const cleanupButton = document.createElement("button");
     cleanupButton.className = "secondary";
     cleanupButton.type = "button";
     cleanupButton.textContent = t("cleanupUnused");
     cleanupButton.disabled = true;
+    const updateCleanupButton = () => {
+      const unchanged =
+        Array.isArray(savedSelectionIds) &&
+        sameIds(currentSelectionIds(), savedSelectionIds);
+      cleanupButton.textContent = `${t("cleanupUnused")} · ${cleanupCandidates.length}`;
+      cleanupButton.disabled = !unchanged || cleanupCandidates.length === 0;
+    };
+    let cleanupCandidates = [];
     cleanupButton.addEventListener("click", async () => {
       if (
         !Array.isArray(savedSelectionIds) ||
@@ -1722,21 +2647,18 @@
     cleanupHelp.textContent = t("cleanupUnusedHelp");
     cloud.append(cloudHead, cleanupHelp);
     try {
-      const listed = await listBackups(cfg),
-        backups = Array.isArray(listed.backups) ? listed.backups : [],
-        missing = new Set(Array.isArray(listed.missing) ? listed.missing : []);
-      cloudBackups = backups;
+      const missing = missingPaths;
       cleanupCandidates = Array.isArray(savedSelectionIds)
-        ? PI().findUnusedPackages(backups, savedSelectionIds)
+        ? PI().findUnusedPackages(cloudBackups, savedSelectionIds)
         : [];
       updateCleanupButton();
-      if (!backups.length) {
+      if (!cloudBackups.length) {
         const n = document.createElement("div");
         n.className = "ccsync-ext-note";
         n.textContent = t("noBackups");
         cloud.append(n);
       }
-      for (const item of backups) {
+      for (const item of cloudBackups) {
         const row = document.createElement("div");
         row.className = "ccsync-ext-cloud-row";
         const m = document.createElement("div"),
@@ -1751,6 +2673,7 @@
           `${(item.format || "file").toUpperCase()}`,
           item.sha256 ? `SHA-256 ${String(item.sha256).slice(0, 12)}…` : "",
           item.source ? `${t("source")}: ${sourceLabel(item.source)}` : "",
+          item.origin ? `${t("source")}: ${t("localOrigin")}` : "",
           item.storedAt ? `${t("storedAt")}: ${fmtDate(item.storedAt)}` : "",
           item.extensionId,
         ].filter(Boolean);
@@ -1796,15 +2719,65 @@
         row.append(m, b);
         cloud.append(row);
       }
-      card.append(cloud);
+      card.append(section, cloud);
     } catch (e) {
       const n = document.createElement("div");
       n.className = "ccsync-ext-status error";
       n.textContent = e.message || String(e);
       cloud.append(n);
-      card.append(cloud);
+      card.append(section, cloud);
     }
+    updateCount();
   }
+
+  /** Multi-file picker used by the batch upload button and drop target. */
+  function batchFileInput() {
+    let input = $("ccsyncExtensionPackageBatchInput");
+    if (input) return input;
+    input = document.createElement("input");
+    input.type = "file";
+    input.id = "ccsyncExtensionPackageBatchInput";
+    input.accept = ".crx,.zip,application/zip,application/x-chrome-extension";
+    input.multiple = true;
+    input.hidden = true;
+    document.body.append(input);
+    input.addEventListener("change", async () => {
+      const request = pendingPackageUpload,
+        files = Array.from(input.files || []);
+      pendingPackageUpload = null;
+      input.value = "";
+      if (!request || !files.length) return;
+      const { cfg: expectedCfg, verifyForm } = request;
+      try {
+        const cfg = await getCfg();
+        if (
+          !sameStorageConfig(cfg, expectedCfg) ||
+          (verifyForm && !sameStorageConfig(uiCfg(cfg), cfg))
+        ) {
+          alert(t("selectionNeedSave"));
+          return;
+        }
+        if (cfg.backend === "disabled") {
+          alert(
+            zh()
+              ? "请先保存并启用第三方扩展云存储。"
+              : "Save and enable third-party extension cloud storage first.",
+          );
+          return;
+        }
+        await uploadPackageFiles(
+          cfg,
+          await getInstalled(),
+          files,
+          Array.isArray(cfg.selected) ? cfg.selected : [],
+        );
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
+    return input;
+  }
+
   window.CCSyncExtensionStorage = {
     initOptions,
     renderPopup: render,
