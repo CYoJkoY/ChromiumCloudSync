@@ -12,13 +12,6 @@
     gdriveFolder: "extensionBackupGdriveFolder",
     selected: "extensionBackupSelectedIds",
   };
-  /**
-   * Local caches for the Drive package destination.
-   *
-   * Kept out of `K` on purpose: `getCfg()` reads every `K` value as user
-   * configuration, and resolved folder/file ids are derived state that belongs
-   * to the connected account, not to the saved settings.
-   */
   const KC = {
     rootId: "extensionBackupGdriveRootId",
     folderIds: "extensionBackupGdriveFolderIds",
@@ -37,6 +30,8 @@
     selected: [],
   };
   const MAX = 95 * 1024 * 1024;
+  const GITHUB_API_VERSION = "2022-11-28";
+  const GITHUB_FETCH_TIMEOUT_MS = 15000;
   const $ = (id) => document.getElementById(id);
   const lang = () =>
     window.CCSyncI18n?.currentLanguage?.() ||
@@ -66,8 +61,8 @@
     token: () => (zh() ? "扩展备份 Token" : "Extension backup Token"),
     tokenHelp: () =>
       zh()
-        ? "建议创建 Fine-grained Token，仅授权目标私有仓库的 Contents: Read and write。"
-        : "Create a fine-grained token limited to the target private repository with Contents: Read and write.",
+        ? "建议创建 Fine-grained Token，仅授权目标私有仓库的 Contents: Read and write。Token 只需要 repo 权限，不需要其它权限。"
+        : "Create a fine-grained token limited to the target private repository with Contents: Read and write. Only repository contents access is required.",
     tokenLink: () => (zh() ? "创建 GitHub Token" : "Create GitHub Token"),
     davUrl: () => (zh() ? "WebDAV 地址" : "WebDAV URL"),
     davFolder: () => (zh() ? "WebDAV 文件夹" : "WebDAV folder"),
@@ -136,12 +131,18 @@
       zh()
         ? "扩展包保存到 Google Drive 中由本扩展管理的“Chromium Cloud Sync Packages”文件夹，与浏览器状态同步文件完全分开，并复用同步设置里已授权的 Google 账号。"
         : "Packages are stored in the app-managed \u201cChromium Cloud Sync Packages\u201d folder on Google Drive, completely separate from the browser-state sync files, reusing the Google account already authorized in sync settings.",
+    gdriveGuide: () =>
+      zh()
+        ? "使用步骤：① 先在“设置 → 同步”里把同步提供方设为 Google Drive 并点击“使用 Google 账号连接”完成授权；② 回到本页，把存储后端切换到 Google Drive；③ 可选填写子文件夹；④ 点击“保存存储设置”。本页不会再次要求任何 OAuth 客户端 ID/Secret。"
+        : "Steps: 1) In Settings → Sync, set the sync provider to Google Drive and click \u201cConnect with Google account\u201d to authorize; 2) return here and set the storage backend to Google Drive; 3) optionally enter a subfolder; 4) click \u201cSave storage settings\u201d. No OAuth client ID/secret is ever requested on this page.",
     gdriveNotConnected: () =>
       zh()
-        ? "尚未连接 Google Drive。请先在“云端同步提供方”中选择 Google Drive 并完成授权。"
-        : "Google Drive is not connected yet. Choose Google Drive under Cloud sync provider and authorize it first.",
+        ? "尚未连接 Google Drive。请先在“云端同步提供方”中选择 Google Drive 并完成授权，再回到本页保存。"
+        : "Google Drive is not connected yet. Choose Google Drive under Cloud sync provider and authorize it first, then return here to save.",
     gdriveConnectedAs: () =>
-      zh() ? "已连接 Google 账号：{email}" : "Connected Google account: {email}",
+      zh()
+        ? "已连接 Google 账号：{email}"
+        : "Connected Google account: {email}",
     gdriveSeparate: () =>
       zh()
         ? "扩展包备份与同步提供方相互独立：可以在不更改主同步提供方的情况下使用 Google Drive 备份扩展包。"
@@ -154,12 +155,13 @@
     storedAt: () => (zh() ? "备份时间" : "Backed up"),
     unindexed: () =>
       zh() ? "云端存在但未登记" : "On provider but not indexed",
-    missingFile: () =>
-      zh() ? "云端文件缺失" : "Missing on provider",
+    missingFile: () => (zh() ? "云端文件缺失" : "Missing on provider"),
     sourceChromeWebStore: () => (zh() ? "Chrome 应用商店" : "Chrome Web Store"),
     sourceEdgeAddOns: () => (zh() ? "Edge 外接程序" : "Edge Add-ons"),
-    sourceSelfHosted: () => (zh() ? "自托管更新地址" : "Self-hosted update URL"),
-    sourceUnpacked: () => (zh() ? "未打包（开发模式）" : "Unpacked (development)"),
+    sourceSelfHosted: () =>
+      zh() ? "自托管更新地址" : "Self-hosted update URL",
+    sourceUnpacked: () =>
+      zh() ? "未打包（开发模式）" : "Unpacked (development)",
     sourceSideLoaded: () => (zh() ? "旁加载" : "Side-loaded"),
     sourcePolicy: () => (zh() ? "策略安装" : "Installed by policy"),
     sourceUnknown: () => (zh() ? "未知来源" : "Unknown source"),
@@ -191,6 +193,18 @@
       zh()
         ? "Google Drive 服务暂时不可用，请稍后重试。"
         : "Google Drive is temporarily unavailable; try again later.",
+    githubTimeout: () =>
+      zh()
+        ? "访问 GitHub API 超时，请检查网络或代理后重试。"
+        : "GitHub API request timed out; check your network or proxy and retry.",
+    githubNetwork: () =>
+      zh()
+        ? "无法连接 GitHub API，请检查网络或代理。"
+        : "Cannot reach the GitHub API; check your network or proxy.",
+    saveFailedHint: () =>
+      zh()
+        ? "存储设置保存失败。请检查上方红色错误信息，修正后重试。"
+        : "Saving storage settings failed. Read the error message above and retry.",
   };
   const t = (k) => text[k]?.() || k;
   const getCfg = async () => ({
@@ -249,16 +263,41 @@
       .map((x) => x.toString(16).padStart(2, "0"))
       .join("");
   }
+
+  /** Fetch with timeout so a hung request cannot lock the save button. */
+  async function fetchWithTimeout(
+    url,
+    init = {},
+    timeoutMs = GITHUB_FETCH_TIMEOUT_MS,
+  ) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (
+        error &&
+        (error.name === "AbortError" ||
+          /aborted/i.test(String(error.message || error)))
+      ) {
+        throw Error(t("githubTimeout"));
+      }
+      throw Error(`${t("githubNetwork")}: ${error?.message || String(error)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function github(path, opt = {}, token) {
     const value =
       String(token || "").trim() ||
       String((await CCSyncRuntime.storageGet([K.token]))[K.token] || "").trim();
     if (!value) throw Error(t("needToken"));
-    const r = await fetch(`https://api.github.com${path}`, {
+    const r = await fetchWithTimeout(`https://api.github.com${path}`, {
       ...opt,
       headers: {
         Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2026-03-10",
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
         Authorization: `Bearer ${value}`,
         ...(opt.headers || {}),
       },
@@ -315,10 +354,10 @@
     );
   }
   async function githubRaw(cfg, path) {
-    const r = await fetch(`https://api.github.com${path}`, {
+    const r = await fetchWithTimeout(`https://api.github.com${path}`, {
       headers: {
         Accept: "application/vnd.github.raw+json",
-        "X-GitHub-Api-Version": "2026-03-10",
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
         Authorization: `Bearer ${cfg.token}`,
       },
     });
@@ -333,7 +372,7 @@
         ),
       );
     } catch (e) {
-      if (e.message.includes("HTTP 404")) return fallback;
+      if (String(e?.message || "").includes("HTTP 404")) return fallback;
       throw e;
     }
   }
@@ -399,13 +438,6 @@
     if (!r.ok) throw Error(`WebDAV download failed: HTTP ${r.status}`);
     return new Uint8Array(await r.arrayBuffer());
   }
-  /* --------------------------------------------------------------------------
-   * Google Drive package transport.
-   *
-   * The transport itself lives in `gdrive-packages.ts`, which takes injected
-   * dependencies so it can be exercised without a DOM or a network. This layer
-   * only wires it to the page's runtime bridge, localization, and caches.
-   * ------------------------------------------------------------------------ */
   const PI = () => window.CCSyncPackageIndex;
   const gdrive = window.CCSyncGdrivePackages.createGdrivePackages({
     request: (type, extra) => CCSyncRuntime.request(type, extra),
@@ -426,10 +458,6 @@
     gdrive.writeJson(cfg, relative, value);
   const gdriveListPackages = (cfg) => gdrive.listPackages(cfg);
 
-  /**
-   * The package index is always stored separately from browser-state sync data:
-   * a different file, and for Drive a different app-managed folder.
-   */
   async function readIndex(cfg) {
     const pi = PI();
     if (cfg.backend === "gdrive")
@@ -445,9 +473,11 @@
         ),
       );
     try {
-      return pi.normalizeIndex(JSON.parse(decode(await davGet(cfg, "index.json"))));
+      return pi.normalizeIndex(
+        JSON.parse(decode(await davGet(cfg, "index.json"))),
+      );
     } catch (e) {
-      if (e.message.includes("HTTP 404")) return pi.emptyIndex();
+      if (String(e?.message || "").includes("HTTP 404")) return pi.emptyIndex();
       throw e;
     }
   }
@@ -464,13 +494,6 @@
         )
       : davPut(cfg, "index.json", bytes, "application/json");
   }
-  /**
-   * Backups as the provider actually holds them.
-   *
-   * Drive is listed so packages uploaded from another profile — or left behind by
-   * an interrupted index write — still appear, and index entries whose file is
-   * gone are reported instead of being offered as restorable.
-   */
   async function listBackups(cfg) {
     const pi = PI(),
       index = await readIndex(cfg);
@@ -482,7 +505,10 @@
         unindexed: [],
         missing: [],
       };
-    const merged = pi.mergeIndexWithListing(index, await gdriveListPackages(cfg));
+    const merged = pi.mergeIndexWithListing(
+      index,
+      await gdriveListPackages(cfg),
+    );
     return {
       schemaVersion: merged.schemaVersion,
       updatedAt: merged.updatedAt,
@@ -509,7 +535,7 @@
       const x = JSON.parse(decode(await davGet(cfg, "selection.json")));
       return Array.isArray(x?.selectedIds) ? x.selectedIds.map(String) : null;
     } catch (e) {
-      if (e.message.includes("HTTP 404")) return null;
+      if (String(e?.message || "").includes("HTTP 404")) return null;
       throw e;
     }
   }
@@ -531,16 +557,6 @@
         )
       : davPut(cfg, "selection.json", bytes, "application/json");
   }
-  /**
-   * Store one package.
-   *
-   * The record carries the filename, extension id, extension version, source
-   * information, timestamp, size, and SHA-256 checksum. Duplicate names and
-   * versions never silently overwrite an unrelated backup: when the same
-   * name/version already holds different bytes, the checksum prefix is folded
-   * into the file name so both packages survive. Re-uploading identical bytes
-   * updates the existing entry instead of growing the index.
-   */
   async function putPackage(cfg, ext, bytes, fileName) {
     const pi = PI(),
       limit = backendMaxBytes(cfg);
@@ -597,13 +613,6 @@
     await writeIndex(cfg, pi.upsertIndexEntry(index, item));
     return item;
   }
-  /**
-   * Per-backend size limit.
-   *
-   * The GitHub Contents API base64 path caps at 95 MB; Drive and WebDAV stream
-   * the bytes, so they are bounded by the provider instead — Drive reports its
-   * own limit as a classified `too-large` failure.
-   */
   function backendMaxBytes(cfg) {
     return cfg?.backend === "github" ? MAX : Number.MAX_SAFE_INTEGER;
   }
@@ -626,7 +635,6 @@
   async function test(cfg) {
     if (cfg.backend === "disabled") return true;
     if (cfg.backend === "gdrive") {
-      // Reuses the sync provider's Drive session; no second authorization.
       const session = await gdriveSession();
       if (!session?.token) throw Error(t("gdriveNotConnected"));
       await gdriveDestination(cfg);
@@ -681,7 +689,9 @@
   }
   function fmtDate(value) {
     const when = new Date(value);
-    return Number.isNaN(when.getTime()) ? String(value || "") : when.toLocaleString();
+    return Number.isNaN(when.getTime())
+      ? String(value || "")
+      : when.toLocaleString();
   }
   function addStyles() {
     if ($("ccsync-extension-storage-styles")) return;
@@ -785,9 +795,7 @@
         String(a.davPass || "") === String(b.davPass || "")
       );
     if (a.backend === "gdrive")
-      return (
-        normFolder(a.gdriveFolder) === normFolder(b.gdriveFolder)
-      );
+      return normFolder(a.gdriveFolder) === normFolder(b.gdriveFolder);
     return true;
   }
   let refreshLanguage = () => {};
@@ -862,6 +870,9 @@
       "text",
       zh() ? "留空 = 应用托管根目录" : "Leave blank = app-managed root",
     );
+    const gdriveGuide = document.createElement("div");
+    gdriveGuide.className = "ccsync-ext-token-help";
+    gdriveGuide.id = "ccsyncGdrivePackageGuide";
     const gdriveHelp = document.createElement("div");
     gdriveHelp.className = "ccsync-ext-token-help";
     const gdriveState = document.createElement("div");
@@ -879,6 +890,7 @@
       user.l,
       pass.l,
       gdriveFolder.l,
+      gdriveGuide,
       gdriveHelp,
       gdriveState,
     );
@@ -941,6 +953,7 @@
       user.s.textContent = t("user");
       pass.s.textContent = t("pass");
       gdriveFolder.s.textContent = t("gdriveFolder");
+      gdriveGuide.textContent = t("gdriveGuide");
       gdriveHelp.textContent = `${t("gdriveHelp")} ${t("gdriveSeparate")}`;
       gdriveFolder.i.placeholder = zh()
         ? "留空 = 应用托管根目录"
@@ -964,7 +977,7 @@
         setHidden(el, !gh);
       for (const el of [davUrl.l, davFolder.l, user.l, pass.l])
         setHidden(el, !dv);
-      for (const el of [gdriveFolder.l, gdriveHelp, gdriveState])
+      for (const el of [gdriveFolder.l, gdriveGuide, gdriveHelp, gdriveState])
         setHidden(el, !gd);
       setHidden(actions, !active);
       setHidden(note, !active);
@@ -983,18 +996,24 @@
       const current = await getCfg();
       await render(uiCfg(current));
     };
+    const report = (kind, message) => {
+      status.hidden = false;
+      status.className = `ccsync-ext-status ${kind}`;
+      status.textContent = message;
+      // Also surface errors on the options page's shared feedback banner so a
+      // narrow settings view cannot hide the failure below the fold.
+      if (typeof window.CCSyncOptionsFeedback === "function") {
+        window.CCSyncOptionsFeedback(kind, message);
+      }
+    };
     testBtn.addEventListener("click", async () => {
       try {
         testBtn.disabled = true;
-        status.hidden = false;
-        status.className = "ccsync-ext-status";
-        status.textContent = zh() ? "正在测试…" : "Testing…";
+        report("", zh() ? "正在测试…" : "Testing…");
         await test(uiCfg(saved));
-        status.className = "ccsync-ext-status ok";
-        status.textContent = t("tested");
+        report("ok", t("tested"));
       } catch (e) {
-        status.className = "ccsync-ext-status error";
-        status.textContent = e.message || String(e);
+        report("error", e.message || String(e));
       } finally {
         testBtn.disabled = false;
       }
@@ -1002,7 +1021,9 @@
     saveBtn.addEventListener("click", async () => {
       try {
         saveBtn.disabled = true;
-        const next = uiCfg(saved);
+        // Re-read the form every time so we never save a stale snapshot of
+        // fields that were typed after the initial render.
+        const next = uiCfg(await getCfg());
         if (next.backend === "github") {
           next.repo = normRepo(next.repo);
           next.folder = normFolder(next.folder);
@@ -1014,8 +1035,6 @@
           if (!next.davUrl) throw Error(t("needDav"));
         } else if (next.backend === "gdrive") {
           next.gdriveFolder = normFolder(next.gdriveFolder);
-          // Reuse the Drive session authorized in sync settings; verify it works
-          // for the package destination before saving.
           await test(next);
         } else {
           next.repo = "";
@@ -1041,28 +1060,17 @@
           [K.gdriveFolder]: next.gdriveFolder,
         });
         Object.assign(saved, next);
-        status.hidden = false;
-        status.className = "ccsync-ext-status ok";
-        status.textContent = t("saved");
+        report("ok", t("saved"));
         refreshSettingsText();
         toggle();
         await render({ ...saved });
       } catch (e) {
-        status.hidden = false;
-        status.className = "ccsync-ext-status error";
-        status.textContent = e.message || String(e);
+        report("error", e.message || String(e));
       } finally {
         saveBtn.disabled = false;
       }
     });
   }
-  /**
-   * Report which Google account the package backup will use.
-   *
-   * Package backup reuses the sync provider's Drive session instead of adding a
-   * second authorization, so the UI has to say which account that is — and say
-   * clearly when Drive is not connected yet.
-   */
   async function refreshGdriveState() {
     const el = $("ccsyncGdrivePackageState");
     if (!el) return;
@@ -1157,6 +1165,14 @@
             alert(t("selectionNeedSave"));
             return;
           }
+          if (cfg.backend === "disabled") {
+            alert(
+              zh()
+                ? "请先保存并启用第三方扩展云存储。"
+                : "Save and enable third-party extension cloud storage first.",
+            );
+            return;
+          }
           const input = fileInput();
           input.dataset.extensionId = ext.id;
           input.dataset.extensionName = ext.name || ext.id;
@@ -1236,8 +1252,6 @@
         n.className = "ccsync-ext-cloud-name";
         n.textContent = item.name || item.extensionId;
         meta.className = "ccsync-ext-cloud-meta";
-        // Source information and provider state are part of the record so a
-        // backup can be traced back to where the package came from.
         const parts = [
           `v${item.version || "?"}`,
           fmt(item.size),

@@ -114,18 +114,24 @@ assert.deepEqual([...SYNC_MODULE_IDS], ["extensions", "bookmarks", "tabs"]);
     ["extensions"],
     "extensions.json carries only the extension inventory",
   );
-  assert.deepEqual(
-    Object.keys(modular.modules.bookmarks.data).sort(),
-    ["bookmarks"],
-  );
-  assert.deepEqual(
-    Object.keys(modular.modules.tabs.data).sort(),
-    ["groups", "windows"],
-  );
+  assert.deepEqual(Object.keys(modular.modules.bookmarks.data).sort(), [
+    "bookmarks",
+  ]);
+  assert.deepEqual(Object.keys(modular.modules.tabs.data).sort(), [
+    "groups",
+    "windows",
+  ]);
   // Control data stays out of the module payloads.
   for (const moduleId of SYNC_MODULE_IDS) {
-    const envelope = modular.modules[moduleId] as unknown as Record<string, unknown>;
-    assert.equal(envelope.conflicts, undefined, `${moduleId} holds no conflicts`);
+    const envelope = modular.modules[moduleId] as unknown as Record<
+      string,
+      unknown
+    >;
+    assert.equal(
+      envelope.conflicts,
+      undefined,
+      `${moduleId} holds no conflicts`,
+    );
     assert.equal(envelope.revision !== undefined, true);
     assert.equal(typeof envelope.checksum, "string");
   }

@@ -244,10 +244,8 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
 ): T[] {
   const B = Array.isArray(base) ? base : [];
   if (stableEqual(local, remote)) return clone(local) as T[];
-  if (!preserveNestedTabs && stableEqual(local, B))
-    return clone(remote) as T[];
-  if (!preserveNestedTabs && stableEqual(remote, B))
-    return clone(local) as T[];
+  if (!preserveNestedTabs && stableEqual(local, B)) return clone(remote) as T[];
+  if (!preserveNestedTabs && stableEqual(remote, B)) return clone(local) as T[];
 
   const BObjects = B.filter(
     (x): x is UnknownRecord =>
@@ -286,8 +284,8 @@ function mergeArray<T extends UnknownRecord = UnknownRecord>(
     const l = lm.get(id);
     const r = rm.get(id);
     const type = path.endsWith(".tabs")
-    ? "tabs"
-    : path.split(".")[0] || "objects";
+      ? "tabs"
+      : path.split(".")[0] || "objects";
     if (!l && !r) continue;
     if (l && !r) {
       if (b && !stableEqual(l, b))
@@ -352,8 +350,7 @@ export function reorderTabGroupBlocks(
   for (const tab of tabs) {
     const groupId = tab.group?.syncId;
     if (!groupId) continue;
-    if (!groupBlocks.has(groupId))
-      groupBlocks.set(groupId, []);
+    if (!groupBlocks.has(groupId)) groupBlocks.set(groupId, []);
     groupBlocks.get(groupId)?.push(clone(tab));
     if (!seenGroups.has(groupId)) {
       seenGroups.add(groupId);
@@ -361,12 +358,9 @@ export function reorderTabGroupBlocks(
     }
   }
 
-  if (encounteredGroups.length < 2)
-    return false;
+  if (encounteredGroups.length < 2) return false;
 
-  const rank = new Map(
-    groupOrder.map((id, index) => [id, index]),
-  );
+  const rank = new Map(groupOrder.map((id, index) => [id, index]));
   const orderedGroups = encounteredGroups.slice().sort((a, b) => {
     const ar = rank.get(a);
     const br = rank.get(b);
@@ -415,8 +409,7 @@ function preserveRemoteOrder<T extends UnknownRecord>(
 
   for (let index = 0; index < remote.length; index += 1) {
     const raw = remote[index];
-    if (!raw || typeof raw !== "object" || Array.isArray(raw))
-      continue;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
 
     const id = objectId(raw as UnknownRecord);
     if (id) remoteOrder.set(id, index);
@@ -466,7 +459,14 @@ export function mergeTabsModule(
     RWin = remote.windows ?? [];
   let windows: WindowRecord[];
   if (options.tabSyncMode === "incremental") {
-    windows = mergeArray<WindowRecord>(BWin, LWin, RWin, conflicts, "windows", true);
+    windows = mergeArray<WindowRecord>(
+      BWin,
+      LWin,
+      RWin,
+      conflicts,
+      "windows",
+      true,
+    );
   } else if (stableEqual(LWin, RWin)) {
     windows = clone(LWin);
   } else if (stableEqual(LWin, BWin)) {
@@ -491,12 +491,11 @@ export function mergeTabsModule(
     "groups",
     true,
   );
-  if (options.tabSyncMode !== "incremental") return { windows, groups, conflicts };
+  if (options.tabSyncMode !== "incremental")
+    return { windows, groups, conflicts };
 
   groups = preserveRemoteOrder(groups, remote.groups ?? []);
-  const remoteWindows = new Map(
-    RWin.map((window) => [window.syncId, window]),
-  );
+  const remoteWindows = new Map(RWin.map((window) => [window.syncId, window]));
   for (const window of windows) {
     const remoteWindow = remoteWindows.get(window.syncId);
     if (remoteWindow)
@@ -593,7 +592,11 @@ export function mergeSnapshots(
   out.updatedAt = new Date().toISOString();
   return {
     snapshot: out,
-    conflicts: [...tabs.conflicts, ...extensions.conflicts, ...bookmarks.conflicts],
+    conflicts: [
+      ...tabs.conflicts,
+      ...extensions.conflicts,
+      ...bookmarks.conflicts,
+    ],
   };
 }
 
@@ -632,26 +635,16 @@ export function deriveTombstones(
 ): Tombstone[] {
   const bm = extractEntities(base),
     lm = extractEntities(local);
-  const preservedCollections = new Set([
-    "windows",
-    "tabs",
-    "groups",
-  ]);
+  const preservedCollections = new Set(["windows", "tabs", "groups"]);
   const map = new Map<string, Tombstone>(
-    (prior ?? []).map((t) => [
-      t.collection + ":" + t.syncId,
-      clone(t),
-    ]),
+    (prior ?? []).map((t) => [t.collection + ":" + t.syncId, clone(t)]),
   );
   for (const key of bm.keys()) {
     if (lm.has(key)) continue;
     const parts = key.split(/:(.+)/);
     const collection = parts[0] || "";
     const syncId = parts[1] || "";
-    if (
-      preserveLiveCollections &&
-      preservedCollections.has(collection)
-    )
+    if (preserveLiveCollections && preservedCollections.has(collection))
       continue;
     if (collection && syncId)
       map.set(key, {
@@ -663,10 +656,7 @@ export function deriveTombstones(
   }
   for (const key of lm.keys()) {
     const collection = key.split(/:(.+)/)[0] || "";
-    if (
-      preserveLiveCollections &&
-      preservedCollections.has(collection)
-    )
+    if (preserveLiveCollections && preservedCollections.has(collection))
       continue;
     map.delete(key);
   }
@@ -783,9 +773,41 @@ export function cleanConflicts(
     );
   });
 }
+
+/**
+ * Stable serialization for checksums.
+ *
+ * Two cloud states that represent the same data may still have their object
+ * properties in a different insertion order (`combineModularState` vs
+ * `mergeModularCloudState`, for example). `JSON.stringify` preserves insertion
+ * order, so hashing that string produced false negatives and made every write
+ * look like it had been concurrently modified. Sorting keys makes the digest
+ * depend only on the data, not on the construction path.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value))
+    return "[" + value.map((item) => stableStringify(item)).join(",") + "]";
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  return (
+    "{" +
+    keys
+      .map(
+        (key) =>
+          JSON.stringify(key) +
+          ":" +
+          stableStringify((value as Record<string, unknown>)[key]),
+      )
+      .join(",") +
+    "}"
+  );
+}
+
 export function checksum(value: unknown): string {
   let hash = 2166136261;
-  const serialized = JSON.stringify(value);
+  const serialized = stableStringify(value);
   for (let i = 0; i < serialized.length; i += 1) {
     hash ^= serialized.charCodeAt(i);
     hash = Math.imul(hash, 16777619);

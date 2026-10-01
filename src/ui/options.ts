@@ -59,10 +59,6 @@ providerEl?.addEventListener("change", async () => {
     showError(e);
   }
 });
-/**
- * Browser-managed authorization: no client configuration is requested, so
- * Chromium's own account chooser handles Google account selection and consent.
- */
 $("gdriveConnectBrowser")?.addEventListener("click", async () => {
   const button = gdriveConnectBrowserEl;
   if (button) {
@@ -88,7 +84,6 @@ $("gdriveConnectBrowser")?.addEventListener("click", async () => {
     }
   }
 });
-/** Explicit fallback: developer-provided OAuth client, shown only when needed. */
 $("gdriveConnect")?.addEventListener("click", async () => {
   const clientId = $("gdriveClientId")?.value || "";
   if (!String(clientId).trim()) {
@@ -179,9 +174,12 @@ async function loadProvider() {
     "webdavSyncPassword",
   ]);
   if ($("webdavSyncUrl")) $("webdavSyncUrl").value = w.webdavSyncUrl || "";
-  if ($("webdavSyncFolder")) $("webdavSyncFolder").value = w.webdavSyncFolder || "";
-  if ($("webdavSyncUsername")) $("webdavSyncUsername").value = w.webdavSyncUsername || "";
-  if ($("webdavSyncPassword")) $("webdavSyncPassword").value = w.webdavSyncPassword || "";
+  if ($("webdavSyncFolder"))
+    $("webdavSyncFolder").value = w.webdavSyncFolder || "";
+  if ($("webdavSyncUsername"))
+    $("webdavSyncUsername").value = w.webdavSyncUsername || "";
+  if ($("webdavSyncPassword"))
+    $("webdavSyncPassword").value = w.webdavSyncPassword || "";
   toggleProvider();
 }
 
@@ -217,14 +215,6 @@ function refreshIntervalLabels() {
   for (const option of syncIntervalEl.options)
     option.textContent = `${option.value} ${suffix}`;
 }
-/**
- * Show the connected Google account and connection state.
- *
- * Browser-managed OAuth is presented as the normal path. The manual OAuth
- * client section is only surfaced when this browser cannot authorize the
- * extension itself, and it says so explicitly rather than looking like the
- * default setup step.
- */
 function renderGdriveAuthState(r) {
   if (gdriveAuthStateEl) {
     if (!r.gdriveConnected) {
@@ -257,8 +247,6 @@ function renderGdriveAuthState(r) {
   }
   if (gdriveManualDetailsEl && !browserManaged)
     gdriveManualDetailsEl.open = true;
-  // Without browser-managed OAuth the account button cannot work, so it is
-  // disabled instead of failing after the user clicks it.
   if (gdriveConnectBrowserEl) gdriveConnectBrowserEl.disabled = !browserManaged;
 }
 
@@ -270,21 +258,24 @@ async function refresh() {
       gdrive: i.t("providerGdrive"),
       webdav: i.t("providerWebdav"),
     };
-    const providerName =
-      names[r.provider] || r.provider || i.t("unknown");
-    setStatus([
-      i.t("provider") + ": " + providerName,
-      i.t("status") + ": " +
-        (r.bound ? i.t("ready") : i.t("notConfigured")),
-      r.lastSyncAt
-        ? i.t("lastSync") + " " + new Date(r.lastSyncAt).toLocaleString()
-        : i.t("lastSync") + " " + i.t("never"),
-      i.t("revision") + ": " + (r.syncRevision ?? 0),
-      i.t("conflictsLabel") + ": " + (r.conflictCount ?? 0),
-      i.t("autoSyncStatus") + ": " +
-        (r.autoSyncEnabled ? i.t("enabled") : i.t("disabled")) +
-        " · " + (r.autoSyncIntervalMinutes ?? 5) + " min",
-    ].join("\n"));
+    const providerName = names[r.provider] || r.provider || i.t("unknown");
+    setStatus(
+      [
+        i.t("provider") + ": " + providerName,
+        i.t("status") + ": " + (r.bound ? i.t("ready") : i.t("notConfigured")),
+        r.lastSyncAt
+          ? i.t("lastSync") + " " + new Date(r.lastSyncAt).toLocaleString()
+          : i.t("lastSync") + " " + i.t("never"),
+        i.t("revision") + ": " + (r.syncRevision ?? 0),
+        i.t("conflictsLabel") + ": " + (r.conflictCount ?? 0),
+        i.t("autoSyncStatus") +
+          ": " +
+          (r.autoSyncEnabled ? i.t("enabled") : i.t("disabled")) +
+          " · " +
+          (r.autoSyncIntervalMinutes ?? 5) +
+          " min",
+      ].join("\n"),
+    );
     if (autoSyncStateEl) {
       autoSyncStateEl.textContent = r.autoSyncEnabled
         ? i.t("autoSyncSavedEnabled", {
@@ -296,11 +287,8 @@ async function refresh() {
     }
     renderGdriveAuthState(r);
     if (tabSyncModeEl)
-      tabSyncModeEl.value =
-        r.tabSyncMode || tabSyncModeEl.value || "overwrite";
-    await updateTabSyncModeDescription(
-      r.tabSyncMode || "overwrite",
-    );
+      tabSyncModeEl.value = r.tabSyncMode || tabSyncModeEl.value || "overwrite";
+    await updateTabSyncModeDescription(r.tabSyncMode || "overwrite");
   } catch (e) {
     showError(e);
   }
@@ -314,8 +302,7 @@ async function load() {
     if (ss.gistId) gistEl.value = ss.gistId;
     const c = await request("getAutoSyncSettings");
     if (autoSyncEnabledEl) autoSyncEnabledEl.checked = !!c.enabled;
-    if (syncIntervalEl)
-      syncIntervalEl.value = String(c.intervalMinutes || 5);
+    if (syncIntervalEl) syncIntervalEl.value = String(c.intervalMinutes || 5);
     refreshIntervalLabels();
     await loadProvider();
     await refresh();
@@ -357,8 +344,7 @@ bindAction("save", async (_e, b) => {
   const g = normalizeGistId(gistEl?.value || "");
   const p = String(providerEl?.value || "gist");
 
-  if (p === "gist" && !t)
-    throw Error(i.t("needsToken"));
+  if (p === "gist" && !t) throw Error(i.t("needsToken"));
 
   const old = b.textContent;
   b.disabled = true;
@@ -374,32 +360,22 @@ bindAction("save", async (_e, b) => {
       });
       const id = String(r.gistId || g).trim();
 
-      if (!id)
-        throw Error(i.t("gistRequired"));
+      if (!id) throw Error(i.t("gistRequired"));
 
       gistEl.value = id;
       await storageSet({ gistId: id });
 
-      showFeedback(
-        "success",
-        i.t("bindGist"),
-        `Gist: ${id}`,
-      );
+      showFeedback("success", i.t("bindGist"), `Gist: ${id}`);
     } else {
       const r = await request("createGist");
       const id = String(r.id || "").trim();
 
-      if (!id)
-        throw Error(i.t("gistCreateFailed"));
+      if (!id) throw Error(i.t("gistCreateFailed"));
 
       gistEl.value = id;
       await storageSet({ gistId: id });
 
-      showFeedback(
-        "success",
-        i.t("createGist"),
-        `Gist: ${id}`,
-      );
+      showFeedback("success", i.t("createGist"), `Gist: ${id}`);
     }
 
     await refresh();
@@ -454,16 +430,26 @@ bindAction("saveAutoSync", async (_e, b) => {
   }
 });
 bindAction("saveTabSyncMode", async (_e, b) => {
-  const mode = tabSyncModeEl?.value === "incremental" ? "incremental" : "overwrite";
-  const old = b.textContent; b.disabled = true; b.textContent = i.t("processing");
+  const mode =
+    tabSyncModeEl?.value === "incremental" ? "incremental" : "overwrite";
+  const old = b.textContent;
+  b.disabled = true;
+  b.textContent = i.t("processing");
   try {
     const result = await request("setTabSyncMode", { mode });
     if (tabSyncModeEl) tabSyncModeEl.value = result.mode;
     await updateTabSyncModeDescription(result.mode);
-    showFeedback("success", i.t("tabSyncModeSaved"), result.mode === "incremental" ? i.t("tabSyncIncremental") : i.t("tabSyncOverwrite"));
+    showFeedback(
+      "success",
+      i.t("tabSyncModeSaved"),
+      result.mode === "incremental"
+        ? i.t("tabSyncIncremental")
+        : i.t("tabSyncOverwrite"),
+    );
     await refreshCloudTabs();
   } finally {
-    b.disabled = false; b.textContent = old;
+    b.disabled = false;
+    b.textContent = old;
   }
 });
 bindAction("historyPage", () =>
@@ -477,8 +463,14 @@ async function handleCloudTabAction(button, action) {
   const old = button.textContent;
   button.disabled = true;
   button.textContent = i.t("processing");
-  try { await action(); } catch (e) { showError(e); }
-  finally { button.disabled = false; button.textContent = old; }
+  try {
+    await action();
+  } catch (e) {
+    showError(e);
+  } finally {
+    button.disabled = false;
+    button.textContent = old;
+  }
 }
 
 function makeCloudTabActionButton(label, action) {
@@ -486,7 +478,10 @@ function makeCloudTabActionButton(label, action) {
   button.type = "button";
   button.className = "secondary";
   button.textContent = label;
-  button.addEventListener("click", () => void handleCloudTabAction(button, action));
+  button.addEventListener(
+    "click",
+    () => void handleCloudTabAction(button, action),
+  );
   return button;
 }
 
@@ -654,6 +649,11 @@ function createCloudUngroupedSection(tabs, localTabIds, windowSyncId) {
   return section;
 }
 
+/**
+ * Multi-line cloud state metadata for the management page.
+ * Same rationale as the popup: the panel is narrow and stacked lines read
+ * much better than a single " · "-joined string.
+ */
 function cloudTabsMetaText(payload) {
   const providerNames = {
     gist: i.t("providerGist"),
@@ -663,29 +663,32 @@ function cloudTabsMetaText(payload) {
   const provider =
     providerNames[payload.provider] || payload.provider || i.t("unknown");
   const counts = payload.counts || {};
-  const parts = [
+  const lines = [];
+  if (payload.stale) lines.push(i.t("cloudStateStale"));
+  lines.push(
     payload.source === "cache"
       ? i.t("cloudStateSourceCache")
       : i.t("cloudStateSourceRemote"),
-    `${i.t("provider")}: ${provider}`,
-    `${i.t("revision")} ${payload.revision ?? 0}`,
+  );
+  lines.push(`${i.t("provider")}: ${provider}`);
+  lines.push(`${i.t("revision")} ${payload.revision ?? 0}`);
+  lines.push(
     i.t("cloudStateSummary", {
       windows: counts.windows ?? 0,
       groups: counts.groups ?? 0,
       tabs: counts.tabs ?? 0,
     }),
-  ];
+  );
   if (payload.fetchedAt) {
     try {
-      parts.push(
+      lines.push(
         `${i.t("cloudStateFetchedAt")} ${new Date(payload.fetchedAt).toLocaleString()}`,
       );
     } catch {
       /* keep the remaining metadata */
     }
   }
-  if (payload.stale) parts.unshift(i.t("cloudStateStale"));
-  return parts.join(" · ");
+  return lines.join("\n");
 }
 
 function ensureCloudTabsMeta() {
@@ -700,17 +703,8 @@ function ensureCloudTabsMeta() {
   return meta;
 }
 
-/**
- * Render the canonical cloud-tab dataset.
- *
- * `forceRemote` is the unambiguous "force remote refresh" semantic required by
- * the Refresh action: the background ignores its cached projection, re-reads
- * windows/tabs/groups from the active provider, replaces the cache, and
- * broadcasts the new dataset so the popup observes the same state.
- */
 async function refreshCloudTabs(forceRemote = false) {
-  if (!cloudTabsManager)
-    return;
+  if (!cloudTabsManager) return;
 
   cloudTabsManager.replaceChildren();
   const meta = ensureCloudTabsMeta();
@@ -732,7 +726,7 @@ async function refreshCloudTabs(forceRemote = false) {
       meta.textContent = cloudTabsMetaText(data);
       meta.classList.toggle("cloud-state-meta-stale", data.stale === true);
       if (data.warning)
-        meta.textContent += ` · ${i.t("cloudStateWarning")}: ${data.warning}`;
+        meta.textContent += `\n${i.t("cloudStateWarning")}: ${data.warning}`;
     }
 
     if ((data.mode || "overwrite") !== "incremental") {
@@ -803,8 +797,6 @@ async function refreshCloudTabs(forceRemote = false) {
       cloudTabsManager.append(windowSection);
     }
 
-    // Groups that exist in the cloud without any window reference are part of
-    // the same canonical dataset the popup lists, so they are rendered too.
     if (detachedGroups.length) {
       const detachedSection = document.createElement("details");
       detachedSection.className = "cloud-detached-section";
@@ -835,9 +827,17 @@ async function refreshCloudTabs(forceRemote = false) {
 }
 
 bindAction("addCurrentTabsToCloud", async (_e, b) => {
-  const old = b.textContent; b.disabled = true; b.textContent = i.t("processing");
-  try { await request("addCurrentTabsToCloud"); showFeedback("success", i.t("tabsAddedToCloud"), ""); await refreshCloudTabs(); }
-  finally { b.disabled = false; b.textContent = old; }
+  const old = b.textContent;
+  b.disabled = true;
+  b.textContent = i.t("processing");
+  try {
+    await request("addCurrentTabsToCloud");
+    showFeedback("success", i.t("tabsAddedToCloud"), "");
+    await refreshCloudTabs();
+  } finally {
+    b.disabled = false;
+    b.textContent = old;
+  }
 });
 bindAction("refreshCloudTabs", async (_e, b) => {
   const old = b.textContent;
@@ -845,7 +845,11 @@ bindAction("refreshCloudTabs", async (_e, b) => {
   b.textContent = i.t("processing");
   try {
     await refreshCloudTabs(true);
-    showFeedback("success", i.t("cloudTabsRefreshed"), i.t("cloudStateSourceRemote"));
+    showFeedback(
+      "success",
+      i.t("cloudTabsRefreshed"),
+      i.t("cloudStateSourceRemote"),
+    );
   } catch (e) {
     showError(e);
   } finally {
@@ -854,21 +858,13 @@ bindAction("refreshCloudTabs", async (_e, b) => {
   }
 });
 
-// Observe canonical cloud-tab changes published by the service worker (popup
-// refresh, sync, delete/move) so both surfaces converge on the same dataset.
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== "cloudTabStateChanged") return;
   const panel = $("panel-cloud-tabs");
   if (!panel || panel.classList.contains("hidden")) return;
   void refreshCloudTabs();
 });
-/**
- * Coherent overall view of the split provider storage.
- *
- * The cloud payload is several independent module files now, so this panel
- * reports the layout, every module file with its own revision, and whether a
- * legacy archive is still preserved.
- */
+
 async function refreshStorageLayout() {
   if (!storageLayoutSummaryEl || !storageModuleListEl) return;
   storageLayoutSummaryEl.textContent = i.t("loading");
@@ -973,7 +969,9 @@ function setupTabs() {
   }
   const k = location.hash.replace(/^#/, "");
   act(
-    ["sync", "cloud-tabs", "extension", "local"].includes(k) ? `panel-${k}` : "panel-sync",
+    ["sync", "cloud-tabs", "extension", "local"].includes(k)
+      ? `panel-${k}`
+      : "panel-sync",
     false,
   );
 }

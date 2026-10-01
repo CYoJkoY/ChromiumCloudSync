@@ -34,7 +34,6 @@ function setStatus(state, title, meta = "", detail = "") {
   ui.icon.innerHTML = iconFor(state);
   ui.title.textContent = title;
   ui.meta.textContent = meta;
-  // Force real line breaks for the compact popup status metadata.
   ui.meta.style.setProperty("white-space", "pre-line", "important");
   if (ui.detail) {
     ui.detail.hidden = !detail;
@@ -50,15 +49,40 @@ function setError(error) {
 async function refresh() {
   try {
     const r = await request("status");
-    const names = { gist: i.t("providerGist"), gdrive: i.t("providerGdrive"), webdav: i.t("providerWebdav") };
+    const names = {
+      gist: i.t("providerGist"),
+      gdrive: i.t("providerGdrive"),
+      webdav: i.t("providerWebdav"),
+    };
     const providerName = names[r.provider] || r.provider || i.t("unknown");
     const state = r.bound ? "ok" : "warn";
-    const title = r.bound ? i.t("ready") : i.t("provider") + ": " + providerName + " · " + i.t("notConfigured");
-    const meta = [i.t("provider") + ": " + providerName, r.lastSyncAt ? i.t("lastSync") + " " + new Date(r.lastSyncAt).toLocaleString() : "", i.t("autoSyncStatus") + ": " + (r.autoSyncEnabled ? i.t("enabled") : i.t("disabled"))].filter(Boolean).join("\n");
+    const title = r.bound
+      ? i.t("ready")
+      : i.t("provider") + ": " + providerName + " · " + i.t("notConfigured");
+    const meta = [
+      i.t("provider") + ": " + providerName,
+      r.lastSyncAt
+        ? i.t("lastSync") + " " + new Date(r.lastSyncAt).toLocaleString()
+        : "",
+      i.t("autoSyncStatus") +
+        ": " +
+        (r.autoSyncEnabled ? i.t("enabled") : i.t("disabled")),
+    ]
+      .filter(Boolean)
+      .join("\n");
     setStatus(state, title, meta, "");
-    ui.rev.textContent = i.t("revision") + " " + (r.syncRevision ?? 0) + " · " + i.t("conflictsLabel") + " " + (r.conflictCount ?? 0);
+    ui.rev.textContent =
+      i.t("revision") +
+      " " +
+      (r.syncRevision ?? 0) +
+      " · " +
+      i.t("conflictsLabel") +
+      " " +
+      (r.conflictCount ?? 0);
     void renderCloudGroups();
-  } catch (error) { setError(error); }
+  } catch (error) {
+    setError(error);
+  }
 }
 async function withButton(button, work) {
   if (!button || button.disabled) return;
@@ -93,6 +117,14 @@ function createPopupCloudTabRow(tab) {
   return row;
 }
 
+/**
+ * Multi-line cloud state metadata.
+ *
+ * The popup width is fixed at ~500px, so stacking the source line, provider,
+ * revision, counts and fetch time as separate lines is much more readable than
+ * the previous single-line " · " joined string. `.cloud-state-meta` uses
+ * `white-space: pre-line`, so `\n` renders as a real line break.
+ */
 function cloudStateMetaText(payload) {
   const providerNames = {
     gist: i.t("providerGist"),
@@ -102,29 +134,32 @@ function cloudStateMetaText(payload) {
   const provider =
     providerNames[payload.provider] || payload.provider || i.t("unknown");
   const counts = payload.counts || {};
-  const parts = [
+  const lines = [];
+  if (payload.stale) lines.push(i.t("cloudStateStale"));
+  lines.push(
     payload.source === "cache"
       ? i.t("cloudStateSourceCache")
       : i.t("cloudStateSourceRemote"),
-    `${i.t("provider")}: ${provider}`,
-    `${i.t("revision")} ${payload.revision ?? 0}`,
+  );
+  lines.push(`${i.t("provider")}: ${provider}`);
+  lines.push(`${i.t("revision")} ${payload.revision ?? 0}`);
+  lines.push(
     i.t("cloudStateSummary", {
       windows: counts.windows ?? 0,
       groups: counts.groups ?? 0,
       tabs: counts.tabs ?? 0,
     }),
-  ];
+  );
   if (payload.fetchedAt) {
     try {
-      parts.push(
+      lines.push(
         `${i.t("cloudStateFetchedAt")} ${new Date(payload.fetchedAt).toLocaleString()}`,
       );
     } catch {
       /* keep the remaining metadata */
     }
   }
-  if (payload.stale) parts.unshift(i.t("cloudStateStale"));
-  return parts.join(" · ");
+  return lines.join("\n");
 }
 
 function renderCloudStateMeta(payload) {
@@ -134,7 +169,7 @@ function renderCloudStateMeta(payload) {
   meta.textContent = cloudStateMetaText(payload);
   meta.classList.toggle("cloud-state-meta-stale", payload.stale === true);
   if (payload.warning)
-    meta.textContent += ` · ${i.t("cloudStateWarning")}: ${payload.warning}`;
+    meta.textContent += `\n${i.t("cloudStateWarning")}: ${payload.warning}`;
 }
 
 async function renderCloudGroups(forceRemote = false) {
@@ -144,15 +179,12 @@ async function renderCloudGroups(forceRemote = false) {
   if (!card || !list) return;
 
   card.hidden = false;
-  list.innerHTML =
-    `<div class="empty">${escapeHtml(i.t("loading"))}</div>`;
+  list.innerHTML = `<div class="empty">${escapeHtml(i.t("loading"))}</div>`;
 
   try {
     const result = await request("cloudGroups", {
       forceRemote: forceRemote === true,
     });
-    // The canonical payload is an object; tolerate the legacy array shape so a
-    // stale service worker can never blank the popup restore view.
     const payload = Array.isArray(result)
       ? { groups: result, counts: {}, source: "remote", revision: 0 }
       : result || { groups: [] };
@@ -161,8 +193,7 @@ async function renderCloudGroups(forceRemote = false) {
     renderCloudStateMeta(payload);
 
     if (!groups.length) {
-      list.innerHTML =
-        `<div class="empty">${escapeHtml(i.t("cloudGroupsEmpty"))}</div>`;
+      list.innerHTML = `<div class="empty">${escapeHtml(i.t("cloudGroupsEmpty"))}</div>`;
       return;
     }
 
@@ -242,8 +273,7 @@ async function renderCloudGroups(forceRemote = false) {
         const tabList = document.createElement("div");
         tabList.className = "popup-cloud-tab-list";
 
-        for (const tab of tabs)
-          tabList.append(createPopupCloudTabRow(tab));
+        for (const tab of tabs) tabList.append(createPopupCloudTabRow(tab));
 
         content.append(actions, tabList);
       }
@@ -252,26 +282,17 @@ async function renderCloudGroups(forceRemote = false) {
       list.append(details);
     }
   } catch (error) {
-    list.innerHTML =
-      `<div class="empty error-copy">${escapeHtml(error?.message || String(error))}</div>`;
+    list.innerHTML = `<div class="empty error-copy">${escapeHtml(error?.message || String(error))}</div>`;
   }
 }
 
 bindAction("refreshCloudGroups", async (_event, button) =>
   withButton(button, async () => {
     await renderCloudGroups(true);
-    setStatus(
-      "ok",
-      i.t("cloudRefreshDone"),
-      i.t("cloudStateSourceRemote"),
-      "",
-    );
+    setStatus("ok", i.t("cloudRefreshDone"), i.t("cloudStateSourceRemote"), "");
   }),
 );
 
-// A cloud-tab change triggered anywhere (Settings refresh, sync, delete, move)
-// must be observed here so the popup restore view and the management page can
-// never present two different datasets.
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== "cloudTabStateChanged") return;
   void renderCloudGroups();

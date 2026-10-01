@@ -982,6 +982,7 @@ body.popup-page .popup-cloud-tab-url {
   font-size: 11px;
   line-height: 1.55;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .cloud-state-meta-stale {

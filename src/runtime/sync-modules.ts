@@ -22,25 +22,8 @@ import type { MergeOptions } from "./sync-core.js";
 
 /**
  * Modular synchronization storage.
- *
- * The historical layout kept the whole browser state in one `current.json`
- * payload, so an extensions-only or bookmarks-only change still rewrote the
- * complete tab dataset. This module defines the split layout:
- *
- * ```text
- * manifest.json     storage layout, schema/format version, file map
- * meta.json         global revision, conflicts, sync metadata, module index
- * extensions.json   third-party extension inventory (+ its tombstones)
- * bookmarks.json    bookmark data (+ its tombstones)
- * tabs.json         windows, tabs, tab groups (+ their tombstones)
- * history/…         provider history index and archives (control data)
- * ```
- *
- * Module payloads never carry control data and control data never carries a
- * module payload, so each file can be uploaded, downloaded, versioned, and
- * merged on its own.
+ * ...
  */
-
 export const STORAGE_FORMAT_VERSION = 1;
 export const MODULAR_STORAGE_LAYOUT = "modular-v1";
 export const LEGACY_MONOLITHIC_FILE = "current.json";
@@ -63,7 +46,6 @@ export const MODULE_FILES: Record<SyncModuleId, string> = {
   tabs: "tabs.json",
 };
 
-/** Every synchronized collection belongs to exactly one module file. */
 export const COLLECTION_MODULES: Record<string, SyncModuleId> = {
   extensions: "extensions",
   bookmarks: "bookmarks",
@@ -127,7 +109,6 @@ export interface SyncMetaPayload {
   conflicts: ConflictRecord[];
   modules: ModuleIndexEntry[];
   syncMeta?: UnknownRecord;
-  /** Tombstones whose collection is not part of any known module. */
   orphanTombstones?: Tombstone[];
   migration?: LegacyMigrationRecord;
 }
@@ -136,12 +117,10 @@ export interface StorageManifest {
   schemaVersion: number;
   formatVersion: number;
   layout: typeof MODULAR_STORAGE_LAYOUT;
-  /** Explicitly null: the modular layout has no monolithic current payload. */
   currentFile: null;
   revision: number;
   lastUpdatedAt: string;
   files: Record<string, string>;
-  /** Legacy `current.json` kept as a read-only migration archive. */
   legacyArchive: string | null;
 }
 
@@ -185,10 +164,10 @@ export function moduleForCollection(collection: string): SyncModuleId | null {
   return COLLECTION_MODULES[collection] ?? null;
 }
 
-/** Partition tombstones by owning module; unknown collections stay in meta. */
-export function partitionTombstones(
-  tombstones: Tombstone[] = [],
-): { byModule: Record<SyncModuleId, Tombstone[]>; orphans: Tombstone[] } {
+export function partitionTombstones(tombstones: Tombstone[] = []): {
+  byModule: Record<SyncModuleId, Tombstone[]>;
+  orphans: Tombstone[];
+} {
   const byModule: Record<SyncModuleId, Tombstone[]> = {
     extensions: [],
     bookmarks: [],
@@ -232,24 +211,27 @@ export interface SplitOptions {
   revision?: number;
   updatedAt?: string;
   conflicts?: ConflictRecord[];
-  /** Per-module revisions carried over from the previous remote state. */
   moduleRevisions?: Partial<Record<SyncModuleId, number>>;
   migration?: LegacyMigrationRecord;
   legacyArchive?: string | null;
   providerFormat?: string;
 }
 
-/** Split a monolithic in-memory cloud state into independent module files. */
 export function splitCloudState(
   state: CloudState | null | undefined,
   options: SplitOptions = {},
 ): ModularCloudState {
-  const snapshot = (isRecord(state?.snapshot)
-    ? (state?.snapshot as Snapshot)
-    : emptySnapshot()) as Snapshot;
+  const snapshot = (
+    isRecord(state?.snapshot) ? (state?.snapshot as Snapshot) : emptySnapshot()
+  ) as Snapshot;
   const updatedAt = options.updatedAt ?? nowIso();
-  const revision = Math.max(0, Number(options.revision ?? state?.revision ?? 0) || 0);
-  const partitioned = partitionTombstones(arrayOf<Tombstone>(state?.tombstones));
+  const revision = Math.max(
+    0,
+    Number(options.revision ?? state?.revision ?? 0) || 0,
+  );
+  const partitioned = partitionTombstones(
+    arrayOf<Tombstone>(state?.tombstones),
+  );
 
   const moduleRevisions = options.moduleRevisions ?? {};
   const revisionFor = (moduleId: SyncModuleId): number =>
@@ -301,8 +283,7 @@ export function splitCloudState(
   };
   const syncMeta = snapshot.syncMeta;
   if (isRecord(syncMeta)) meta.syncMeta = clone(syncMeta);
-  if (partitioned.orphans.length)
-    meta.orphanTombstones = partitioned.orphans;
+  if (partitioned.orphans.length) meta.orphanTombstones = partitioned.orphans;
   if (options.migration) meta.migration = options.migration;
 
   const files: Record<string, string> = {
@@ -326,7 +307,14 @@ export function splitCloudState(
   return { manifest, meta, modules };
 }
 
-/** Reassemble the module files into one coherent cloud state for the UI. */
+/**
+ * Reassemble the module files into one coherent cloud state for the UI.
+ *
+ * IMPORTANT: the property order here must match `mergeModularCloudState`'s
+ * `mergedSnapshot` exactly. `checksum()` sorts keys now, so this is defense in
+ * depth, but keeping the two constructions identical also avoids surprising
+ * diffs when a reader compares the two states by JSON text.
+ */
 export function combineModularState(modular: ModularCloudState): CloudState {
   const meta = modular.meta;
   const extensionsModule = modular.modules.extensions;
@@ -339,11 +327,9 @@ export function combineModularState(modular: ModularCloudState): CloudState {
     extensions: arrayOf<ExtensionRecord>(
       (extensionsModule.data as ExtensionsModuleData).extensions,
     ),
+    windows: arrayOf<WindowRecord>((tabsModule.data as TabsModuleData).windows),
     bookmarks: arrayOf<BookmarkRecord>(
       (bookmarksModule.data as BookmarksModuleData).bookmarks,
-    ),
-    windows: arrayOf<WindowRecord>(
-      (tabsModule.data as TabsModuleData).windows,
     ),
     groups: arrayOf<TabGroupRecord>((tabsModule.data as TabsModuleData).groups),
   };
@@ -388,15 +374,9 @@ export function isModuleEnvelope(
 
 export function isSyncMetaPayload(value: unknown): value is SyncMetaPayload {
   if (!isRecord(value)) return false;
-  return (
-    Number(value.formatVersion) >= 1 && Array.isArray(value.modules)
-  );
+  return Number(value.formatVersion) >= 1 && Array.isArray(value.modules);
 }
 
-/**
- * A payload is legacy when it is a single monolithic cloud state instead of a
- * module envelope. Detection is explicit so migration never guesses.
- */
 export function isLegacyMonolithicPayload(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (isModuleEnvelope(value)) return false;
@@ -423,11 +403,8 @@ export interface ModuleMergeResult {
 }
 
 export interface ModuleMergeInput {
-  /** Last known common ancestor snapshot. */
   base: Snapshot;
-  /** Snapshot collected from this browser. */
   local: Snapshot;
-  /** State as read back from the provider. */
   remote: CloudState;
   remoteModular?: ModularCloudState | null;
   options?: MergeOptions;
@@ -437,14 +414,6 @@ export interface ModuleMergeInput {
   legacyArchive?: string | null;
 }
 
-/**
- * Merge module by module.
- *
- * Each module is merged with its own base/local/remote inputs and its own
- * conflict list, then compared against the remote module checksum. Only modules
- * whose content actually changed get a new module revision and are reported in
- * `changedModules`, which is what the storage layer writes.
- */
 export function mergeModularCloudState(
   input: ModuleMergeInput,
 ): ModuleMergeResult {
@@ -460,9 +429,22 @@ export function mergeModularCloudState(
     ? (remote.snapshot as Snapshot)
     : emptySnapshot();
 
-  const tabs = mergeTabsModule(baseSnapshot, localSnapshot, remoteSnapshot, options);
-  const extensions = mergeExtensionsModule(baseSnapshot, localSnapshot, remoteSnapshot);
-  const bookmarks = mergeBookmarksModule(baseSnapshot, localSnapshot, remoteSnapshot);
+  const tabs = mergeTabsModule(
+    baseSnapshot,
+    localSnapshot,
+    remoteSnapshot,
+    options,
+  );
+  const extensions = mergeExtensionsModule(
+    baseSnapshot,
+    localSnapshot,
+    remoteSnapshot,
+  );
+  const bookmarks = mergeBookmarksModule(
+    baseSnapshot,
+    localSnapshot,
+    remoteSnapshot,
+  );
 
   const conflicts: ConflictRecord[] = [
     ...tagModule("tabs", tabs.conflicts),
@@ -513,24 +495,21 @@ export function mergeModularCloudState(
       previous.checksum !== candidate.checksum ||
       !stableEqual(previous.data, candidate.data) ||
       !stableEqual(previous.tombstones, candidate.tombstones);
-    const previousRevision = Math.max(
-      0,
-      Number(previous?.revision ?? 0) || 0,
-    );
-    moduleRevisions[moduleId] = changed ? previousRevision + 1 : previousRevision;
+    const previousRevision = Math.max(0, Number(previous?.revision ?? 0) || 0);
+    moduleRevisions[moduleId] = changed
+      ? previousRevision + 1
+      : previousRevision;
     if (changed) changedModules.push(moduleId);
   }
 
-  // Tombstones are module-scoped, so re-partition with the module revisions.
   const finalModules = splitCloudState(mergedState, {
-      revision: Number(input.revision) || 0,
-      updatedAt,
-      conflicts,
-      moduleRevisions,
-      migration: input.migration,
-      legacyArchive: input.legacyArchive ?? null,
-    },
-  );
+    revision: Number(input.revision) || 0,
+    updatedAt,
+    conflicts,
+    moduleRevisions,
+    migration: input.migration,
+    legacyArchive: input.legacyArchive ?? null,
+  });
 
   return {
     modules: finalModules.modules,
@@ -551,30 +530,34 @@ function tagModule(
   moduleId: SyncModuleId,
   conflicts: ConflictRecord[],
 ): ConflictRecord[] {
-  return conflicts.map((conflict) => ({ ...clone(conflict), module: moduleId }));
+  return conflicts.map((conflict) => ({
+    ...clone(conflict),
+    module: moduleId,
+  }));
 }
 
-/** Files that must be written for a modular commit. */
 export function modularFileNames(): string[] {
-  return [MANIFEST_FILE, META_FILE, ...SYNC_MODULE_IDS.map((id) => MODULE_FILES[id])];
+  return [
+    MANIFEST_FILE,
+    META_FILE,
+    ...SYNC_MODULE_IDS.map((id) => MODULE_FILES[id]),
+  ];
 }
 
-/** Serialize a modular state into the exact provider file map. */
 export function serializeModularState(
   modular: ModularCloudState,
   changedModules?: SyncModuleId[] | null,
 ): Record<string, string> {
-  const changed = changedModules && changedModules.length
-    ? new Set<string>(changedModules.map((id) => MODULE_FILES[id]))
-    : null;
+  const changed =
+    changedModules && changedModules.length
+      ? new Set<string>(changedModules.map((id) => MODULE_FILES[id]))
+      : null;
   const files: Record<string, string> = {
     [MANIFEST_FILE]: JSON.stringify(modular.manifest, null, 2),
     [META_FILE]: JSON.stringify(modular.meta, null, 2),
   };
   for (const moduleId of SYNC_MODULE_IDS) {
     const name = MODULE_FILES[moduleId];
-    // Unchanged module payloads are not re-serialized, so providers can skip
-    // the upload entirely and keep independent per-module history.
     if (changed && !changed.has(name)) continue;
     files[name] = JSON.stringify(modular.modules[moduleId], null, 2);
   }
@@ -582,7 +565,6 @@ export function serializeModularState(
 }
 
 export interface ParseModularOptions {
-  /** Trust boundary supplied by the caller (schema migration + validation). */
   validateState: (raw: unknown) => CloudState;
 }
 
@@ -593,13 +575,6 @@ export interface ParsedModularState {
   legacyPayload?: unknown;
 }
 
-/**
- * Parse whatever a provider returned into a modular state.
- *
- * Legacy `current.json` payloads are detected, validated through the normal
- * schema trust boundary, and migrated into module files while preserving the
- * synchronized data and recording the migration in `meta.json`.
- */
 export function parseModularFiles(
   files: Record<string, string | null | undefined>,
   options: ParseModularOptions,
@@ -639,10 +614,6 @@ export function parseModularFiles(
       metaRaw as SyncMetaPayload,
       moduleRaw as Record<SyncModuleId, ModuleEnvelope>,
     );
-    // Mixed-layout guard: a pre-modular client may still have written
-    // current.json after the migration. The newer revision wins so no device
-    // silently loses data, and the write that follows re-commits the modular
-    // files.
     if (legacyRaw !== null) {
       const legacyState = options.validateState(legacyRaw);
       if (isNewer(legacyState, combineModularState(modular)))
@@ -664,7 +635,6 @@ export function parseModularFiles(
     };
   }
 
-  // Legacy monolithic payload (or a partially written modular layout).
   if (legacyRaw === null) {
     if (presentModules > 0 && isSyncMetaPayload(metaRaw))
       throw new ModularStorageError(
@@ -694,7 +664,6 @@ export function parseModularFiles(
   };
 }
 
-/** Revision first, then timestamp: the newer cloud state always wins. */
 function isNewer(candidate: CloudState, other: CloudState): boolean {
   const a = Number(candidate?.revision) || 0;
   const b = Number(other?.revision) || 0;
@@ -702,13 +671,6 @@ function isNewer(candidate: CloudState, other: CloudState): boolean {
   return String(candidate?.updatedAt ?? "") > String(other?.updatedAt ?? "");
 }
 
-/**
- * Per-module revisions.
- *
- * A module revision only advances when that module's payload changes, which is
- * what makes independent per-module versioning meaningful. The first commit of
- * a modular layout adopts the global revision for every module.
- */
 export function bumpModuleRevisions(
   prior: ModularCloudState | null | undefined,
   changed: SyncModuleId[],
@@ -730,7 +692,6 @@ export function bumpModuleRevisions(
   return out;
 }
 
-/** Modules whose payload differs from the previous remote state. */
 export function diffModuleChanges(
   prior: ModularCloudState | null | undefined,
   next: ModularCloudState,
@@ -794,13 +755,6 @@ function rebuildModularState(
   };
 }
 
-/**
- * Migrate a legacy `current.json` cloud state into the modular layout.
- *
- * The synchronized data is preserved verbatim, the legacy revision is recorded,
- * and the migration is written into `meta.json` so subsequent syncs use the
- * modular format instead of re-detecting the legacy payload every time.
- */
 export function migrateLegacyToModular(
   legacyState: CloudState,
   context: {
@@ -818,7 +772,6 @@ export function migrateLegacyToModular(
     legacyChecksum: checksum(legacyState?.snapshot ?? {}),
     preservedFile: context.preservedFile ?? legacyFile,
   };
-  // Keep module revisions monotonic when a modular layout already existed.
   const prior = context.priorModular;
   const moduleRevisions: Partial<Record<SyncModuleId, number>> = {};
   if (prior)
