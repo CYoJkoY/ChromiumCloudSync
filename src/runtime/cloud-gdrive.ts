@@ -303,6 +303,7 @@ async function identityToken(interactive: boolean): Promise<string> {
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
 
 /** Authorization failures the UI must present as "reconnect", not as Drive faults. */
 export class DriveAuthError extends Error {
@@ -421,12 +422,6 @@ export async function connectGoogleDriveBrowser(
   );
 }
 
-/**
- * Explicit fallback: developer-provided OAuth client via PKCE.
- *
- * Only for hosts and unpacked builds where `identity.getAuthToken` cannot mint a
- * token. Tokens stay in this browser profile and never enter synchronized data.
- */
 /**
  * Complete the Web Application OAuth flow after the settings page has
  * captured the authorization redirect. The refresh token stays local and is
