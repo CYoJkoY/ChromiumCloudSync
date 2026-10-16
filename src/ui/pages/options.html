@@ -239,7 +239,8 @@
     <div class="note section-note" id="gdriveManualNotice" hidden></div>
     <details class="gdrive-manual" id="gdriveManualDetails">
       <summary data-i18n="gdriveManualTitle">Advanced: use your own OAuth client</summary>
-      <p class="card-desc" data-i18n="gdriveManualHelp">Only needed where this browser cannot authorize the extension itself, such as an unpacked development build or a Chromium derivative without identity.getAuthToken. Otherwise use the browser account button above; no client configuration is required.</p>
+      <p class="card-desc" data-i18n="gdriveManualHelp">If the browser-managed account chooser is unavailable, use a Google OAuth client of type Web application for this fallback (not Chrome Extension). Add the exact redirect URI shown below to Authorized redirect URIs, then enter that client's ID.</p>
+      <p class="card-desc" id="gdriveManualRedirectHelp"></p>
       <div class="ccsync-ext-grid">
         <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientId">OAuth Client ID</span><input class="field" id="gdriveClientId" type="text" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com" /></label>
         <label class="field-label"><span class="field-label-text" data-i18n="gdriveClientSecret">Client Secret (optional)</span><input class="field" id="gdriveClientSecret" type="password" autocomplete="off" /></label>
