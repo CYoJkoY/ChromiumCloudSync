@@ -333,14 +333,6 @@ async function clearDriveIdCache(): Promise<void> {
 }
 
 /**
- * Browser-managed connection flow.
- *
- * The user selects Google Drive, clicks Connect, and Chromium's own
- * identity/OAuth UI handles account selection and consent for the minimum
- * `drive.file` scope. No client configuration is requested, and no token is
- * persisted by the extension — Chromium owns the token cache.
- */
-/**
  * Finish the browser-managed connection with a token obtained from an explicit
  * user click. The token is only used in memory for this request and is never
  * persisted to extension storage or included in synchronized state.
@@ -366,7 +358,12 @@ export async function connectGoogleDriveWithToken(
   });
 }
 
-/** Legacy/internal path; UI-initiated sign-in calls getAuthToken in the page. */
+/**
+ * Browser-managed connection flow for internal callers.
+ *
+ * The settings UI initiates the interactive token request in its click handler
+ * so the browser can associate any account chooser/consent UI with user intent.
+ */
 export async function connectGoogleDriveBrowser(
   preferredEmail = "",
 ): Promise<GdriveAuthState> {
