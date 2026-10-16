@@ -269,7 +269,7 @@ function respondWithAccount(email = "user@example.com") {
     () => connectGoogleDriveBrowser(),
     (error: unknown) => {
       assert.ok(error instanceof Error);
-      assert.match(error.message, /手动 OAuth 客户端配置/);
+      assert.match(error.message, /自有 OAuth 客户端/);
       return true;
     },
     "unsupported host must point at the manual fallback",

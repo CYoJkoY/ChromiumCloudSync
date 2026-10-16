@@ -571,7 +571,13 @@ async function buildLocalState(
   remoteModular,
 ) {
   const settings = await getSettings(),
-    base = currentBase || remoteState.snapshot || {},
+    baseSource = currentBase || remoteState.snapshot || {},
+    base = { ...baseSource, windows: [] },
+    localForCloud = { ...localSnapshot, windows: [] },
+    remoteForCloud = {
+      ...remoteState,
+      snapshot: { ...remoteState.snapshot, windows: [] },
+    },
     revision =
       Math.max(
         Number(settings[KEYS.SYNC_REVISION] || 0),
@@ -582,8 +588,8 @@ async function buildLocalState(
     tabSyncMode = await getTabSyncMode(),
     merged = mergeModularCloudState({
       base,
-      local: localSnapshot,
-      remote: remoteState,
+      local: localForCloud,
+      remote: remoteForCloud,
       remoteModular: remoteModular || null,
       options: { tabSyncMode },
       revision,
