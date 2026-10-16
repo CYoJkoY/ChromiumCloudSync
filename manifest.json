@@ -1,10 +1,23 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "1.11.6",
+  "version": "1.12.0",
   "description": "__MSG_extensionDescription__",
-  "permissions": ["tabs", "management", "storage", "alarms", "bookmarks", "tabGroups", "identity"],
-  "host_permissions": ["https://api.github.com/*", "https://gist.githubusercontent.com/*", "https://www.googleapis.com/*", "https://oauth2.googleapis.com/*"],
+  "permissions": [
+    "tabs",
+    "management",
+    "storage",
+    "alarms",
+    "bookmarks",
+    "tabGroups",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*",
+    "https://gist.githubusercontent.com/*",
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*"
+  ],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "icons": {
     "16": "icons/icon16.png",
@@ -14,8 +27,15 @@
     "256": "icons/icon256.png",
     "512": "icons/icon512.png"
   },
-  "background": {"service_worker": "background.js", "type": "module"},
-  "action": {"default_popup": "popup.html", "default_icon": {"16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png"}},
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
   "options_page": "options.html",
   "default_locale": "en"
 }
