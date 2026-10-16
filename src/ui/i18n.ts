@@ -247,6 +247,12 @@
       gdriveNotConnected: "Not connected",
       gdriveConnectBrowser: "Connect with Google account",
       gdriveConnecting: "Waiting for Google authorization\u2026",
+      gdriveIdentityUnavailable: "This browser does not expose chrome.identity.getAuthToken.",
+      gdriveIdentityTimeout: "The browser did not return a Google authorization result within 20 seconds. Its interactive sign-in UI may be blocked or unsupported.",
+      gdriveIdentityNoToken: "Google authorization completed without returning an access token.",
+      gdriveIdentityFallbackNotice: "Browser-managed authorization did not finish. Advanced OAuth is expanded below; it needs a Google OAuth client of type Web application with the exact redirect URI shown there.",
+      gdriveManualRedirect: "Authorized redirect URI for the Web application OAuth client (copy this exact value):",
+      gdriveManualRedirectUnavailable: "The browser did not provide an OAuth redirect URI; this manual flow is unavailable in this browser.",
       gdriveConnectedAs: "Connected as {email}",
       gdriveUnknownAccount: "Google account",
       gdriveAuthMode: "Authorization",
@@ -258,7 +264,7 @@
       gdriveClientIdRequired: "Enter your OAuth Client ID. Browser-managed Google sign-in needs a client registered for this extension ID in manifest.json.",
       gdriveManualTitle: "Advanced: use your own OAuth client",
       gdriveManualHelp:
-        "Browser-managed sign-in requires manifest.json to include an oauth2.client_id for a Google Cloud OAuth client of type Chrome Extension whose Item ID matches this extension's ID. The current build has no registered client configured, so provide your own OAuth Client ID here until one is configured.",
+        "Use this only if the browser-managed account chooser does not appear or is unsupported. Create a Google Cloud OAuth client of type Web application (not Chrome Extension), add the exact redirect URI shown below under Authorized redirect URIs, and enter that client's ID here. A client secret may be required by your Google OAuth configuration.",
       gdriveManualRequired:
         "This build's manifest.json has no registered oauth2.client_id. This cannot be enabled from this screen: the extension maintainer must register a Chrome Extension OAuth client for this exact extension ID, set GDRIVE_OAUTH_CLIENT_ID, and build a new package. Alternatively, open Advanced and enter your own OAuth Client ID.",
       webdavTitle: "WebDAV",
@@ -597,6 +603,12 @@
     gdriveNotConnected: "未连接",
     gdriveConnectBrowser: "使用 Google 账号连接",
     gdriveConnecting: "等待 Google 授权\u2026",
+    gdriveIdentityUnavailable: "当前浏览器未提供 chrome.identity.getAuthToken。",
+    gdriveIdentityTimeout: "等待 Google 授权结果超过 20 秒。当前 Chromium 浏览器可能不支持或阻止了交互式授权界面。",
+    gdriveIdentityNoToken: "Google 授权流程已结束，但没有返回访问令牌。",
+    gdriveIdentityFallbackNotice: "浏览器托管授权没有完成，已展开下方高级 OAuth。此方式需要类型为 Web application 的 Google OAuth 客户端，并将下方显示的重定向 URI 原样加入授权重定向 URI。",
+    gdriveManualRedirect: "请将以下重定向 URI 原样添加到 Web application OAuth 客户端的 Authorized redirect URIs：",
+    gdriveManualRedirectUnavailable: "当前浏览器没有提供 OAuth 重定向 URI，无法使用此手动授权流程。"
     gdriveConnectedAs: "已连接：{email}",
     gdriveUnknownAccount: "Google 账号",
     gdriveAuthMode: "授权方式",
@@ -608,7 +620,7 @@
     gdriveClientIdRequired: "请填写 OAuth Client ID。浏览器托管登录需要在 manifest.json 中配置与当前扩展 ID 绑定的客户端。",
     gdriveManualTitle: "高级：使用自有 OAuth 客户端",
     gdriveManualHelp:
-      "浏览器托管登录要求 manifest.json 配置 oauth2.client_id，并且该 Google Cloud OAuth 客户端的类型为 Chrome Extension、Item ID 与当前扩展 ID 一致。目前构建未配置已注册的客户端，因此在其配置完成前，请在此填写自有 OAuth Client ID。",
+      "仅在浏览器托管的 Google 账号选择器没有弹出或当前浏览器不支持时使用。请创建类型为 Web application（不是 Chrome Extension）的 Google Cloud OAuth 客户端，将下方显示的 URI 原样添加到 Authorized redirect URIs，然后在此填写该客户端 ID。根据 Google OAuth 配置，可能还需要填写客户端密钥。",
     gdriveManualRequired:
       "当前构建包的 manifest.json 未配置已注册的 oauth2.client_id，无法直接启用 Google 账号登录。维护者需要为当前扩展 ID 注册 Chrome Extension OAuth 客户端、设置 GDRIVE_OAUTH_CLIENT_ID 并重新构建发布；也可以展开高级设置，填写自有 OAuth Client ID。",
     webdavTitle: "WebDAV",
