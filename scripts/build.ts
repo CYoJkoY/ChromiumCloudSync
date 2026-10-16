@@ -18,7 +18,7 @@ const gdriveOAuthClientId = buildOAuthClientId || manifestOAuthClientId;
 
 if (
   gdriveOAuthClientId &&
-  !/^[A-Za-z0-9-]+\\.apps\\.googleusercontent\\.com$/.test(
+  !/^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$/.test(
     gdriveOAuthClientId,
   )
 ) {
@@ -124,7 +124,7 @@ if (gdriveOAuthClientId) {
 }
 fs.writeFileSync(
   path.join(dist, "manifest.json"),
-  `${JSON.stringify(outputManifest, null, 2)}\\n`,
+  `${JSON.stringify(outputManifest, null, 2)}\n`,
   "utf8",
 );
 
