@@ -223,13 +223,47 @@ jobs:
           CRX_PRIVATE_KEY_B64: ${{ secrets.CRX_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
+          umask 077
+
           if [[ -z "${CRX_PRIVATE_KEY_B64:-}" ]]; then
-            echo "Missing required repository secret: CRX_PRIVATE_KEY_B64"
+            echo "::error title=Missing CRX signing key::Add the CRX_PRIVATE_KEY_B64 repository secret. Store either a PEM private key or a Base64-encoded PEM."
             exit 1
           fi
-          printf '%s' "$CRX_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/chromium-cloud-sync.pem"
-          chmod 600 "$RUNNER_TEMP/chromium-cloud-sync.pem"
-          test -s "$RUNNER_TEMP/chromium-cloud-sync.pem"
+
+          KEY_INPUT="$RUNNER_TEMP/chromium-cloud-sync-key-input"
+          KEY_PEM="$RUNNER_TEMP/chromium-cloud-sync.pem"
+
+          # Accept a PEM pasted directly into the secret as well as the existing
+          # Base64 secret format. Strip wrapping whitespace before strict decoding.
+          if [[ "$CRX_PRIVATE_KEY_B64" == *"-----BEGIN "* ]]; then
+            printf '%s\n' "$CRX_PRIVATE_KEY_B64" > "$KEY_INPUT"
+          else
+            KEY_B64="$(printf '%s' "$CRX_PRIVATE_KEY_B64" | tr -d '[:space:]')"
+            if [[ ! "$KEY_B64" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+              echo "::error title=Invalid CRX signing key secret::CRX_PRIVATE_KEY_B64 must contain raw PEM or standard Base64 for the complete PEM file. Remove quotes, labels, and other extra text."
+              exit 1
+            fi
+            if ! printf '%s' "$KEY_B64" | base64 --decode > "$KEY_INPUT"; then
+              echo "::error title=Invalid CRX signing key encoding::Could not Base64-decode CRX_PRIVATE_KEY_B64. Re-encode the complete private.pem file as a single Base64 value, or store the raw PEM directly."
+              exit 1
+            fi
+          fi
+
+          # This project signs CRX3 with RSA. Validate the decoded key first,
+          # then normalize PKCS#8/PKCS#1 inputs to a conventional RSA PEM.
+          if ! openssl rsa -in "$KEY_INPUT" -check -noout -passin pass: >/dev/null 2>&1; then
+            echo "::error title=Invalid CRX signing key::The secret did not decode to a valid unencrypted RSA private key. Supported inputs include PKCS#8 (BEGIN PRIVATE KEY) and PKCS#1 (BEGIN RSA PRIVATE KEY) PEM."
+            exit 1
+          fi
+          if ! openssl rsa -in "$KEY_INPUT" -traditional -out "$KEY_PEM" -passin pass: >/dev/null 2>&1; then
+            echo "::error title=CRX signing key normalization failed::OpenSSL could not normalize the RSA private key for CRX3."
+            exit 1
+          fi
+
+          chmod 600 "$KEY_PEM"
+          rm -f "$KEY_INPUT"
+          test -s "$KEY_PEM"
+          echo "CRX signing key decoded, validated, and normalized successfully."
 
       - name: Build signed CRX3
         shell: bash
