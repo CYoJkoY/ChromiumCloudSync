@@ -373,6 +373,28 @@ Git tag
 
 Stable tags use `vX.Y.Z` and are published as normal GitHub Releases. ChromiumCloudSync uses a single stable release channel; `version_name`, `.devN` tags, and pre-releases are not used.
 
+#### Configuring the CRX signing key
+
+The Release workflow expects a repository secret named `CRX_PRIVATE_KEY_B64`. It now accepts either a raw PEM private key or a Base64-encoded PEM. A key generated with `openssl genpkey` (PKCS#8, `BEGIN PRIVATE KEY`) is supported; the workflow validates the RSA key and normalizes it before signing. Keep using the **same private key for every release** because replacing it changes the CRX's signing identity.
+
+Recommended Base64 setup on Windows PowerShell:
+
+```powershell
+# Encode the complete PEM file as one Base64 line and copy it to the clipboard.
+$privateKeyPath = (Resolve-Path .\private.pem).Path
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($privateKeyPath)) | Set-Clipboard
+```
+
+On Linux, macOS, or Git Bash, print a single-line Base64 value with:
+
+```bash
+base64 < private.pem | tr -d '\\n'
+```
+
+Then open **Settings → Secrets and variables → Actions → Repository secrets → New repository secret**, name it `CRX_PRIVATE_KEY_B64`, and paste the copied one-line value. Do not include surrounding quotes, command output labels, or the PEM header/footer in addition to the Base64 value. Alternatively, paste the complete multi-line PEM content directly as the secret value; the updated workflow detects that form automatically.
+
+The release workflow reports a specific decoding or key-validation error if the secret is malformed; it never prints the private key to the job log. Never commit `private.pem` to the repository or send it in an issue.
+
 <a name="readme-status"></a>
 
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Project status & roadmap
