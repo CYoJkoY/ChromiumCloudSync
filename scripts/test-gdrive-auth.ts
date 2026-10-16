@@ -54,16 +54,29 @@ function installChrome(options: { withGetAuthToken?: boolean; withOAuthClient?: 
     getAccounts: async () => identity.accounts,
   };
   if (withGetAuthToken)
-    identityApi.getAuthToken = async (details: {
-      interactive?: boolean;
-      scopes?: string[];
-    }) => {
+    identityApi.getAuthToken = (
+      details: { interactive?: boolean; scopes?: string[] },
+      callback?: (result: unknown, grantedScopes?: string[]) => void,
+    ) => {
       identity.getAuthTokenCalls.push({
         interactive: details?.interactive,
         scopes: details?.scopes,
       });
-      if (identity.failWith) throw Error(identity.failWith);
-      return identity.token;
+      const extensionRuntime = (
+        globalThis as unknown as {
+          chrome?: {
+            runtime?: { lastError?: { message?: string } };
+          };
+        }
+      ).chrome?.runtime;
+      if (identity.failWith) {
+        if (extensionRuntime)
+          extensionRuntime.lastError = { message: identity.failWith };
+        callback?.(undefined);
+        if (extensionRuntime) delete extensionRuntime.lastError;
+        return;
+      }
+      callback?.(identity.token, details?.scopes || []);
     };
 
   (globalThis as unknown as Record<string, unknown>).chrome = {

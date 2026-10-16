@@ -107,11 +107,14 @@ export interface GdriveAuthState {
 }
 
 interface IdentityApi {
-  getAuthToken?(details: {
-    interactive?: boolean;
-    scopes?: string[];
-    account?: { id: string };
-  }): Promise<string | { token?: string; grantedScopes?: string[] }>;
+  getAuthToken?(
+    details: {
+      interactive?: boolean;
+      scopes?: string[];
+      account?: { id: string };
+    },
+    callback?: (result: unknown, grantedScopes?: string[]) => void,
+  ): void;
   removeCachedAuthToken?(details: { token: string }): Promise<void>;
   clearAllCachedAuthTokens?(): Promise<void>;
   getAccounts?(): Promise<Array<{ id: string; email: string }>>;
@@ -199,9 +202,7 @@ function hasConfiguredIdentityOAuthClient(): boolean {
 export function supportsBrowserManagedDriveAuth(): boolean {
   const capabilities = detectBrowserCapabilities();
   return (
-    hasConfiguredIdentityOAuthClient() &&
-    capabilities.identityGetAuthToken &&
-    capabilities.identityTokenCache
+    hasConfiguredIdentityOAuthClient() && capabilities.identityGetAuthToken
   );
 }
 
@@ -228,12 +229,34 @@ async function identityToken(interactive: boolean): Promise<string> {
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const pending = identity.getAuthToken({
-      interactive,
-      scopes: IDENTITY_SCOPES,
+    // Use the callback form, which remains available on platforms that do not
+    // implement the MV3 Promise wrapper consistently. Do not pass a callback
+    // and consume a Promise from the same API call.
+    const pending = new Promise<unknown>((resolve, reject) => {
+      const callback = (result: unknown, grantedScopes?: string[]) => {
+        const apiError = chrome.runtime?.lastError;
+        if (apiError) {
+          reject(new Error(apiError.message || "Google Identity API request failed"));
+          return;
+        }
+        resolve(
+          typeof result === "string"
+            ? { token: result, grantedScopes }
+            : result,
+        );
+      };
+
+      try {
+        identity.getAuthToken!({
+          interactive,
+          scopes: IDENTITY_SCOPES,
+        }, callback);
+      } catch (failure) {
+        reject(failure);
+      }
     });
     const result = await Promise.race([
-      Promise.resolve(pending),
+      pending,
       new Promise<never>((_, reject) => {
         timeout = setTimeout(
           () =>
@@ -251,9 +274,9 @@ async function identityToken(interactive: boolean): Promise<string> {
     const token = extractIdentityToken(result);
     if (!token) throw driveAuthError("Google 授权没有返回访问令牌");
     return token;
-  } catch (error) {
-    if (error instanceof DriveAuthError) throw error;
-    const message = error instanceof Error ? error.message : String(error);
+  } catch (failure) {
+    if (failure instanceof DriveAuthError) throw failure;
+    const message = failure instanceof Error ? failure.message : String(failure);
     if (/client_id|oauth|authorization page|not found/i.test(message))
       throw driveAuthError(
         `浏览器托管授权不可用（${message}）。请在下方展开“高级：使用自有 OAuth 客户端”。`,
@@ -262,7 +285,6 @@ async function identityToken(interactive: boolean): Promise<string> {
   } finally {
     if (timeout) clearTimeout(timeout);
   }
-}
 
 /** Authorization failures the UI must present as "reconnect", not as Drive faults. */
 export class DriveAuthError extends Error {
@@ -457,10 +479,7 @@ export async function disconnectGoogleDrive(): Promise<void> {
   let revoked = "";
   if (auth?.mode === "identity" && identity.getAuthToken) {
     try {
-      revoked = await identity.getAuthToken({
-        interactive: false,
-        scopes: IDENTITY_SCOPES,
-      });
+      revoked = await identityToken(false);
       if (revoked && identity.removeCachedAuthToken)
         await identity.removeCachedAuthToken({ token: revoked });
     } catch {
