@@ -9,6 +9,23 @@ const manifest = JSON.parse(
   fs.readFileSync(path.join(root, "manifest.json"), "utf8"),
 );
 const version = String(manifest.version || "").trim();
+const DRIVE_OAUTH_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const buildOAuthClientId = String(
+  process.env.GDRIVE_OAUTH_CLIENT_ID || "",
+).trim();
+const manifestOAuthClientId = String(manifest.oauth2?.client_id || "").trim();
+const gdriveOAuthClientId = buildOAuthClientId || manifestOAuthClientId;
+
+if (
+  gdriveOAuthClientId &&
+  !/^[A-Za-z0-9-]+\\.apps\\.googleusercontent\\.com$/.test(
+    gdriveOAuthClientId,
+  )
+) {
+  throw new Error(
+    "Invalid Google Drive OAuth Client ID. Expected a registered *.apps.googleusercontent.com client ID.",
+  );
+}
 const makeZip = process.argv.includes("--zip");
 
 const runtimeArtifacts = [
@@ -93,12 +110,23 @@ for (const [sourceFile, outputFile] of [...pageArtifacts, ...styleArtifacts]) {
   fs.copyFileSync(source, path.join(dist, outputFile));
 }
 
-for (const file of ["manifest.json"]) {
-  const source = path.join(root, file);
-  if (!fs.existsSync(source))
-    throw new Error(`Missing extension file: ${file}`);
-  fs.copyFileSync(source, path.join(dist, file));
+const outputManifest = { ...manifest };
+if (gdriveOAuthClientId) {
+  outputManifest.oauth2 = {
+    ...(manifest.oauth2 || {}),
+    client_id: gdriveOAuthClientId,
+    scopes: [DRIVE_OAUTH_SCOPE],
+  };
+} else {
+  // Never ship a placeholder client ID: it makes browser-managed sign-in fail
+  // with a misleading OAuth error instead of exposing the real setup requirement.
+  delete outputManifest.oauth2;
 }
+fs.writeFileSync(
+  path.join(dist, "manifest.json"),
+  `${JSON.stringify(outputManifest, null, 2)}\\n`,
+  "utf8",
+);
 
 for (const directory of ["_locales", "icons"]) {
   const source = path.join(root, directory);
@@ -109,7 +137,7 @@ for (const directory of ["_locales", "icons"]) {
 
 if (!makeZip) {
   fs.rmSync(compilerOut, { recursive: true, force: true });
-  console.log(`Prepared runnable extension in ${dist}`);
+  console.log(`Prepared runnable extension in ${dist}; Google Drive browser-managed OAuth ${gdriveOAuthClientId ? "configured" : "not configured"}`);
   process.exit(0);
 }
 
