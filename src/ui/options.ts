@@ -167,8 +167,8 @@ interface GoogleOAuthRedirectResult {
 function randomOAuthString(length: number): string {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
   return btoa(String.fromCharCode(...bytes))
-    .replace(/\\+/g, "-")
-    .replace(/\\//g, "_")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
 
@@ -178,8 +178,8 @@ async function createGoogleOAuthPkceContext(): Promise<GoogleOAuthPkceContext> {
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
   );
   const challenge = btoa(String.fromCharCode(...digest))
-    .replace(/\\+/g, "-")
-    .replace(/\\//g, "_")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
     .replace(/=+$/, "");
   return { verifier, challenge, state: randomOAuthString(24) };
 }
