@@ -388,7 +388,7 @@ $privateKeyPath = (Resolve-Path .\private.pem).Path
 On Linux, macOS, or Git Bash, print a single-line Base64 value with:
 
 ```bash
-base64 < private.pem | tr -d '\\n'
+base64 < private.pem | tr -d '\n'
 ```
 
 Then open **Settings → Secrets and variables → Actions → Repository secrets → New repository secret**, name it `CRX_PRIVATE_KEY_B64`, and paste the copied one-line value. Do not include surrounding quotes, command output labels, or the PEM header/footer in addition to the Base64 value. Alternatively, paste the complete multi-line PEM content directly as the secret value; the updated workflow detects that form automatically.
