@@ -93,7 +93,11 @@ Browser-managed Google account sign-in requires an OAuth client registered for t
 5. Install/reload the newly built package and select **Google Drive → Connect with Google account**. Chromium handles account selection and consent. Existing ZIP/CRX files are not retroactively updated; build and install a new package after configuring the client.
 6. Disconnecting clears the local session and attempts to revoke the active token.
 
-The repository's source manifest and ordinary local builds remain free of placeholder credentials. When a client is absent, the settings page explains that direct sign-in cannot work in that build and opens the advanced OAuth configuration for users who have their own suitable client. The extension requests only the `drive.file` scope and does not write access tokens into synchronized data.
+The browser-managed request is started directly by the settings page's sign-in click so Chromium can associate its interactive UI with the user's action. If the Identity API does not return a result within 20 seconds, the page stops waiting, shows an error, and expands the manual fallback instead of leaving the button stuck.
+
+The manual fallback uses a different OAuth client type from browser-managed sign-in: create a Google Cloud OAuth client of type **Web application** (not Chrome Extension), add the exact redirect URI displayed in the expanded settings panel under **Authorized redirect URIs**, then enter that Client ID. Depending on the Google OAuth client configuration, a Client Secret may also be required. Never reuse the Chrome Extension client ID for this fallback unless Google Cloud registered it as a Web application client.
+
+The repository's source manifest and ordinary local builds remain free of placeholder credentials. When a browser-managed authorization client is absent, the settings page explains that direct sign-in cannot work in that build and exposes the advanced OAuth configuration. The extension requests only the `drive.file` scope and does not write browser-managed access tokens into synchronized data.
 
 All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
 
