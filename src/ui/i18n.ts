@@ -608,7 +608,7 @@
     gdriveIdentityNoToken: "Google 授权流程已结束，但没有返回访问令牌。",
     gdriveIdentityFallbackNotice: "浏览器托管授权没有完成，已展开下方高级 OAuth。此方式需要类型为 Web application 的 Google OAuth 客户端，并将下方显示的重定向 URI 原样加入授权重定向 URI。",
     gdriveManualRedirect: "请将以下重定向 URI 原样添加到 Web application OAuth 客户端的 Authorized redirect URIs：",
-    gdriveManualRedirectUnavailable: "当前浏览器没有提供 OAuth 重定向 URI，无法使用此手动授权流程。"
+    gdriveManualRedirectUnavailable: "当前浏览器没有提供 OAuth 重定向 URI，无法使用此手动授权流程。",
     gdriveConnectedAs: "已连接：{email}",
     gdriveUnknownAccount: "Google 账号",
     gdriveAuthMode: "授权方式",
