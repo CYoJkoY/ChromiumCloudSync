@@ -56,6 +56,7 @@ import {
 import {
   classifyDriveError,
   connectGoogleDriveBrowser,
+  connectGoogleDriveWithToken,
   connectGoogleDriveManual,
   createGdriveFileStore,
   describeDriveError,
@@ -2240,16 +2241,19 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         return { provider: value };
       }
       case "connectGdrive": {
-        // Browser-managed OAuth is the normal path: Chromium's account chooser
-        // authorizes the minimum drive.file scope and no client configuration is
-        // requested. An explicit clientId selects the manual fallback instead.
+        // UI-initiated browser OAuth starts directly in the click handler so
+        // the browser can associate the interactive request with user intent.
+        // The token is passed only for this in-memory connection operation.
+        const token = String(m.token || "").trim();
         const clientId = String(m.clientId || "").trim();
-        const auth = clientId
-          ? await connectGoogleDriveManual(
-              clientId,
-              String(m.clientSecret || ""),
-            )
-          : await connectGoogleDriveBrowser(String(m.email || ""));
+        const auth = token
+          ? await connectGoogleDriveWithToken(token, String(m.email || ""))
+          : clientId
+            ? await connectGoogleDriveManual(
+                clientId,
+                String(m.clientSecret || ""),
+              )
+            : await connectGoogleDriveBrowser(String(m.email || ""));
         await invalidateCloudTabCache();
         await invalidateGdriveLayout();
         return { ok: true, ...auth };
