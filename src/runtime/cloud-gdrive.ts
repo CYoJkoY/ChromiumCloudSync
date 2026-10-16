@@ -285,6 +285,7 @@ async function identityToken(interactive: boolean): Promise<string> {
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
 
 /** Authorization failures the UI must present as "reconnect", not as Drive faults. */
 export class DriveAuthError extends Error {
