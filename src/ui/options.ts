@@ -23,7 +23,8 @@ const providerEl = $("provider"),
   gdriveAuthStateEl = $("gdriveAuthState"),
   gdriveConnectBrowserEl = $("gdriveConnectBrowser"),
   gdriveManualDetailsEl = $("gdriveManualDetails"),
-  gdriveManualNoticeEl = $("gdriveManualNotice");
+  gdriveManualNoticeEl = $("gdriveManualNotice"),
+  gdriveManualRedirectHelpEl = $("gdriveManualRedirectHelp");
 
 function providerLabel(provider) {
   const names = {
@@ -59,6 +60,58 @@ providerEl?.addEventListener("change", async () => {
     showError(e);
   }
 });
+function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
+  const identity = chrome.identity as typeof chrome.identity & {
+    getAuthToken?: (details: {
+      interactive: boolean;
+      scopes: string[];
+    }) => Promise<unknown>;
+  };
+  if (typeof identity?.getAuthToken !== "function")
+    return Promise.reject(new Error(i.t("gdriveIdentityUnavailable")));
+
+  // Invoke getAuthToken synchronously in the click call stack. Sending a
+  // message first and calling it only from the background worker can lose the
+  // user-initiated context that should trigger the browser's consent UI.
+  let pending: Promise<unknown>;
+  try {
+    pending = Promise.resolve(
+      identity.getAuthToken({
+        interactive: true,
+        scopes: ["https://www.googleapis.com/auth/drive.file"],
+      }),
+    );
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(
+      () => reject(new Error(i.t("gdriveIdentityTimeout"))),
+      timeoutMs,
+    );
+  });
+  return Promise.race([pending, timeout])
+    .then((result) => {
+      const token =
+        typeof result === "string"
+          ? result
+          : result &&
+              typeof result === "object" &&
+              "token" in result &&
+              typeof (result as { token?: unknown }).token === "string"
+            ? String((result as { token: string }).token)
+            : "";
+      if (!token.trim())
+        throw new Error(i.t("gdriveIdentityNoToken"));
+      return token.trim();
+    })
+    .finally(() => {
+      if (timer) window.clearTimeout(timer);
+    });
+}
+
 $("gdriveConnectBrowser")?.addEventListener("click", async () => {
   const button = gdriveConnectBrowserEl;
   if (button) {
@@ -66,7 +119,8 @@ $("gdriveConnectBrowser")?.addEventListener("click", async () => {
     button.textContent = i.t("gdriveConnecting");
   }
   try {
-    const auth = await request("connectGdrive", {});
+    const token = await requestGoogleDriveInteractiveToken();
+    const auth = await request("connectGdrive", { token });
     showFeedback(
       "success",
       auth?.email
@@ -76,6 +130,11 @@ $("gdriveConnectBrowser")?.addEventListener("click", async () => {
     );
     await refresh();
   } catch (e) {
+    if (gdriveManualDetailsEl) gdriveManualDetailsEl.open = true;
+    if (gdriveManualNoticeEl) {
+      gdriveManualNoticeEl.hidden = false;
+      gdriveManualNoticeEl.textContent = i.t("gdriveIdentityFallbackNotice");
+    }
     showError(e);
   } finally {
     if (button) {
@@ -248,6 +307,20 @@ function renderGdriveAuthState(r) {
   if (gdriveManualDetailsEl && !browserManaged)
     gdriveManualDetailsEl.open = true;
   if (gdriveConnectBrowserEl) gdriveConnectBrowserEl.disabled = !browserManaged;
+  if (gdriveManualRedirectHelpEl) {
+    let redirectUri = "";
+    try {
+      redirectUri = chrome.identity?.getRedirectURL?.() || "";
+    } catch {
+      redirectUri = "";
+    }
+    gdriveManualRedirectHelpEl.textContent = redirectUri
+      ? `${i.t("gdriveManualRedirect")}\n${redirectUri}`
+      : i.t("gdriveManualRedirectUnavailable");
+    gdriveManualRedirectHelpEl.style.whiteSpace = "pre-wrap";
+    gdriveManualRedirectHelpEl.style.overflowWrap = "anywhere";
+    gdriveManualRedirectHelpEl.style.userSelect = "text";
+  }
 }
 
 async function refresh() {
