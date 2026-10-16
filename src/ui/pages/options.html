@@ -276,6 +276,15 @@
     </label>
     <button class="secondary block-action" data-i18n="saveRestoreMode" id="saveRestoreMode" type="button">Save restore mode</button>
   </section>
+<section class="card sync-section" id="tabSyncModeCard">
+    <div class="card-title"><span data-i18n="tabSyncModeTitle">Tab synchronization mode</span></div>
+    <p class="card-desc" data-i18n="tabSyncModeHelp">Choose whether tab groups replace the cloud state or are merged into a persistent cloud collection. Standalone tabs and window layouts are not stored.</p>
+    <label class="field-label"><span class="field-label-text" data-i18n="tabSyncMode">Tab synchronization mode</span>
+      <select class="field" id="tabSyncMode"><option value="overwrite" data-i18n="tabSyncOverwrite">Overwrite</option><option value="incremental" data-i18n="tabSyncIncremental">Incremental</option></select>
+    </label>
+    <div class="note section-note" id="tabSyncModeDescription"></div>
+    <button class="secondary block-action" data-i18n="saveTabSyncMode" id="saveTabSyncMode" type="button">Save tab synchronization mode</button>
+  </section>
 </div>
 <div class="tab-panel hidden" id="panel-cloud-tabs" role="tabpanel">
   <section class="card cloud-tabs-panel">
