@@ -111,7 +111,7 @@ interface IdentityApi {
     interactive?: boolean;
     scopes?: string[];
     account?: { id: string };
-  }): Promise<string>;
+  }): Promise<string | { token?: string; grantedScopes?: string[] }>;
   removeCachedAuthToken?(details: { token: string }): Promise<void>;
   clearAllCachedAuthTokens?(): Promise<void>;
   getAccounts?(): Promise<Array<{ id: string; email: string }>>;
@@ -206,30 +206,61 @@ export function supportsBrowserManagedDriveAuth(): boolean {
 }
 
 /** Ask Chromium to mint (and cache) a Drive token for the signed-in account. */
+const IDENTITY_TOKEN_TIMEOUT_MS = 20_000;
+
+/** Normalize the different result shapes exposed by Chromium API versions. */
+function extractIdentityToken(result: unknown): string {
+  if (typeof result === "string") return result.trim();
+  if (result && typeof result === "object" && "token" in result) {
+    const token = (result as { token?: unknown }).token;
+    return typeof token === "string" ? token.trim() : "";
+  }
+  return "";
+}
+
+/** Ask Chromium to mint a token, but never let a missing auth UI hang forever. */
 async function identityToken(interactive: boolean): Promise<string> {
   const identity = identityApi();
   if (!identity.getAuthToken)
     throw driveAuthError(
       "当前浏览器不支持 identity.getAuthToken，请改用手动 OAuth 客户端配置",
     );
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const token = await identity.getAuthToken({
+    const pending = identity.getAuthToken({
       interactive,
       scopes: IDENTITY_SCOPES,
     });
-    if (!token)
-      throw driveAuthError("Google 授权已取消");
-    return String(token);
+    const result = await Promise.race([
+      Promise.resolve(pending),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(
+              driveAuthError(
+                interactive
+                  ? "等待浏览器 Google 授权界面超时（20 秒）。请检查浏览器是否拦截授权 UI，或使用高级 OAuth 客户端连接。"
+                  : "读取 Google 授权令牌超时。请重新连接 Google Drive。",
+              ),
+            ),
+          IDENTITY_TOKEN_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    const token = extractIdentityToken(result);
+    if (!token) throw driveAuthError("Google 授权没有返回访问令牌");
+    return token;
   } catch (error) {
     if (error instanceof DriveAuthError) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    // Chromium reports a missing OAuth client (typical for unpacked builds) as
-    // an authorization-page error; surface it as the explicit fallback case.
     if (/client_id|oauth|authorization page|not found/i.test(message))
       throw driveAuthError(
         `浏览器托管授权不可用（${message}）。请在下方展开“高级：使用自有 OAuth 客户端”。`,
       );
     throw driveAuthError(`Google 授权失败：${message}`);
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -302,12 +333,36 @@ async function clearDriveIdCache(): Promise<void> {
 }
 
 /**
- * Browser-managed connection flow.
+ * Finish the browser-managed connection with a token obtained from an explicit
+ * user click. The token is only used in memory for this request and is never
+ * persisted to extension storage or included in synchronized state.
+ */
+export async function connectGoogleDriveWithToken(
+  tokenValue: string,
+  preferredEmail = "",
+): Promise<GdriveAuthState> {
+  if (!hasConfiguredIdentityOAuthClient())
+    throw driveAuthError(
+      "浏览器托管 Google 登录不可用：扩展 manifest.json 缺少已注册的 oauth2.client_id。",
+    );
+  const token = String(tokenValue || "").trim();
+  if (!token) throw driveAuthError("Google 授权没有返回访问令牌");
+  const accountId = await pickAccountId(preferredEmail);
+  const account = await fetchDriveAccount(token);
+  await clearDriveIdCache();
+  // Manual credentials are irrelevant once the browser manages the session.
+  await removeLocal([LOCAL_KEYS.tokens]);
+  return writeAuthState("identity", {
+    ...account,
+    accountId: account.accountId || accountId,
+  });
+}
+
+/**
+ * Browser-managed connection flow for internal callers.
  *
- * The user selects Google Drive, clicks Connect, and Chromium's own
- * identity/OAuth UI handles account selection and consent for the minimum
- * `drive.file` scope. No client configuration is requested, and no token is
- * persisted by the extension — Chromium owns the token cache.
+ * The settings UI initiates the interactive token request in its click handler
+ * so the browser can associate any account chooser/consent UI with user intent.
  */
 export async function connectGoogleDriveBrowser(
   preferredEmail = "",
@@ -320,16 +375,10 @@ export async function connectGoogleDriveBrowser(
     throw driveAuthError(
       "当前浏览器未提供完整的 Chromium Identity API，无法使用浏览器托管 Google 登录；请展开高级设置使用自有 OAuth 客户端。",
     );
-  const accountId = await pickAccountId(preferredEmail);
-  const token = await identityToken(true);
-  const account = await fetchDriveAccount(token);
-  await clearDriveIdCache();
-  // Manual credentials are irrelevant once the browser manages the session.
-  await removeLocal([LOCAL_KEYS.tokens]);
-  return writeAuthState("identity", {
-    ...account,
-    accountId: account.accountId || accountId,
-  });
+  return connectGoogleDriveWithToken(
+    await identityToken(true),
+    preferredEmail,
+  );
 }
 
 /**
