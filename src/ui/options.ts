@@ -132,7 +132,9 @@ function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
         typeof (returned as { then?: unknown }).then === "function"
       ) {
         Promise.resolve(returned).then(
-          acceptResult,
+          (result) => {
+            if (result !== undefined && result !== null) acceptResult(result);
+          },
           (failure: unknown) =>
             finish(
               "",
@@ -278,7 +280,10 @@ function requestGoogleDriveWebOAuth(clientIdValue: string): Promise<GoogleOAuthR
         typeof (returned as { then?: unknown }).then === "function"
       ) {
         Promise.resolve(returned).then(
-          (redirectUrl) => finish(String(redirectUrl || "")),
+          (redirectUrl) => {
+            if (redirectUrl !== undefined && redirectUrl !== null)
+              finish(String(redirectUrl));
+          },
           (failure: unknown) =>
             finish(
               "",
