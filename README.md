@@ -84,15 +84,16 @@ For GitHub Gist, the extension creates or binds a private Gist. Google Drive use
 
 ### Connecting Google Drive
 
-Browser-managed Google account sign-in requires an OAuth client registered for this exact extension ID:
+Browser-managed Google account sign-in requires an OAuth client registered for this exact extension ID. The source manifest intentionally contains no fake or shared placeholder client ID.
 
-1. Create a Google Cloud OAuth client of type **Chrome Extension** and register the extension's stable ID as its Item ID.
-2. Add that generated Client ID as `oauth2.client_id` in `manifest.json`, alongside the `drive.file` scope.
-3. Select **Google Drive** and click **Connect with Google account**. Chromium then handles account selection and consent.
-4. If the manifest has no registered client, Settings disables that button and opens **Advanced: use your own OAuth client** instead. The current repository manifest does not contain a registered client ID, so browser-managed sign-in cannot work in a packaged build until the maintainer supplies and registers one.
-5. Disconnecting clears the local session and attempts to revoke the active token.
+1. In Google Cloud Console, configure the project and create an OAuth client of type **Chrome Extension**. Register the extension's stable Chrome Web Store / runtime ID as its Item ID.
+2. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables** and add the public Client ID as `GDRIVE_OAUTH_CLIENT_ID`. This is a Client ID, not a Client Secret; the browser-managed flow does not need a client secret.
+3. The release workflow validates that variable and injects it into the packaged `dist/manifest.json` as `oauth2.client_id`, with only the `https://www.googleapis.com/auth/drive.file` scope. Release publication fails clearly if the variable is missing or malformed instead of producing an unusable direct-login build.
+4. For a local build, set `GDRIVE_OAUTH_CLIENT_ID` in the build process environment before running `npm run build:extension` or `npm run build:zip`. For example, in PowerShell: `$env:GDRIVE_OAUTH_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com"`; then run the build command in that same session.
+5. Install/reload the newly built package and select **Google Drive → Connect with Google account**. Chromium handles account selection and consent. Existing ZIP/CRX files are not retroactively updated; build and install a new package after configuring the client.
+6. Disconnecting clears the local session and attempts to revoke the active token.
 
-The extension requests only the `https://www.googleapis.com/auth/drive.file` scope and checks every modular upload for credential-shaped keys. Access tokens are not written into synchronized data. The manual PKCE fallback requires a Client ID supplied by the user.
+The repository's source manifest and ordinary local builds remain free of placeholder credentials. When a client is absent, the settings page explains that direct sign-in cannot work in that build and opens the advanced OAuth configuration for users who have their own suitable client. The extension requests only the `drive.file` scope and does not write access tokens into synchronized data.
 
 All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
 
