@@ -65,15 +65,16 @@ function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
     getAuthToken?: (
       details: { interactive: boolean; scopes: string[] },
       callback?: (result: unknown, grantedScopes?: string[]) => void,
-    ) => void;
+    ) => unknown;
   };
   if (typeof identity?.getAuthToken !== "function")
     return Promise.reject(new Error(i.t("gdriveIdentityUnavailable")));
 
-  // Start auth synchronously inside the click handler. Use the callback form:
-  // it is supported on older/alternate Chromium implementations that may not
-  // expose the MV3 Promise wrapper reliably.
-  return new Promise((resolve, reject) => {
+  // Start auth synchronously inside the click handler. Consume whichever
+  // completion style this browser actually implements: callback, Promise, or
+  // an implementation that supports both. The settlement guard prevents
+  // duplicate completion when both are exposed.
+  return new Promise<string>((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof window.setTimeout> | undefined;
     const finish = (token: string, failure?: Error) => {
@@ -83,19 +84,36 @@ function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
       if (failure) reject(failure);
       else resolve(token);
     };
-
+    const acceptResult = (result: unknown) => {
+      const normalized =
+        typeof result === "string"
+          ? { token: result }
+          : result;
+      const token =
+        normalized &&
+        typeof normalized === "object" &&
+        "token" in normalized &&
+        typeof (normalized as { token?: unknown }).token === "string"
+          ? String((normalized as { token: string }).token).trim()
+          : "";
+      if (!token) {
+        finish("", new Error(i.t("gdriveIdentityNoToken")));
+        return;
+      }
+      finish(token);
+    };
     timer = window.setTimeout(
       () => finish("", new Error(i.t("gdriveIdentityTimeout"))),
       timeoutMs,
     );
 
     try {
-      identity.getAuthToken(
+      const returned = identity.getAuthToken!(
         {
           interactive: true,
           scopes: ["https://www.googleapis.com/auth/drive.file"],
         },
-        (result, grantedScopes) => {
+        (result) => {
           const apiError = chrome.runtime?.lastError;
           if (apiError) {
             finish(
@@ -104,25 +122,26 @@ function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
             );
             return;
           }
-
-          const normalized =
-            typeof result === "string"
-              ? { token: result, grantedScopes }
-              : result;
-          const token =
-            normalized &&
-            typeof normalized === "object" &&
-            "token" in normalized &&
-            typeof (normalized as { token?: unknown }).token === "string"
-              ? String((normalized as { token: string }).token).trim()
-              : "";
-          if (!token) {
-            finish("", new Error(i.t("gdriveIdentityNoToken")));
-            return;
-          }
-          finish(token);
+          acceptResult(result);
         },
       );
+      if (
+        returned &&
+        typeof returned === "object" &&
+        "then" in returned &&
+        typeof (returned as { then?: unknown }).then === "function"
+      ) {
+        Promise.resolve(returned).then(
+          acceptResult,
+          (failure: unknown) =>
+            finish(
+              "",
+              failure instanceof Error
+                ? failure
+                : new Error(String(failure)),
+            ),
+        );
+      }
     } catch (failure) {
       finish(
         "",
@@ -132,15 +151,198 @@ function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
   });
 }
 
-$("gdriveConnectBrowser")?.addEventListener("click", async () => {
+interface GoogleOAuthPkceContext {
+  verifier: string;
+  challenge: string;
+  state: string;
+}
+
+interface GoogleOAuthRedirectResult {
+  clientId: string;
+  redirect: string;
+  verifier: string;
+  code: string;
+}
+
+function randomOAuthString(length: number): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\\+/g, "-")
+    .replace(/\\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function createGoogleOAuthPkceContext(): Promise<GoogleOAuthPkceContext> {
+  const verifier = randomOAuthString(64);
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+  );
+  const challenge = btoa(String.fromCharCode(...digest))
+    .replace(/\\+/g, "-")
+    .replace(/\\//g, "_")
+    .replace(/=+$/, "");
+  return { verifier, challenge, state: randomOAuthString(24) };
+}
+
+let preparedGoogleOAuthContext: GoogleOAuthPkceContext | null = null;
+let preparingGoogleOAuthContext: Promise<void> | null = null;
+
+function prepareGoogleOAuthContext(): Promise<void> {
+  if (preparedGoogleOAuthContext) return Promise.resolve();
+  if (preparingGoogleOAuthContext) return preparingGoogleOAuthContext;
+  preparingGoogleOAuthContext = createGoogleOAuthPkceContext()
+    .then((context) => {
+      preparedGoogleOAuthContext = context;
+    })
+    .catch(() => {
+      preparedGoogleOAuthContext = null;
+    })
+    .finally(() => {
+      preparingGoogleOAuthContext = null;
+    });
+  return preparingGoogleOAuthContext;
+}
+
+// Prepare PKCE before the user clicks, so launchWebAuthFlow itself can be
+// invoked synchronously from the click stack rather than after crypto awaits.
+void prepareGoogleOAuthContext();
+
+function requestGoogleDriveWebOAuth(clientIdValue: string): Promise<GoogleOAuthRedirectResult> {
+  const identity = chrome.identity as typeof chrome.identity & {
+    getRedirectURL?: () => string;
+    launchWebAuthFlow?: (
+      details: { url: string; interactive: boolean },
+      callback?: (redirectUrl?: string) => void,
+    ) => unknown;
+  };
+  const clientId = String(clientIdValue || "").trim();
+  if (!clientId)
+    return Promise.reject(new Error(i.t("gdriveClientIdRequired")));
+  if (
+    typeof identity?.getRedirectURL !== "function" ||
+    typeof identity?.launchWebAuthFlow !== "function"
+  )
+    return Promise.reject(new Error(i.t("gdriveManualRedirectUnavailable")));
+
+  const pkce = preparedGoogleOAuthContext;
+  if (!pkce)
+    return Promise.reject(new Error(i.t("gdriveOAuthPreparing")));
+  preparedGoogleOAuthContext = null;
+  void prepareGoogleOAuthContext();
+
+  const redirect = identity.getRedirectURL();
+  const authorizeUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authorizeUrl.searchParams.set("client_id", clientId);
+  authorizeUrl.searchParams.set("redirect_uri", redirect);
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("scope", "https://www.googleapis.com/auth/drive.file");
+  authorizeUrl.searchParams.set("access_type", "offline");
+  authorizeUrl.searchParams.set("prompt", "select_account consent");
+  authorizeUrl.searchParams.set("code_challenge", pkce.challenge);
+  authorizeUrl.searchParams.set("code_challenge_method", "S256");
+  authorizeUrl.searchParams.set("state", pkce.state);
+
+  // Do not await anything between the user click and this API invocation.
+  return new Promise<string>((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof window.setTimeout> | undefined;
+    const finish = (redirectUrl: string, failure?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (failure) reject(failure);
+      else resolve(redirectUrl);
+    };
+    const callback = (redirectUrl?: string) => {
+      const apiError = chrome.runtime?.lastError;
+      if (apiError) {
+        finish("", new Error(apiError.message || i.t("gdriveManualRedirectUnavailable")));
+        return;
+      }
+      finish(String(redirectUrl || ""));
+    };
+    timer = window.setTimeout(
+      () => finish("", new Error(i.t("gdriveWebAuthTimeout"))),
+      120_000,
+    );
+
+    try {
+      const returned = identity.launchWebAuthFlow!(
+        { url: authorizeUrl.toString(), interactive: true },
+        callback,
+      );
+      if (
+        returned &&
+        typeof returned === "object" &&
+        "then" in returned &&
+        typeof (returned as { then?: unknown }).then === "function"
+      ) {
+        Promise.resolve(returned).then(
+          (redirectUrl) => finish(String(redirectUrl || "")),
+          (failure: unknown) =>
+            finish(
+              "",
+              failure instanceof Error
+                ? failure
+                : new Error(String(failure)),
+            ),
+        );
+      }
+    } catch (failure) {
+      finish(
+        "",
+        failure instanceof Error ? failure : new Error(String(failure)),
+      );
+    }
+  }).then((responseUrl) => {
+    if (!responseUrl) throw new Error(i.t("gdriveWebAuthCancelled"));
+    const parsed = new URL(responseUrl);
+    if (parsed.searchParams.get("state") !== pkce.state)
+      throw new Error(i.t("gdriveOAuthStateMismatch"));
+    const code = parsed.searchParams.get("code");
+    if (!code)
+      throw new Error(
+        parsed.searchParams.get("error") || i.t("gdriveOAuthNoCode"),
+      );
+    return { clientId, redirect, verifier: pkce.verifier, code };
+  });
+}
+
+async function completeGoogleDriveWebOAuth(
+  clientId: string,
+  clientSecret: string,
+): Promise<Record<string, unknown>> {
+  const pendingRedirect = requestGoogleDriveWebOAuth(clientId);
+  const redirectResult = await pendingRedirect;
+  return request("completeGdriveOAuth", {
+    ...redirectResult,
+    clientSecret,
+  });
+}
+
+async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
   const button = gdriveConnectBrowserEl;
+  const clientId = String($("gdriveClientId")?.value || "").trim();
+  const clientSecret = String($("gdriveClientSecret")?.value || "");
+  if (forceWebOAuth && !clientId) {
+    if (gdriveManualDetailsEl) gdriveManualDetailsEl.open = true;
+    showError(new Error(i.t("gdriveClientIdRequired")));
+    return;
+  }
   if (button) {
     button.disabled = true;
     button.textContent = i.t("gdriveConnecting");
   }
   try {
-    const token = await requestGoogleDriveInteractiveToken();
-    const auth = await request("connectGdrive", { token });
+    // A configured Web Application client uses the real Google web sign-in UI,
+    // initiated from this settings-page click. This is the compatible route for
+    // Chromium forks that do not provide Google's browser-managed account UI.
+    const auth = clientId
+      ? await completeGoogleDriveWebOAuth(clientId, clientSecret)
+      : await (async () => {
+          const token = await requestGoogleDriveInteractiveToken();
+          return request("connectGdrive", { token });
+        })();
     showFeedback(
       "success",
       auth?.email
@@ -149,42 +351,27 @@ $("gdriveConnectBrowser")?.addEventListener("click", async () => {
       "",
     );
     await refresh();
-  } catch (e) {
+  } catch (failure) {
     if (gdriveManualDetailsEl) gdriveManualDetailsEl.open = true;
     if (gdriveManualNoticeEl) {
       gdriveManualNoticeEl.hidden = false;
       gdriveManualNoticeEl.textContent = i.t("gdriveIdentityFallbackNotice");
     }
-    showError(e);
+    showError(failure);
   } finally {
     if (button) {
       button.disabled = false;
       button.textContent = i.t("gdriveConnectBrowser");
     }
   }
+}
+
+$("gdriveConnectBrowser")?.addEventListener("click", () => {
+  void connectGoogleDrive(false);
 });
-$("gdriveConnect")?.addEventListener("click", async () => {
-  const clientId = $("gdriveClientId")?.value || "";
-  if (!String(clientId).trim()) {
-    showError(new Error(i.t("gdriveClientIdRequired")));
-    return;
-  }
-  try {
-    const auth = await request("connectGdrive", {
-      clientId,
-      clientSecret: $("gdriveClientSecret")?.value || "",
-    });
-    showFeedback(
-      "success",
-      auth?.email
-        ? i.t("gdriveConnectedAs", { email: auth.email })
-        : i.t("gdriveConnected"),
-      "",
-    );
-    await refresh();
-  } catch (e) {
-    showError(e);
-  }
+
+$("gdriveConnect")?.addEventListener("click", () => {
+  void connectGoogleDrive(true);
 });
 $("gdriveDisconnect")?.addEventListener("click", async () => {
   if (!confirm(i.t("gdriveDisconnectConfirm"))) return;
@@ -319,6 +506,13 @@ function renderGdriveAuthState(r) {
     }
   }
   const browserManaged = r.gdriveBrowserManaged !== false;
+  const identity = chrome.identity as typeof chrome.identity & {
+    getRedirectURL?: () => string;
+    launchWebAuthFlow?: unknown;
+  };
+  const webOAuthAvailable =
+    typeof identity?.getRedirectURL === "function" &&
+    typeof identity?.launchWebAuthFlow === "function";
   if (gdriveManualNoticeEl) {
     gdriveManualNoticeEl.hidden = browserManaged;
     if (!browserManaged)
@@ -326,7 +520,8 @@ function renderGdriveAuthState(r) {
   }
   if (gdriveManualDetailsEl && !browserManaged)
     gdriveManualDetailsEl.open = true;
-  if (gdriveConnectBrowserEl) gdriveConnectBrowserEl.disabled = !browserManaged;
+  if (gdriveConnectBrowserEl)
+    gdriveConnectBrowserEl.disabled = !browserManaged && !webOAuthAvailable;
   if (gdriveManualRedirectHelpEl) {
     let redirectUri = "";
     try {

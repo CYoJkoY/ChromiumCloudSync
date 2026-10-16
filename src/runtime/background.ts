@@ -58,6 +58,7 @@ import {
   connectGoogleDriveBrowser,
   connectGoogleDriveWithToken,
   connectGoogleDriveManual,
+  completeGoogleDriveManualAuth,
   createGdriveFileStore,
   describeDriveError,
   driveErrorReason,
@@ -2254,6 +2255,18 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
                 String(m.clientSecret || ""),
               )
             : await connectGoogleDriveBrowser(String(m.email || ""));
+        await invalidateCloudTabCache();
+        await invalidateGdriveLayout();
+        return { ok: true, ...auth };
+      }
+      case "completeGdriveOAuth": {
+        const auth = await completeGoogleDriveManualAuth(
+          String(m.clientId || ""),
+          String(m.clientSecret || ""),
+          String(m.redirect || ""),
+          String(m.verifier || ""),
+          String(m.code || ""),
+        );
         await invalidateCloudTabCache();
         await invalidateGdriveLayout();
         return { ok: true, ...auth };

@@ -382,8 +382,13 @@ function respondWithAccount(email = "user@example.com") {
 
   // launchWebAuthFlow must return an authorization code redirect.
   const chromeMock = (globalThis as unknown as { chrome: { identity: Record<string, unknown> } }).chrome;
-  chromeMock.identity.launchWebAuthFlow = async () =>
-    "https://example.chromiumapp.org/?code=auth-code-123";
+  chromeMock.identity.launchWebAuthFlow = async (details: unknown) => {
+    const requestUrl = new URL(
+      String((details as { url?: unknown })?.url || "https://example.com/"),
+    );
+    const state = requestUrl.searchParams.get("state") || "";
+    return `https://example.chromiumapp.org/?code=auth-code-123&state=${encodeURIComponent(state)}`;
+  };
 
   const auth = await connectGoogleDriveManual("client-id-1", "secret-1");
   assert.equal(auth.mode, "manual");
