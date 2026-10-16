@@ -114,7 +114,7 @@ interface IdentityApi {
       account?: { id: string };
     },
     callback?: (result: unknown, grantedScopes?: string[]) => void,
-  ): void;
+  ): unknown;
   removeCachedAuthToken?(details: { token: string }): Promise<void>;
   clearAllCachedAuthTokens?(): Promise<void>;
   getAccounts?(): Promise<Array<{ id: string; email: string }>>;
@@ -229,28 +229,46 @@ async function identityToken(interactive: boolean): Promise<string> {
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    // Use the callback form, which remains available on platforms that do not
-    // implement the MV3 Promise wrapper consistently. Do not pass a callback
-    // and consume a Promise from the same API call.
     const pending = new Promise<unknown>((resolve, reject) => {
-      const callback = (result: unknown, grantedScopes?: string[]) => {
-        const apiError = chrome.runtime?.lastError;
-        if (apiError) {
-          reject(new Error(apiError.message || "Google Identity API request failed"));
-          return;
-        }
+      const acceptResult = (result: unknown, grantedScopes?: string[]) => {
         resolve(
           typeof result === "string"
             ? { token: result, grantedScopes }
             : result,
         );
       };
+      const callback = (result: unknown, grantedScopes?: string[]) => {
+        const apiError = chrome.runtime?.lastError;
+        if (apiError) {
+          reject(new Error(apiError.message || "Google Identity API request failed"));
+          return;
+        }
+        acceptResult(result, grantedScopes);
+      };
 
       try {
-        identity.getAuthToken!({
+        // Support callback-based extension bindings and Promise-only Chromium
+        // wrappers with one API invocation. The Promise race settles once even
+        // if a non-standard host exposes both completion styles.
+        const returned = identity.getAuthToken!({
           interactive,
           scopes: IDENTITY_SCOPES,
         }, callback);
+        if (
+          returned &&
+          typeof returned === "object" &&
+          "then" in returned &&
+          typeof (returned as { then?: unknown }).then === "function"
+        ) {
+          Promise.resolve(returned).then(
+            (result) => {
+              // Some wrappers return undefined while the callback is pending.
+              if (result !== undefined && result !== null)
+                acceptResult(result);
+            },
+            reject,
+          );
+        }
       } catch (failure) {
         reject(failure);
       }
@@ -285,7 +303,6 @@ async function identityToken(interactive: boolean): Promise<string> {
   } finally {
     if (timeout) clearTimeout(timeout);
   }
-}
 
 /** Authorization failures the UI must present as "reconnect", not as Drive faults. */
 export class DriveAuthError extends Error {
