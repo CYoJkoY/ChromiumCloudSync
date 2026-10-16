@@ -365,17 +365,32 @@ const v2 = {
   ];
   const historyIndex = JSON.stringify({
     schemaVersion: 2,
-    entries: [{
-      id: "rev-1",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      layout: "modular",
-      revision: 1,
-      files: archiveNames,
-    }],
+    entries: [
+      {
+        id: "rev-1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        layout: "modular",
+        revision: 1,
+        files: archiveNames,
+      },
+      {
+        id: "legacy-rev-2",
+        createdAt: "2025-01-01T00:00:00.000Z",
+        layout: "legacy",
+        revision: 0,
+      },
+      {
+        id: "legacy-rev-3",
+        createdAt: "2024-01-01T00:00:00.000Z",
+        revision: 0,
+      },
+    ],
   });
   recording.files.set(HISTORY_INDEX_FILE, historyIndex);
   for (const archiveName of archiveNames)
     recording.files.set(`history/rev-1/${archiveName}`, "obsolete archive");
+  recording.files.set("history/legacy-rev-2.json", "obsolete legacy archive");
+  recording.files.set("history/legacy-rev-3.json", "obsolete untyped legacy archive");
 
   const prior = await readRemoteModularState(recording.store, validateState);
   await writeRemoteModularState(
@@ -388,6 +403,8 @@ const v2 = {
   assert.equal(recording.files.has(HISTORY_INDEX_FILE), false, "recognized history index is removed");
   for (const archiveName of archiveNames)
     assert.equal(recording.files.has(`history/rev-1/${archiveName}`), false);
+  assert.equal(recording.files.has("history/legacy-rev-2.json"), false);
+  assert.equal(recording.files.has("history/legacy-rev-3.json"), false);
   assert.deepEqual(await listRemoteHistory(recording.store), []);
   await assert.rejects(
     () => readHistoryEntryState(recording.store, "rev-2", validateState),

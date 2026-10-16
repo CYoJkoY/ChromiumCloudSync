@@ -269,17 +269,22 @@ function managedHistoryRemovals(
   const removals: string[] = [];
 
   for (const entry of entries) {
-    if (
-      typeof entry !== "object" ||
-      entry === null ||
-      (provider === "webdav" && entry.layout !== "modular")
-    )
-      return [];
+    if (typeof entry !== "object" || entry === null) return [];
 
     const entryId = typeof entry.id === "string" ? entry.id : "";
-    const names = Array.isArray(entry.files) ? entry.files : [];
+    if (!/^[A-Za-z0-9_-]+$/.test(entryId)) return [];
+
+    // Older WebDAV history used a single JSON file, and some indexes predate
+    // the explicit layout property. The provider's reader treats every
+    // non-modular entry as that legacy format, so cleanup must mirror it.
+    if (provider === "webdav" && entry.layout !== "modular") {
+      removals.push(`history/${encodeURIComponent(entryId)}.json`);
+      continue;
+    }
+
+    const names = Array.isArray(entry.files) ? entry.files : null;
     if (
-      !/^[A-Za-z0-9_-]+$/.test(entryId) ||
+      !names ||
       names.some((name) => typeof name !== "string" || !allowedNames.has(name))
     )
       return [];
