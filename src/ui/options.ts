@@ -62,54 +62,74 @@ providerEl?.addEventListener("change", async () => {
 });
 function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
   const identity = chrome.identity as typeof chrome.identity & {
-    getAuthToken?: (details: {
-      interactive: boolean;
-      scopes: string[];
-    }) => Promise<unknown>;
+    getAuthToken?: (
+      details: { interactive: boolean; scopes: string[] },
+      callback?: (result: unknown, grantedScopes?: string[]) => void,
+    ) => void;
   };
   if (typeof identity?.getAuthToken !== "function")
     return Promise.reject(new Error(i.t("gdriveIdentityUnavailable")));
 
-  // Invoke getAuthToken synchronously in the click call stack. Sending a
-  // message first and calling it only from the background worker can lose the
-  // user-initiated context that should trigger the browser's consent UI.
-  let pending: Promise<unknown>;
-  try {
-    pending = Promise.resolve(
-      identity.getAuthToken({
-        interactive: true,
-        scopes: ["https://www.googleapis.com/auth/drive.file"],
-      }),
-    );
-  } catch (error) {
-    return Promise.reject(error);
-  }
+  // Start auth synchronously inside the click handler. Use the callback form:
+  // it is supported on older/alternate Chromium implementations that may not
+  // expose the MV3 Promise wrapper reliably.
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof window.setTimeout> | undefined;
+    const finish = (token: string, failure?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (failure) reject(failure);
+      else resolve(token);
+    };
 
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
     timer = window.setTimeout(
-      () => reject(new Error(i.t("gdriveIdentityTimeout"))),
+      () => finish("", new Error(i.t("gdriveIdentityTimeout"))),
       timeoutMs,
     );
+
+    try {
+      identity.getAuthToken(
+        {
+          interactive: true,
+          scopes: ["https://www.googleapis.com/auth/drive.file"],
+        },
+        (result, grantedScopes) => {
+          const apiError = chrome.runtime?.lastError;
+          if (apiError) {
+            finish(
+              "",
+              new Error(apiError.message || i.t("gdriveIdentityUnavailable")),
+            );
+            return;
+          }
+
+          const normalized =
+            typeof result === "string"
+              ? { token: result, grantedScopes }
+              : result;
+          const token =
+            normalized &&
+            typeof normalized === "object" &&
+            "token" in normalized &&
+            typeof (normalized as { token?: unknown }).token === "string"
+              ? String((normalized as { token: string }).token).trim()
+              : "";
+          if (!token) {
+            finish("", new Error(i.t("gdriveIdentityNoToken")));
+            return;
+          }
+          finish(token);
+        },
+      );
+    } catch (failure) {
+      finish(
+        "",
+        failure instanceof Error ? failure : new Error(String(failure)),
+      );
+    }
   });
-  return Promise.race([pending, timeout])
-    .then((result) => {
-      const token =
-        typeof result === "string"
-          ? result
-          : result &&
-              typeof result === "object" &&
-              "token" in result &&
-              typeof (result as { token?: unknown }).token === "string"
-            ? String((result as { token: string }).token)
-            : "";
-      if (!token.trim())
-        throw new Error(i.t("gdriveIdentityNoToken"));
-      return token.trim();
-    })
-    .finally(() => {
-      if (timer) window.clearTimeout(timer);
-    });
 }
 
 $("gdriveConnectBrowser")?.addEventListener("click", async () => {
