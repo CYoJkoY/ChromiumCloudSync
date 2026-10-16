@@ -39,9 +39,16 @@ let fetchResponder: (call: MockFetchCall) => {
   body: unknown;
 };
 
-function installChrome(options: { withGetAuthToken?: boolean; withOAuthClient?: boolean } = {}) {
+function installChrome(
+  options: {
+    withGetAuthToken?: boolean;
+    withOAuthClient?: boolean;
+    promiseOnly?: boolean;
+  } = {},
+) {
   const withGetAuthToken = options.withGetAuthToken !== false;
   const withOAuthClient = options.withOAuthClient !== false;
+  const promiseOnly = options.promiseOnly === true;
   const identityApi: Record<string, unknown> = {
     getRedirectURL: () => "https://example.chromiumapp.org/",
     launchWebAuthFlow: async () => undefined,
@@ -70,13 +77,16 @@ function installChrome(options: { withGetAuthToken?: boolean; withOAuthClient?: 
         }
       ).chrome?.runtime;
       if (identity.failWith) {
+        if (promiseOnly) return Promise.reject(new Error(identity.failWith));
         if (extensionRuntime)
           extensionRuntime.lastError = { message: identity.failWith };
         callback?.(undefined);
         if (extensionRuntime) delete extensionRuntime.lastError;
         return;
       }
+      if (promiseOnly) return Promise.resolve(identity.token);
       callback?.(identity.token, details?.scopes || []);
+      return undefined;
     };
 
   (globalThis as unknown as Record<string, unknown>).chrome = {
@@ -202,6 +212,18 @@ function respondWithAccount(email = "user@example.com") {
     "manual fallback must be offered when the Identity API cannot mint tokens",
   );
   installChrome({ withGetAuthToken: true });
+}
+
+/* --------------------------------------------------------------------------
+ * Promise-only Identity API compatibility.
+ * ------------------------------------------------------------------------ */
+{
+  reset();
+  installChrome({ withGetAuthToken: true, promiseOnly: true });
+  respondWithAccount("promise-only@example.com");
+  const auth = await connectGoogleDriveBrowser();
+  assert.equal(auth.email, "promise-only@example.com");
+  assert.equal(auth.mode, "identity");
 }
 
 /* --------------------------------------------------------------------------
@@ -382,8 +404,13 @@ function respondWithAccount(email = "user@example.com") {
 
   // launchWebAuthFlow must return an authorization code redirect.
   const chromeMock = (globalThis as unknown as { chrome: { identity: Record<string, unknown> } }).chrome;
-  chromeMock.identity.launchWebAuthFlow = async () =>
-    "https://example.chromiumapp.org/?code=auth-code-123";
+  chromeMock.identity.launchWebAuthFlow = async (details: unknown) => {
+    const requestUrl = new URL(
+      String((details as { url?: unknown })?.url || "https://example.com/"),
+    );
+    const state = requestUrl.searchParams.get("state") || "";
+    return `https://example.chromiumapp.org/?code=auth-code-123&state=${encodeURIComponent(state)}`;
+  };
 
   const auth = await connectGoogleDriveManual("client-id-1", "secret-1");
   assert.equal(auth.mode, "manual");

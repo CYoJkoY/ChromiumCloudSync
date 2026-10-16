@@ -114,7 +114,7 @@ interface IdentityApi {
       account?: { id: string };
     },
     callback?: (result: unknown, grantedScopes?: string[]) => void,
-  ): void;
+  ): unknown;
   removeCachedAuthToken?(details: { token: string }): Promise<void>;
   clearAllCachedAuthTokens?(): Promise<void>;
   getAccounts?(): Promise<Array<{ id: string; email: string }>>;
@@ -229,28 +229,46 @@ async function identityToken(interactive: boolean): Promise<string> {
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    // Use the callback form, which remains available on platforms that do not
-    // implement the MV3 Promise wrapper consistently. Do not pass a callback
-    // and consume a Promise from the same API call.
     const pending = new Promise<unknown>((resolve, reject) => {
-      const callback = (result: unknown, grantedScopes?: string[]) => {
-        const apiError = chrome.runtime?.lastError;
-        if (apiError) {
-          reject(new Error(apiError.message || "Google Identity API request failed"));
-          return;
-        }
+      const acceptResult = (result: unknown, grantedScopes?: string[]) => {
         resolve(
           typeof result === "string"
             ? { token: result, grantedScopes }
             : result,
         );
       };
+      const callback = (result: unknown, grantedScopes?: string[]) => {
+        const apiError = chrome.runtime?.lastError;
+        if (apiError) {
+          reject(new Error(apiError.message || "Google Identity API request failed"));
+          return;
+        }
+        acceptResult(result, grantedScopes);
+      };
 
       try {
-        identity.getAuthToken!({
+        // Support callback-based extension bindings and Promise-only Chromium
+        // wrappers with one API invocation. The Promise race settles once even
+        // if a non-standard host exposes both completion styles.
+        const returned = identity.getAuthToken!({
           interactive,
           scopes: IDENTITY_SCOPES,
         }, callback);
+        if (
+          returned &&
+          typeof returned === "object" &&
+          "then" in returned &&
+          typeof (returned as { then?: unknown }).then === "function"
+        ) {
+          Promise.resolve(returned).then(
+            (result) => {
+              // Some wrappers return undefined while the callback is pending.
+              if (result !== undefined && result !== null)
+                acceptResult(result);
+            },
+            reject,
+          );
+        }
       } catch (failure) {
         reject(failure);
       }
@@ -405,39 +423,32 @@ export async function connectGoogleDriveBrowser(
 }
 
 /**
- * Explicit fallback: developer-provided OAuth client via PKCE.
- *
- * Only for hosts and unpacked builds where `identity.getAuthToken` cannot mint a
- * token. Tokens stay in this browser profile and never enter synchronized data.
+ * Complete the Web Application OAuth flow after the settings page has
+ * captured the authorization redirect. The refresh token stays local and is
+ * never copied into the synchronized payload.
  */
-export async function connectGoogleDriveManual(
-  clientId: string,
-  clientSecret = "",
+export async function completeGoogleDriveManualAuth(
+  clientIdValue: string,
+  clientSecretValue: string,
+  redirectValue: string,
+  verifierValue: string,
+  codeValue: string,
 ): Promise<GdriveAuthState> {
-  const id = String(clientId || "").trim();
-  if (!id) throw driveAuthError("请先填写 Google OAuth Client ID");
+  const id = String(clientIdValue || "").trim();
+  const clientSecret = String(clientSecretValue || "");
+  const redirect = String(redirectValue || "").trim();
+  const verifier = String(verifierValue || "").trim();
+  const code = String(codeValue || "").trim();
   const identity = identityApi();
-  if (!identity.getRedirectURL || !identity.launchWebAuthFlow)
-    throw driveAuthError("当前浏览器不支持 chrome.identity 授权流程");
-  const redirect = identity.getRedirectURL();
-  const verifier = randomString(64);
-  const challenge = await sha256B64Url(verifier);
-  const url =
-    `${AUTH_URL}?client_id=${encodeURIComponent(id)}` +
-    `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code` +
-    `&scope=${encodeURIComponent(GDRIVE_SCOPE)}&access_type=offline&prompt=consent` +
-    `&code_challenge=${challenge}&code_challenge_method=S256`;
-  const responseUrl = await identity.launchWebAuthFlow({
-    url,
-    interactive: true,
-  });
-  if (!responseUrl) throw driveAuthError("Google 授权已取消");
-  const parsed = new URL(responseUrl);
-  const code = parsed.searchParams.get("code");
-  if (!code)
-    throw driveAuthError(
-      `Google 授权失败：${parsed.searchParams.get("error") || "no code"}`,
-    );
+
+  if (!id) throw driveAuthError("请先填写 Google OAuth Client ID");
+  if (!code || !verifier)
+    throw driveAuthError("Google 授权响应缺少 authorization code 或 PKCE verifier");
+  if (verifier.length < 43 || verifier.length > 128)
+    throw driveAuthError("Google 授权失败：PKCE verifier 长度无效");
+  if (!identity.getRedirectURL || redirect !== identity.getRedirectURL())
+    throw driveAuthError("Google 授权失败：重定向 URI 与当前扩展不匹配");
+
   const body = new URLSearchParams({
     code,
     client_id: id,
@@ -446,6 +457,7 @@ export async function connectGoogleDriveManual(
     code_verifier: verifier,
   });
   if (clientSecret) body.set("client_secret", clientSecret);
+
   const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -456,20 +468,72 @@ export async function connectGoogleDriveManual(
     throw driveAuthError(
       `Google token exchange failed: ${String(data?.error_description || data?.error || response.status)}`,
     );
+
+  const accessToken = String(data.access_token || "").trim();
+  if (!accessToken)
+    throw driveAuthError("Google token exchange completed without an access token");
+
   await writeLocal({
     [LOCAL_KEYS.tokens]: {
       clientId: id,
       clientSecret,
       refresh_token: String(data.refresh_token || ""),
-      access_token: String(data.access_token || ""),
+      access_token: accessToken,
       expiry: Date.now() + Number(data.expires_in || 3600) * 1000,
     } satisfies GdriveTokens,
   });
   await clearDriveIdCache();
-  const account = await fetchDriveAccount(String(data.access_token || ""));
+  const account = await fetchDriveAccount(accessToken);
   return writeAuthState("manual", account);
 }
 
+/**
+ * Legacy/internal Web Application OAuth flow. Interactive UI should normally
+ * be started by the settings page so it retains the initiating user gesture.
+ */
+export async function connectGoogleDriveManual(
+  clientId: string,
+  clientSecret = "",
+): Promise<GdriveAuthState> {
+  const id = String(clientId || "").trim();
+  if (!id) throw driveAuthError("请先填写 Google OAuth Client ID");
+  const identity = identityApi();
+  if (!identity.getRedirectURL || !identity.launchWebAuthFlow)
+    throw driveAuthError("当前浏览器不支持 chrome.identity 授权流程");
+
+  const redirect = identity.getRedirectURL();
+  const verifier = randomString(64);
+  const challenge = await sha256B64Url(verifier);
+  const state = randomString(24);
+  const url =
+    `${AUTH_URL}?client_id=${encodeURIComponent(id)}` +
+    `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code` +
+    `&scope=${encodeURIComponent(GDRIVE_SCOPE)}&access_type=offline&prompt=select_account%20consent` +
+    `&code_challenge=${challenge}&code_challenge_method=S256` +
+    `&state=${encodeURIComponent(state)}`;
+  const responseUrl = await identity.launchWebAuthFlow({
+    url,
+    interactive: true,
+  });
+  if (!responseUrl) throw driveAuthError("Google 授权已取消");
+
+  const parsed = new URL(responseUrl);
+  if (parsed.searchParams.get("state") !== state)
+    throw driveAuthError("Google 授权失败：state 校验未通过");
+  const code = parsed.searchParams.get("code");
+  if (!code)
+    throw driveAuthError(
+      `Google 授权失败：${parsed.searchParams.get("error") || "no code"}`,
+    );
+
+  return completeGoogleDriveManualAuth(
+    id,
+    clientSecret,
+    redirect,
+    verifier,
+    code,
+  );
+}
 /** Revoke the active session wherever it lives, then forget local state. */
 export async function disconnectGoogleDrive(): Promise<void> {
   const auth = await readAuthState();

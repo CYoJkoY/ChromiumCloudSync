@@ -375,6 +375,7 @@ for (const required of [
   "export async function connectGoogleDriveBrowser",
   "export async function connectGoogleDriveWithToken",
   "export async function connectGoogleDriveManual",
+  "export async function completeGoogleDriveManualAuth",
   "export function supportsBrowserManagedDriveAuth",
   "IDENTITY_TOKEN_TIMEOUT_MS",
   "extractIdentityToken",
@@ -725,6 +726,9 @@ for (const required of [
   "webdavCard.hidden",
   "renderGdriveAuthState",
   "requestGoogleDriveInteractiveToken",
+  "requestGoogleDriveWebOAuth",
+  "completeGoogleDriveWebOAuth",
+  'request("completeGdriveOAuth", {',
   'request("connectGdrive", { token',
 ])
   if (!optionsSource.includes(required))
