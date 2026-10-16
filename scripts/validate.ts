@@ -373,8 +373,11 @@ const gdrive = fs.readFileSync(
 for (const required of [
   "export const GDRIVE_SCOPE = \"https://www.googleapis.com/auth/drive.file\"",
   "export async function connectGoogleDriveBrowser",
+  "export async function connectGoogleDriveWithToken",
   "export async function connectGoogleDriveManual",
   "export function supportsBrowserManagedDriveAuth",
+  "IDENTITY_TOKEN_TIMEOUT_MS",
+  "extractIdentityToken",
   "export class DriveAuthError",
   "getAuthToken",
   "removeCachedAuthToken",
@@ -659,6 +662,7 @@ for (const required of [
   'id="gdriveAuthState"',
   'id="gdriveManualDetails"',
   'id="gdriveManualNotice"',
+  'id="gdriveManualRedirectHelp"',
 ])
   if (!optionsHtml.includes(required))
     throw new Error("Options page is missing required UI anchor " + required);
