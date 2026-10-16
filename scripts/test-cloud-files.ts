@@ -18,6 +18,7 @@ import {
   MANIFEST_FILE,
   META_FILE,
   MODULE_FILES,
+  HISTORY_INDEX_FILE,
   SYNC_MODULE_IDS,
   splitCloudState,
 } from "../src/runtime/sync-modules.ts";
@@ -224,7 +225,7 @@ const v2 = {
   assert.equal(loaded.migratedFromLegacy, false);
   assert.equal(loaded.state.revision, 1);
   assert.deepEqual(loaded.state.snapshot.bookmarks, v1.snapshot.bookmarks);
-  assert.deepEqual(loaded.state.snapshot.windows, v1.snapshot.windows);
+  assert.deepEqual(loaded.state.snapshot.windows, [], "legacy window snapshots are not carried into the modular cloud format");
   assert.equal(loaded.manifest.currentFile, null);
   assert.deepEqual(remoteFileNames().includes(META_FILE), true);
 }
@@ -345,7 +346,7 @@ const v2 = {
 }
 
 /* --------------------------------------------------------------------------
- * History entries are complete point-in-time snapshots and can be restored.
+ * Sync no longer creates custom history archives and cleans recognized old ones.
  * ------------------------------------------------------------------------ */
 {
   const recording = createRecordingStore();
@@ -354,43 +355,44 @@ const v2 = {
     splitCloudState(v1, { revision: 1 }),
     { changedModules: [...SYNC_MODULE_IDS], priorFiles: {} },
   );
-  const prior = await readRemoteModularState(recording.store, validateState);
 
+  const archiveNames = [
+    MANIFEST_FILE,
+    META_FILE,
+    MODULE_FILES.bookmarks,
+    MODULE_FILES.extensions,
+    MODULE_FILES.tabs,
+  ];
+  const historyIndex = JSON.stringify({
+    schemaVersion: 2,
+    entries: [{
+      id: "rev-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      layout: "modular",
+      revision: 1,
+      files: archiveNames,
+    }],
+  });
+  recording.files.set(HISTORY_INDEX_FILE, historyIndex);
+  for (const archiveName of archiveNames)
+    recording.files.set(`history/rev-1/${archiveName}`, "obsolete archive");
+
+  const prior = await readRemoteModularState(recording.store, validateState);
   await writeRemoteModularState(
     recording.store,
     splitCloudState(v2, { revision: 2 }),
     { changedModules: ["bookmarks"], priorFiles: prior.files, historyLabel: "rev-2" },
   );
 
-  assert.equal(recording.archives.length, 1);
-  assert.deepEqual(recording.archives[0]?.names.sort(), [
-    MANIFEST_FILE,
-    META_FILE,
-    MODULE_FILES.bookmarks,
-    MODULE_FILES.extensions,
-    MODULE_FILES.tabs,
-  ].sort(), "archive holds the complete previous file set");
-  assert.deepEqual(
-    recording.archives[0]?.modules,
-    ["bookmarks"],
-    "history entry records which modules the revision changed",
+  assert.equal(recording.archives.length, 0, "sync creates no app-managed history snapshots");
+  assert.equal(recording.files.has(HISTORY_INDEX_FILE), false, "recognized history index is removed");
+  for (const archiveName of archiveNames)
+    assert.equal(recording.files.has(`history/rev-1/${archiveName}`), false);
+  assert.deepEqual(await listRemoteHistory(recording.store), []);
+  await assert.rejects(
+    () => readHistoryEntryState(recording.store, "rev-2", validateState),
+    /missing history entry/,
   );
-  assert.equal(recording.archives[0]?.revision, 1, "archived revision context");
-
-  const entries = await listRemoteHistory(recording.store);
-  assert.equal(entries.length, 1);
-  assert.equal(entries[0]?.id, "rev-2");
-  assert.equal(entries[0]?.current, true);
-  assert.deepEqual(entries[0]?.modules, ["bookmarks"]);
-  assert.equal(entries[0]?.revision, 1);
-
-  const restored = await readHistoryEntryState(
-    recording.store,
-    "rev-2",
-    validateState,
-  );
-  assert.equal(restored.revision, 1, "history entry is the pre-write state");
-  assert.equal(restored.snapshot.bookmarks[0]?.title, "A");
 }
 
 /* --------------------------------------------------------------------------

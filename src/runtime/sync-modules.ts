@@ -63,7 +63,8 @@ export interface BookmarksModuleData {
 }
 
 export interface TabsModuleData {
-  windows: WindowRecord[];
+  /** Legacy payloads may still contain windows; new writes omit them. */
+  windows?: WindowRecord[];
   groups: TabGroupRecord[];
 }
 
@@ -255,7 +256,6 @@ export function splitCloudState(
     tabs: buildEnvelope(
       "tabs",
       {
-        windows: arrayOf<WindowRecord>(snapshot.windows),
         groups: arrayOf<TabGroupRecord>(snapshot.groups),
       },
       partitioned.byModule.tabs,

@@ -186,9 +186,25 @@ const EMPTY_ACCOUNT: DriveAccount = {
  * `identity.getAuthToken` falls back to the explicit manual path instead of
  * failing during authorization.
  */
+function hasConfiguredIdentityOAuthClient(): boolean {
+  try {
+    const manifest = chrome.runtime?.getManifest?.() as
+      | { oauth2?: { client_id?: unknown } }
+      | undefined;
+    const clientId = manifest?.oauth2?.client_id;
+    return typeof clientId === "string" && clientId.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function supportsBrowserManagedDriveAuth(): boolean {
   const capabilities = detectBrowserCapabilities();
-  return capabilities.identityGetAuthToken && capabilities.identityTokenCache;
+  return (
+    hasConfiguredIdentityOAuthClient() &&
+    capabilities.identityGetAuthToken &&
+    capabilities.identityTokenCache
+  );
 }
 
 /** Ask Chromium to mint (and cache) a Drive token for the signed-in account. */
@@ -300,7 +316,7 @@ export async function connectGoogleDriveBrowser(
 ): Promise<GdriveAuthState> {
   if (!supportsBrowserManagedDriveAuth())
     throw driveAuthError(
-      "当前浏览器不支持托管授权，请改用手动 OAuth 客户端配置",
+      "浏览器托管 Google 登录不可用：扩展 manifest.json 缺少已注册的 oauth2.client_id。请为当前扩展 ID 配置 Chrome Extension OAuth 客户端，或展开高级设置使用自有 OAuth 客户端。",
     );
   const accountId = await pickAccountId(preferredEmail);
   const token = await identityToken(true);

@@ -10,12 +10,11 @@ Depending on the features enabled by the user, the extension processes the follo
 
 ### Browser state
 
-- HTTP(S) tab URLs and titles.
-- Tab order, pinned state, active state, and window state.
 - Tab-group titles, colors, collapsed state, and membership.
+- HTTP(S) URLs, titles, and order for tabs inside each synchronized group.
 - Bookmark titles, URLs, hierarchy, and order.
 
-This information is required to synchronize and restore the browser state selected by the user.
+Standalone/ungrouped tabs and whole-window layout/state are not included in the cloud sync payload. This information is limited to group metadata and the member tabs needed to restore each group.
 
 ### Installed extension metadata
 
@@ -97,6 +96,7 @@ Disconnecting a provider removes the corresponding local authorization state whe
 The synchronization model intentionally excludes:
 
 - Browser passwords.
+- Standalone/ungrouped tabs and whole-window layouts.
 - Provider authentication credentials and tokens.
 - Third-party extension private storage and private settings.
 - Unrelated extension-private data.
