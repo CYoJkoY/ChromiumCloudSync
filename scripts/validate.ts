@@ -720,7 +720,8 @@ for (const required of [
   "gdriveCard.hidden",
   "webdavCard.hidden",
   "renderGdriveAuthState",
-  'request("connectGdrive", {})',
+  "requestGoogleDriveInteractiveToken",
+  'request("connectGdrive", { token',
 ])
   if (!optionsSource.includes(required))
     throw new Error(
