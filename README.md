@@ -52,8 +52,7 @@ The current implementation synchronizes tab groups and their HTTP(S) member tabs
 
 | Capability                    | Description                                                                                                           |
 | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| **Tab synchronization**            | Standalone tabs and window layouts are not synchronized; only the member tabs needed to restore a tab group are stored. |
-| **Tab groups**                | Preserve stable group identity, title, color, collapsed state, and group membership.                                  |
+| **Tab groups**                | Synchronize group identity, title, color, collapsed state, and member tabs needed to restore each group; standalone tabs and whole-window layouts are excluded. |
 | **Bookmarks**                 | Sync bookmark titles, URLs, parent relationships, order, and stable IDs.                                              |
 | **Extension inventory**       | Track third-party extension ID, name, version, enabled state, installation type, update information, and store links. |
 | **Extension Recovery Center** | Detect missing extensions and surface available Chrome Web Store, Edge Add-ons, or compatible recovery links.         |
