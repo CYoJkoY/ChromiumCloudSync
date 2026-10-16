@@ -243,7 +243,7 @@
       gdriveConnected: "Google Drive connected",
       gdriveDisconnected: "Google Drive disconnected",
       gdriveBrowserHelp:
-        "Google account sign-in requires an OAuth client registered for this extension ID in manifest.json. Until that client is configured, use the advanced OAuth client option below.",
+        "Direct Google account sign-in only works in a build whose manifest contains a Google Cloud Chrome Extension OAuth client registered for this exact extension ID. For release builds, the maintainer must set the GDRIVE_OAUTH_CLIENT_ID repository variable and publish a new build. Otherwise, open Advanced and enter your own OAuth Client ID.",
       gdriveNotConnected: "Not connected",
       gdriveConnectBrowser: "Connect with Google account",
       gdriveConnecting: "Waiting for Google authorization\u2026",
@@ -260,7 +260,7 @@
       gdriveManualHelp:
         "Browser-managed sign-in requires manifest.json to include an oauth2.client_id for a Google Cloud OAuth client of type Chrome Extension whose Item ID matches this extension's ID. The current build has no registered client configured, so provide your own OAuth Client ID here until one is configured.",
       gdriveManualRequired:
-        "Browser-managed sign-in is unavailable because manifest.json has no registered oauth2.client_id. Configure a Google Cloud Chrome Extension OAuth client for this exact extension ID, or use the advanced OAuth client option.",
+        "This build's manifest.json has no registered oauth2.client_id. This cannot be enabled from this screen: the extension maintainer must register a Chrome Extension OAuth client for this exact extension ID, set GDRIVE_OAUTH_CLIENT_ID, and build a new package. Alternatively, open Advanced and enter your own OAuth Client ID.",
       webdavTitle: "WebDAV",
       webdavUrl: "WebDAV URL",
       webdavFolder: "Remote folder",
@@ -593,7 +593,7 @@
     gdriveConnected: "Google Drive 已连接",
     gdriveDisconnected: "Google Drive 已断开",
     gdriveBrowserHelp:
-      "浏览器托管登录要求 manifest.json 中配置与当前扩展 ID 绑定的 OAuth 客户端。在配置完成之前，请使用下方的高级 OAuth 客户端连接方式。",
+      "只有在构建包的 manifest.json 中配置了与当前扩展 ID 绑定的 Google Cloud Chrome Extension OAuth 客户端，才能直接使用 Google 账号登录。正式发布包需要维护者设置仓库 Actions 变量 GDRIVE_OAUTH_CLIENT_ID 并重新发布；否则请展开高级设置并填写自有 OAuth Client ID。",
     gdriveNotConnected: "未连接",
     gdriveConnectBrowser: "使用 Google 账号连接",
     gdriveConnecting: "等待 Google 授权\u2026",
@@ -610,7 +610,7 @@
     gdriveManualHelp:
       "浏览器托管登录要求 manifest.json 配置 oauth2.client_id，并且该 Google Cloud OAuth 客户端的类型为 Chrome Extension、Item ID 与当前扩展 ID 一致。目前构建未配置已注册的客户端，因此在其配置完成前，请在此填写自有 OAuth Client ID。",
     gdriveManualRequired:
-      "manifest.json 未配置已注册的 oauth2.client_id，因此无法使用浏览器托管登录。请为当前扩展 ID 配置 Google Cloud Chrome Extension OAuth 客户端，或使用高级 OAuth 客户端选项。",
+      "当前构建包的 manifest.json 未配置已注册的 oauth2.client_id，无法直接启用 Google 账号登录。维护者需要为当前扩展 ID 注册 Chrome Extension OAuth 客户端、设置 GDRIVE_OAUTH_CLIENT_ID 并重新构建发布；也可以展开高级设置，填写自有 OAuth Client ID。",
     webdavTitle: "WebDAV",
     webdavUrl: "WebDAV 地址",
     webdavFolder: "远程目录",
