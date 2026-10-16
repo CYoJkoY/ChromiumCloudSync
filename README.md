@@ -111,7 +111,7 @@ Synchronized data is **not** one monolithic file. Each synchronized resource is 
 | `bookmarks.json`     | Bookmark collection module                                                 |
 | `tabs.json`          | Tab-group metadata and member tabs needed to restore each group; no standalone tabs or window snapshots |
 
-Metadata and schema information stay in separate files rather than being mixed into synchronized data. New syncs do not create application-managed history indexes or copy previous module files into cloud archives. Recognized legacy modular history indexes and their indexed archives on Google Drive/WebDAV are removed on the next successful sync; provider-native revision mechanisms are left untouched.
+Metadata and schema information stay in separate files rather than being mixed into synchronized data. New syncs do not create application-managed history indexes or copy previous module files into cloud archives. Recognized app-managed history indexes and their indexed archives—including legacy single-file WebDAV entries—are removed on the next successful sync; provider-native revision mechanisms are left untouched.
 
 Because only the modules whose data actually changed are uploaded, a bookmark edit re-writes `bookmarks.json` and the two control files while `extensions.json` and `tabs.json` stay byte-identical and keep their own module revision. Merging and conflict detection are module-scoped as well: a conflict is attributed to the module that owns it.
 

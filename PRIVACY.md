@@ -11,7 +11,7 @@ Depending on the features enabled by the user, the extension processes the follo
 ### Browser state
 
 - Tab-group titles, colors, collapsed state, and membership.
-- HTTP(S) URLs, titles, and order for tabs inside each synchronized group.
+- HTTP(S) URLs, titles, order, pinned state, and active-tab state for tabs inside each synchronized group.
 - Bookmark titles, URLs, hierarchy, and order.
 
 Standalone/ungrouped tabs and whole-window layout/state are not included in the cloud sync payload. This information is limited to group metadata and the member tabs needed to restore each group.
