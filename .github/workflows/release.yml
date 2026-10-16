@@ -22,6 +22,8 @@ jobs:
   release:
     name: Build and publish CRX + ZIP
     runs-on: ubuntu-latest
+    env:
+      GDRIVE_OAUTH_CLIENT_ID: ${{ vars.GDRIVE_OAUTH_CLIENT_ID }}
 
     steps:
       - name: Checkout tagged source
@@ -95,6 +97,20 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Validate registered Google Drive OAuth client
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLIENT_ID="${GDRIVE_OAUTH_CLIENT_ID:-}"
+          if [[ -z "$CLIENT_ID" ]]; then
+            echo "::error title=Missing Google Drive OAuth client::Set the repository Actions variable GDRIVE_OAUTH_CLIENT_ID to a Google Cloud Chrome Extension OAuth client registered for this extension's exact ID."
+            exit 1
+          fi
+          if [[ ! "$CLIENT_ID" =~ ^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
+            echo "::error title=Invalid Google Drive OAuth client::GDRIVE_OAUTH_CLIENT_ID must be a Google OAuth client ID ending in .apps.googleusercontent.com."
+            exit 1
+          fi
+
       - name: Validate project
         run: npm run validate
 
@@ -106,6 +122,24 @@ jobs:
 
       - name: Build release ZIP
         run: npm run build:zip
+
+      - name: Verify packaged Google Drive OAuth manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const manifest = JSON.parse(fs.readFileSync("dist/manifest.json", "utf8"));
+          const expectedClientId = process.env.GDRIVE_OAUTH_CLIENT_ID;
+          const requiredScope = "https://www.googleapis.com/auth/drive.file";
+          if (!expectedClientId || manifest.oauth2?.client_id !== expectedClientId) {
+            throw new Error("The release manifest does not contain the configured Google Drive OAuth Client ID.");
+          }
+          if (!manifest.oauth2?.scopes?.includes(requiredScope)) {
+            throw new Error("The release manifest is missing the required drive.file scope.");
+          }
+          console.log("Google Drive browser-managed OAuth is configured in the release manifest.");
+          NODE
 
       - name: Locate release ZIP
         id: zip
