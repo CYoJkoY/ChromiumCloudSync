@@ -44,7 +44,7 @@
 
 **Chromium Cloud Sync** is a Manifest V3 browser extension for synchronizing Chromium browser state across devices through a selectable cloud provider, without depending on a browser vendor's built-in sync service.
 
-The current implementation covers open windows and HTTP(S) tabs, tab groups, bookmarks, and installed third-party extension metadata. It also provides extension recovery and a separate CRX/ZIP package-backup path.
+The current implementation synchronizes tab groups and their HTTP(S) member tabs, bookmarks, and installed third-party extension metadata. Standalone tabs and whole-window layouts are not uploaded. It also provides extension recovery and a separate CRX/ZIP package-backup path.
 
 <a name="readme-features"></a>
 
@@ -52,8 +52,7 @@ The current implementation covers open windows and HTTP(S) tabs, tab groups, boo
 
 | Capability                    | Description                                                                                                           |
 | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| **Tabs & windows**            | Sync normal windows and HTTP(S) tabs, including title, URL, pinning, active state, order, and group information.      |
-| **Tab groups**                | Preserve stable group identity, title, color, collapsed state, and group membership.                                  |
+| **Tab groups**                | Synchronize group identity, title, color, collapsed state, and member tabs needed to restore each group; standalone tabs and whole-window layouts are excluded. |
 | **Bookmarks**                 | Sync bookmark titles, URLs, parent relationships, order, and stable IDs.                                              |
 | **Extension inventory**       | Track third-party extension ID, name, version, enabled state, installation type, update information, and store links. |
 | **Extension Recovery Center** | Detect missing extensions and surface available Chrome Web Store, Edge Add-ons, or compatible recovery links.         |
@@ -76,8 +75,8 @@ The synchronization engine is separated from the storage backend. Choose the pro
 | Provider         | What it stores                                   | Authentication / access                                     | History source                         |
 | :--------------- | :----------------------------------------------- | :---------------------------------------------------------- | :------------------------------------- |
 | **GitHub Gist**  | Modular sync files (see below) inside one Gist   | GitHub Token + private Gist                                 | Gist revision / commit history         |
-| **Google Drive** | Modular sync files inside an application folder  | Browser-managed OAuth (Chromium Identity API); manual client only as a fallback | Google Drive file revisions            |
-| **WebDAV**       | Modular sync files + a provider history index    | WebDAV URL, optional folder, username and password/app auth | `history/index.json`, up to 30 entries |
+| **Google Drive** | Modular sync files inside an application folder  | Browser-managed OAuth when a matching manifest OAuth client is configured; otherwise use the manual client | No app-managed history archives |
+| **WebDAV**       | Modular sync files only                          | WebDAV URL, optional folder, username and password/app auth | No app-managed history archives |
 
 For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and keeps its authorization state in the local browser profile. WebDAV requests require the user to grant access to the configured server origin.
 
@@ -85,18 +84,15 @@ For GitHub Gist, the extension creates or binds a private Gist. Google Drive use
 
 ### Connecting Google Drive
 
-Google Drive uses **browser-managed OAuth**, so connecting works like authorizing any other browser-integrated account:
+Browser-managed Google account sign-in requires an OAuth client registered for this exact extension ID:
 
-1. Select **Google Drive** as the sync provider.
-2. Click **Connect with Google account**.
-3. Chromium's own identity/OAuth UI handles Google account selection and consent.
-4. Only the minimum `https://www.googleapis.com/auth/drive.file` scope is requested — the extension can see files it created, nothing else.
-5. The connection state is stored locally, and Settings shows the connected account, authorization mode, scope, and connection time.
-6. **Disconnect** revokes the session and clears the cached token; reconnecting needs no credentials.
+1. Create a Google Cloud OAuth client of type **Chrome Extension** and register the extension's stable ID as its Item ID.
+2. Add that generated Client ID as `oauth2.client_id` in `manifest.json`, alongside the `drive.file` scope.
+3. Select **Google Drive** and click **Connect with Google account**. Chromium then handles account selection and consent.
+4. If the manifest has no registered client, Settings disables that button and opens **Advanced: use your own OAuth client** instead. The current repository manifest does not contain a registered client ID, so browser-managed sign-in cannot work in a packaged build until the maintainer supplies and registers one.
+5. Disconnecting clears the local session and attempts to revoke the active token.
 
-No OAuth Client ID or Client Secret is required for this flow, and access tokens are never written into synchronized data — every modular upload is checked for credential-shaped keys and rejected if any are found.
-
-Where a browser genuinely cannot authorize the extension itself — an unpacked development build with no registered OAuth client, or a Chromium derivative without `identity.getAuthToken` — the extension detects that through capability probing, says so explicitly in Settings, and reveals an **Advanced: use your own OAuth client** section. That manual PKCE path is a documented fallback, not the default setup experience.
+The extension requests only the `https://www.googleapis.com/auth/drive.file` scope and checks every modular upload for credential-shaped keys. Access tokens are not written into synchronized data. The manual PKCE fallback requires a Client ID supplied by the user.
 
 All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
 
@@ -112,10 +108,9 @@ Synchronized data is **not** one monolithic file. Each synchronized resource is 
 | `meta.json`          | Revisions, tombstone counts, migration record, orphan tombstones           |
 | `extensions.json`    | Extension inventory module                                                 |
 | `bookmarks.json`     | Bookmark collection module                                                 |
-| `tabs.json`          | Windows, tabs, and tab groups module                                       |
-| `history/index.json` | Provider history index where the provider has no native history            |
+| `tabs.json`          | Tab-group metadata and member tabs needed to restore each group; no standalone tabs or window snapshots |
 
-Metadata, schema information, and history indexes stay in separate files rather than being mixed into synchronized data, and a module file carries only its own payload plus its revision, timestamp, checksum, and tombstones.
+Metadata and schema information stay in separate files rather than being mixed into synchronized data. New syncs do not create application-managed history indexes or copy previous module files into cloud archives. Recognized app-managed history indexes and their indexed archives—including legacy single-file WebDAV entries—are removed on the next successful sync; provider-native revision mechanisms are left untouched.
 
 Because only the modules whose data actually changed are uploaded, a bookmark edit re-writes `bookmarks.json` and the two control files while `extensions.json` and `tabs.json` stay byte-identical and keep their own module revision. Merging and conflict detection are module-scoped as well: a conflict is attributed to the module that owns it.
 
@@ -170,9 +165,7 @@ The current cloud schema is **v11**, with migration support for schemas **7, 8, 
 ### Synchronized
 
 ```text
-Open windows
-HTTP(S) tabs
-Tab groups
+Tab groups and their HTTP(S) member tabs
 Bookmarks
 Third-party extension metadata
 ```
@@ -276,7 +269,7 @@ The release workflow validates the version, runs tests and a Chromium smoke test
 Open **Settings** and configure the provider you want to use:
 
 1. **GitHub Gist** — enter and validate a GitHub Token, then create or bind a private sync Gist.
-2. **Google Drive** — enter your OAuth Client ID and complete the browser authorization flow.
+2. **Google Drive** — register a Chrome Extension OAuth client for the extension ID and configure its Client ID in `manifest.json`; until a registered client is supplied, use the advanced OAuth client option.
 3. **WebDAV** — enter the server URL and optional remote folder, credentials, then test the connection.
 4. Run **Sync now** once.
 5. Enable automatic synchronization when required.
@@ -293,13 +286,11 @@ Automatic synchronization is **off by default** and uses **5 minutes** as its de
 
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> History & rollback
 
-History is sourced from the active provider:
+- GitHub Gist retains its provider-native revision/commit history.
+- Google Drive and WebDAV no longer create application-managed cloud snapshots or a `history/index.json` archive during normal sync.
+- Google Drive may retain revisions according to Google's own Drive revision policy; the extension does not create extra history copies.
 
-- GitHub Gist uses Gist revision/commit history.
-- Google Drive uses file revisions.
-- WebDAV maintains a `history/index.json` with up to 30 archived entries.
-
-Rolling back creates a new current revision rather than destroying historical state.
+The extension no longer provides app-managed rollback snapshots for Drive/WebDAV. Recognized legacy app-managed archives are cleaned up after the next successful sync; Gist's provider-native history is unaffected.
 
 <a name="readme-architecture"></a>
 

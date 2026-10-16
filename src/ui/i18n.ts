@@ -243,7 +243,7 @@
       gdriveConnected: "Google Drive connected",
       gdriveDisconnected: "Google Drive disconnected",
       gdriveBrowserHelp:
-        "Authorize with your Google account through the browser\u0027s own account chooser. Only the app-created-files scope is requested, and the resulting session stays in this browser profile.",
+        "Google account sign-in requires an OAuth client registered for this extension ID in manifest.json. Until that client is configured, use the advanced OAuth client option below.",
       gdriveNotConnected: "Not connected",
       gdriveConnectBrowser: "Connect with Google account",
       gdriveConnecting: "Waiting for Google authorization\u2026",
@@ -255,12 +255,12 @@
       gdriveScope: "Scope",
       gdriveConnectedAt: "Connected",
       gdriveDisconnectConfirm: "Disconnect Google Drive? The local session is revoked; synchronized files stay in your Drive.",
-      gdriveClientIdRequired: "Enter an OAuth Client ID, or use Connect with Google account.",
+      gdriveClientIdRequired: "Enter your OAuth Client ID. Browser-managed Google sign-in needs a client registered for this extension ID in manifest.json.",
       gdriveManualTitle: "Advanced: use your own OAuth client",
       gdriveManualHelp:
-        "Only needed where this browser cannot authorize the extension itself, such as an unpacked development build or a Chromium derivative without identity.getAuthToken. Otherwise use the browser account button above; no client configuration is required.",
+        "Browser-managed sign-in requires manifest.json to include an oauth2.client_id for a Google Cloud OAuth client of type Chrome Extension whose Item ID matches this extension's ID. The current build has no registered client configured, so provide your own OAuth Client ID here until one is configured.",
       gdriveManualRequired:
-        "This browser cannot authorize the extension through the Chromium Identity API, so an OAuth client configuration is required here.",
+        "Browser-managed sign-in is unavailable because manifest.json has no registered oauth2.client_id. Configure a Google Cloud Chrome Extension OAuth client for this exact extension ID, or use the advanced OAuth client option.",
       webdavTitle: "WebDAV",
       webdavUrl: "WebDAV URL",
       webdavFolder: "Remote folder",
@@ -282,7 +282,7 @@
       restoreExpand: "Expand all groups immediately",
       saveRestoreMode: "Save restore mode",
       tabSyncModeTitle: "Tab synchronization mode",
-      tabSyncModeHelp: "Choose whether browser tabs replace the cloud state or are merged into a persistent cloud collection.",
+      tabSyncModeHelp: "Only tab groups and their member tabs are synchronized. Standalone tabs and window layouts are not stored in the cloud.",
       tabSyncMode: "Tab synchronization mode",
       tabSyncOverwrite: "Overwrite",
       tabSyncIncremental: "Incremental",
@@ -292,8 +292,8 @@
       tabSyncModeSaved: "Tab synchronization mode saved",
       cloudTabs: "Cloud tabs",
       cloudTabsTitle: "Cloud tab collection",
-      cloudTabsHelp: "Manage persistent cloud tabs and tab groups. Add current browser tabs to cloud merges the current browser's tabs, windows, and groups into the persistent cloud collection; it does not replace the browser's current state.",
-      addCurrentTabs: "Add current browser tabs to cloud",
+      cloudTabsHelp: "Manage cloud tab groups and the URLs needed to restore their member tabs. Standalone tabs and window layouts are not stored.",
+      addCurrentTabs: "Add current tab groups to cloud",
       ungroupedTabs: "Ungrouped tabs",
       cloudGroupEmpty: "No restorable tabs in this group.",
       cloudTabsIncrementalOnly: "Cloud tab management is available in Incremental mode.",
@@ -345,7 +345,7 @@
       cloudTabsRefreshed: "Cloud tab state re-read from the provider",
       cloudOnlyGroups: "Cloud-only tab groups",
       cloudTabsHelpShared:
-        "The popup restore view and this page read the same canonical cloud tab dataset.",
+        "The popup restore view and this page read the same canonical cloud tab-group dataset.",
     },
     "zh-CN": {},
   };
@@ -593,7 +593,7 @@
     gdriveConnected: "Google Drive 已连接",
     gdriveDisconnected: "Google Drive 已断开",
     gdriveBrowserHelp:
-      "通过浏览器自带的账号选择界面授权你的 Google 账号。仅申请应用自建文件所需的最小权限，授权状态只保存在当前浏览器配置中。",
+      "浏览器托管登录要求 manifest.json 中配置与当前扩展 ID 绑定的 OAuth 客户端。在配置完成之前，请使用下方的高级 OAuth 客户端连接方式。",
     gdriveNotConnected: "未连接",
     gdriveConnectBrowser: "使用 Google 账号连接",
     gdriveConnecting: "等待 Google 授权\u2026",
@@ -605,12 +605,12 @@
     gdriveScope: "权限范围",
     gdriveConnectedAt: "连接时间",
     gdriveDisconnectConfirm: "确定断开 Google Drive 连接？本地授权将被撤销，云端已同步的文件会保留。",
-    gdriveClientIdRequired: "请填写 OAuth Client ID，或改用“使用 Google 账号连接”。",
+    gdriveClientIdRequired: "请填写 OAuth Client ID。浏览器托管登录需要在 manifest.json 中配置与当前扩展 ID 绑定的客户端。",
     gdriveManualTitle: "高级：使用自有 OAuth 客户端",
     gdriveManualHelp:
-      "仅在浏览器无法自行完成扩展授权时才需要，例如未打包的开发版本，或不支持 identity.getAuthToken 的 Chromium 衍生浏览器。其他情况请使用上方的账号连接按钮，无需填写任何客户端配置。",
+      "浏览器托管登录要求 manifest.json 配置 oauth2.client_id，并且该 Google Cloud OAuth 客户端的类型为 Chrome Extension、Item ID 与当前扩展 ID 一致。目前构建未配置已注册的客户端，因此在其配置完成前，请在此填写自有 OAuth Client ID。",
     gdriveManualRequired:
-      "当前浏览器无法通过 Chromium Identity API 为扩展授权，因此需要在此填写 OAuth 客户端配置。",
+      "manifest.json 未配置已注册的 oauth2.client_id，因此无法使用浏览器托管登录。请为当前扩展 ID 配置 Google Cloud Chrome Extension OAuth 客户端，或使用高级 OAuth 客户端选项。",
     webdavTitle: "WebDAV",
     webdavUrl: "WebDAV 地址",
     webdavFolder: "远程目录",
@@ -632,7 +632,7 @@
     restoreExpand: "立即展开全部标签组",
     saveRestoreMode: "保存恢复方式",
     tabSyncModeTitle: "标签页同步模式",
-    tabSyncModeHelp: "选择将当前浏览器标签页覆盖到云端，还是合并到持久化的云端标签页集合。",
+    tabSyncModeHelp: "云端只同步标签组及其成员标签页，不保存独立标签页和窗口布局。",
     tabSyncMode: "标签页同步模式",
     tabSyncOverwrite: "覆盖",
     tabSyncIncremental: "增量",
@@ -642,8 +642,8 @@
     tabSyncModeSaved: "标签页同步模式已保存",
     cloudTabs: "云端标签页",
     cloudTabsTitle: "云端标签页集合",
-    cloudTabsHelp: "管理持久化云端标签页和标签组。“将当前浏览器标签页加入云端集合”会把当前浏览器的标签页、窗口和标签组合并到持久化云端集合，不会替换当前浏览器状态。",
-    addCurrentTabs: "将当前浏览器标签页加入云端集合",
+    cloudTabsHelp: "管理云端标签组及用于恢复组内标签页的 URL。独立标签页和窗口布局不会存储到云端。",
+    addCurrentTabs: "将当前标签组加入云端",
     ungroupedTabs: "未分组标签页",
     cloudGroupEmpty: "该标签组中没有可恢复的标签页。",
     cloudTabsIncrementalOnly: "云端标签页管理仅在增量模式下可用。",
@@ -693,7 +693,7 @@
     cloudTabsRefreshed: "已从云端提供商重新读取标签页状态",
     cloudOnlyGroups: "仅存在于云端的标签组",
     cloudTabsHelpShared:
-      "弹窗中的恢复视图与本页面读取的是同一份规范化的云端标签页数据。",
+      "弹窗中的恢复视图与本页面读取的是同一份规范化的云端标签组数据。",
   };
   let current = "en";
   function normalize(v) {

@@ -264,7 +264,6 @@ const KEYS = {
   BASE_SNAPSHOT: "syncBaseSnapshot",
   BASE_REVISION: "syncBaseRevision",
   TAB_SYNC_IDS: "tabSyncIds",
-  WINDOW_SYNC_IDS: "windowSyncIds",
   GROUP_SYNC_IDS: "groupSyncIds",
   BOOKMARK_SYNC_IDS: "bookmarkSyncIds",
   LAST_CONFLICTS: "lastSyncConflicts",
@@ -376,50 +375,6 @@ async function collectTabGroups() {
     })),
   );
 }
-async function collectTabs(groups) {
-  const windows = await chrome.windows.getAll({ populate: true }),
-    meta = Array.isArray(groups) ? groups : await collectTabGroups(),
-    gm = new Map(meta.map((g) => [g.localId, g])),
-    out = [];
-  for (const win of windows.filter((w) => w.type === "normal")) {
-    const windowSyncId = await getStableLocalId(
-        "window",
-        win.id,
-        KEYS.WINDOW_SYNC_IDS,
-      ),
-      tabs = [];
-    for (const tab of (win.tabs || []).filter((t) => !isRestrictedUrl(t.url))) {
-      const g = gm.get(tab.groupId);
-      tabs.push({
-        syncId: await getStableLocalId("tab", tab.id, KEYS.TAB_SYNC_IDS),
-        url: tab.url,
-        title: tab.title || "",
-        pinned: !!tab.pinned,
-        active: !!tab.active,
-        index: tab.index,
-        group: g
-          ? {
-              syncId: g.syncId,
-              title: g.title,
-              color: g.color,
-              collapsed: g.collapsed,
-            }
-          : null,
-      });
-    }
-    out.push({
-      syncId: windowSyncId,
-      state: ["fullscreen", "maximized", "minimized", "normal"].includes(
-        win.state,
-      )
-        ? win.state
-        : "normal",
-      focused: !!win.focused,
-      tabs,
-    });
-  }
-  return out;
-}
 async function collectBookmarks() {
   const tree = await chrome.bookmarks.getTree(),
     map = await getObjectMap(KEYS.BOOKMARK_SYNC_IDS),
@@ -478,13 +433,10 @@ async function collectGroupSnapshots(groups) {
 
       return {
         syncId: g.syncId,
-        localId: g.localId,
-        windowId: g.windowId,
         index: tabs[0]?.index ?? 0,
         title: g.title,
         color: g.color,
         collapsed: g.collapsed,
-        updatedAt: new Date().toISOString(),
         tabs,
       };
     }),
@@ -497,7 +449,7 @@ async function createSnapshot() {
     schemaVersion: SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     extensions: await collectExtensions(),
-    windows: await collectTabs(groups),
+    windows: [],
     bookmarks: await collectBookmarks(),
     groups: await collectGroupSnapshots(groups),
     syncMeta: { gistId: s[KEYS.GIST_ID] || null },
@@ -619,7 +571,13 @@ async function buildLocalState(
   remoteModular,
 ) {
   const settings = await getSettings(),
-    base = currentBase || remoteState.snapshot || {},
+    baseSource = currentBase || remoteState.snapshot || {},
+    base = { ...baseSource, windows: [] },
+    localForCloud = { ...localSnapshot, windows: [] },
+    remoteForCloud = {
+      ...remoteState,
+      snapshot: { ...remoteState.snapshot, windows: [] },
+    },
     revision =
       Math.max(
         Number(settings[KEYS.SYNC_REVISION] || 0),
@@ -630,8 +588,8 @@ async function buildLocalState(
     tabSyncMode = await getTabSyncMode(),
     merged = mergeModularCloudState({
       base,
-      local: localSnapshot,
-      remote: remoteState,
+      local: localForCloud,
+      remote: remoteForCloud,
       remoteModular: remoteModular || null,
       options: { tabSyncMode },
       revision,
@@ -766,7 +724,13 @@ async function pushSnapshot() {
   }
 }
 function countTabs(s) {
-  return (s?.windows || []).reduce((n, w) => n + (w.tabs || []).length, 0);
+  const groups = Array.isArray(s?.groups) ? s.groups : null;
+  if (groups)
+    return groups.reduce(
+      (total, group) => total + (Array.isArray(group?.tabs) ? group.tabs.length : 0),
+      0,
+    );
+  return (s?.windows || []).reduce((total, windowState) => total + (windowState.tabs || []).length, 0);
 }
 function countBookmarks(a) {
   return (a || []).filter((x) => x.url).length;

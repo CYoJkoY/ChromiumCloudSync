@@ -39,8 +39,9 @@ let fetchResponder: (call: MockFetchCall) => {
   body: unknown;
 };
 
-function installChrome(options: { withGetAuthToken?: boolean } = {}) {
+function installChrome(options: { withGetAuthToken?: boolean; withOAuthClient?: boolean } = {}) {
   const withGetAuthToken = options.withGetAuthToken !== false;
+  const withOAuthClient = options.withOAuthClient !== false;
   const identityApi: Record<string, unknown> = {
     getRedirectURL: () => "https://example.chromiumapp.org/",
     launchWebAuthFlow: async () => undefined,
@@ -82,6 +83,12 @@ function installChrome(options: { withGetAuthToken?: boolean } = {}) {
           for (const key of keys) storage.delete(key);
         },
       },
+    },
+    runtime: {
+      getManifest: () =>
+        withOAuthClient
+          ? { oauth2: { client_id: "test-extension.apps.googleusercontent.com" } }
+          : {},
     },
     identity: identityApi,
   };
@@ -164,6 +171,13 @@ function respondWithAccount(email = "user@example.com") {
   assert.equal(capabilities.identityGetAuthToken, true);
   assert.equal(capabilities.identityTokenCache, true);
   assert.equal(supportsBrowserManagedDriveAuth(), true);
+
+  installChrome({ withOAuthClient: false });
+  assert.equal(
+    supportsBrowserManagedDriveAuth(),
+    false,
+    "browser-managed OAuth requires manifest.oauth2.client_id",
+  );
 
   installChrome({ withGetAuthToken: false });
   const limited = detectBrowserCapabilities();
@@ -255,7 +269,7 @@ function respondWithAccount(email = "user@example.com") {
     () => connectGoogleDriveBrowser(),
     (error: unknown) => {
       assert.ok(error instanceof Error);
-      assert.match(error.message, /手动 OAuth 客户端配置/);
+      assert.match(error.message, /自有 OAuth 客户端/);
       return true;
     },
     "unsupported host must point at the manual fallback",

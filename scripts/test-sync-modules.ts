@@ -117,10 +117,11 @@ assert.deepEqual([...SYNC_MODULE_IDS], ["extensions", "bookmarks", "tabs"]);
   assert.deepEqual(Object.keys(modular.modules.bookmarks.data).sort(), [
     "bookmarks",
   ]);
-  assert.deepEqual(Object.keys(modular.modules.tabs.data).sort(), [
-    "groups",
-    "windows",
-  ]);
+  assert.deepEqual(
+    Object.keys(modular.modules.tabs.data).sort(),
+    ["groups"],
+    "tabs.json stores group data only",
+  );
   // Control data stays out of the module payloads.
   for (const moduleId of SYNC_MODULE_IDS) {
     const envelope = modular.modules[moduleId] as unknown as Record<
@@ -151,7 +152,8 @@ assert.deepEqual([...SYNC_MODULE_IDS], ["extensions", "bookmarks", "tabs"]);
   const combined = combineModularState(modular);
   assert.deepEqual(combined.snapshot.extensions, full.snapshot.extensions);
   assert.deepEqual(combined.snapshot.bookmarks, full.snapshot.bookmarks);
-  assert.deepEqual(combined.snapshot.windows, full.snapshot.windows);
+  assert.deepEqual(combined.snapshot.windows, [], "standalone windows are excluded from the cloud module");
+  assert.deepEqual(combined.snapshot.groups, full.snapshot.groups, "group membership remains available for restore");
   assert.equal(combined.revision, 5);
   validateState(combined);
 }
@@ -224,7 +226,8 @@ assert.deepEqual([...SYNC_MODULE_IDS], ["extensions", "bookmarks", "tabs"]);
   const combined = combineModularState(migrated);
   assert.deepEqual(combined.snapshot.extensions, full.snapshot.extensions);
   assert.deepEqual(combined.snapshot.bookmarks, full.snapshot.bookmarks);
-  assert.deepEqual(combined.snapshot.windows, full.snapshot.windows);
+  assert.deepEqual(combined.snapshot.windows, [], "standalone windows are excluded from the cloud module");
+  assert.deepEqual(combined.snapshot.groups, full.snapshot.groups, "group membership remains available for restore");
   assert.equal(combined.revision, 5, "existing synchronized data preserved");
 }
 
@@ -424,7 +427,7 @@ function filesOf(modular: ReturnType<typeof splitCloudState>) {
 }
 
 {
-  // Tabs-only change leaves the extensions and bookmarks modules untouched.
+  // Standalone tab/window changes stay local and do not dirty the group-only cloud module.
   const remote = cloudState({
     revision: 5,
     snapshot: snapshot({
@@ -462,7 +465,7 @@ function filesOf(modular: ReturnType<typeof splitCloudState>) {
     options: { tabSyncMode: "incremental" },
     revision: 6,
   });
-  assert.deepEqual(merged.changedModules, ["tabs"]);
+  assert.deepEqual(merged.changedModules, [], "standalone tabs and windows are not serialized to the cloud");
   assert.equal(merged.snapshot.windows[0]?.tabs.length, 2);
 }
 

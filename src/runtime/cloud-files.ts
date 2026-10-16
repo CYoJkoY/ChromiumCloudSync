@@ -222,9 +222,9 @@ export function assertNoCredentialsInPayload(
 
 export interface WriteOptions {
   changedModules?: SyncModuleId[] | null;
-  /** Files as read before the write, used for archiving and legacy handling. */
+  /** Remote files read before the write, used for legacy and history cleanup. */
   priorFiles?: Record<string, string | null>;
-  /** Explicit history label; defaults to the new revision. */
+  /** Deprecated compatibility option; sync writes no longer create custom history. */
   historyLabel?: string;
   /** Extra deletions (legacy artifacts a provider must clean up). */
   remove?: string[];
@@ -234,17 +234,74 @@ export interface WriteResult {
   written: string[];
   skipped: SyncModuleId[];
   archived: string[];
-  /** Modules this write actually changed, as recorded in the history entry. */
+  /** Modules this write actually changed in the remote modular state. */
   changedModules: SyncModuleId[];
 }
 
+
 /**
- * Commit a modular state.
- *
- * Only module files whose payload changed are uploaded, which keeps per-module
- * history meaningful and avoids rewriting the complete dataset for a
- * single-module change. `manifest.json` and `meta.json` are always written
- * because they carry the revision and module index.
+ * Build a conservative deletion list for obsolete application-managed history.
+ * Unknown entries are preserved rather than guessing at paths or touching
+ * provider-owned revisions or extension-package backup data.
+ */
+function managedHistoryRemovals(
+  provider: CloudProviderId,
+  indexText: string | null | undefined,
+): string[] {
+  if ((provider !== "gdrive" && provider !== "webdav") || !indexText?.trim())
+    return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(indexText);
+  } catch {
+    return [];
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !Array.isArray((parsed as { entries?: unknown }).entries)
+  )
+    return [];
+
+  const entries = (parsed as { entries: Array<Record<string, unknown>> }).entries;
+  const allowedNames = new Set(modularFileNames());
+  const removals: string[] = [];
+
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null) return [];
+
+    const entryId = typeof entry.id === "string" ? entry.id : "";
+    if (!/^[A-Za-z0-9_-]+$/.test(entryId)) return [];
+
+    // Older WebDAV history used a single JSON file, and some indexes predate
+    // the explicit layout property. The provider's reader treats every
+    // non-modular entry as that legacy format, so cleanup must mirror it.
+    if (provider === "webdav" && entry.layout !== "modular") {
+      removals.push(`history/${encodeURIComponent(entryId)}.json`);
+      continue;
+    }
+
+    const names = Array.isArray(entry.files) ? entry.files : null;
+    if (
+      !names ||
+      names.some((name) => typeof name !== "string" || !allowedNames.has(name))
+    )
+      return [];
+
+    for (const entryName of names)
+      removals.push(`history/${entryId}/${entryName}`);
+  }
+
+  // Empty but valid indexes are obsolete too; malformed indexes are retained.
+  removals.push(HISTORY_INDEX_FILE);
+  return [...new Set(removals)];
+}
+
+/**
+ * Commit a modular state. Only changed module files are written; the manifest
+ * and metadata files track the current revision and per-module index. Custom
+ * historical snapshots are not created during normal synchronization.
  */
 export async function writeRemoteModularState(
   store: FileStore,
@@ -260,43 +317,6 @@ export async function writeRemoteModularState(
   assertNoCredentialsInPayload(serialized);
   const priorFiles = options.priorFiles ?? {};
 
-  // A history entry is a complete point-in-time snapshot of the remote state
-  // taken immediately before it is overwritten. Archiving only the changed
-  // module files would make older entries unrestorable once another module
-  // changes, so the whole protocol file set is archived together.
-  const archiveEntries: Array<{ name: string; text: string }> = [];
-  for (const name of modularFileNames()) {
-    const previous = priorFiles[name];
-    if (typeof previous === "string" && previous.trim())
-      archiveEntries.push({ name, text: previous });
-  }
-  const label =
-    options.historyLabel ??
-    new Date().toISOString().replace(/[:.]/g, "-");
-  // A history entry represents the state that is being replaced, so its revision
-  // is read from the archived meta.json rather than from the incoming state.
-  const archivedMeta = archiveEntries.find(
-    (entry) => entry.name === META_FILE,
-  )?.text;
-  let archivedRevision = 0;
-  if (archivedMeta) {
-    try {
-      archivedRevision =
-        Number(
-          (JSON.parse(archivedMeta) as { revision?: number }).revision,
-        ) || 0;
-    } catch {
-      archivedRevision = 0;
-    }
-  }
-  if (store.history && archiveEntries.length)
-    await store.history.archive(label, archiveEntries, {
-      revision: archivedRevision,
-      // Modules the replacing revision changed: this is what makes history
-      // module-scoped instead of only whole-state.
-      modules: changed,
-    });
-
   await store.write(serialized);
 
   const removals = new Set<string>(options.remove ?? []);
@@ -306,13 +326,28 @@ export async function writeRemoteModularState(
   removals.delete(LEGACY_ALT_FILE);
   if (removals.size) await store.remove([...removals]);
 
+  // Clean up indexed app-managed snapshots without touching provider-native
+  // revisions or the independent extension-package backup store.
+  const historyRemovals = managedHistoryRemovals(
+    store.id,
+    priorFiles[HISTORY_INDEX_FILE],
+  );
+  if (historyRemovals.length) {
+    try {
+      await store.remove(historyRemovals);
+    } catch (cleanupFailure) {
+      // A cleanup failure must not turn a successful sync into a failed sync.
+      console.warn("Could not clean up legacy app-managed sync history", cleanupFailure);
+    }
+  }
+
   const writtenSet = new Set(Object.keys(serialized));
   return {
     written: [...writtenSet],
     skipped: SYNC_MODULE_IDS.filter(
       (moduleId) => !writtenSet.has(MODULE_FILES[moduleId]),
     ),
-    archived: archiveEntries.map((entry) => entry.name),
+    archived: [],
     changedModules: changed,
   };
 }
