@@ -222,9 +222,9 @@ export function assertNoCredentialsInPayload(
 
 export interface WriteOptions {
   changedModules?: SyncModuleId[] | null;
-  /** Files as read before the write, used for archiving and legacy handling. */
+  /** Remote files read before the write, used for legacy and history cleanup. */
   priorFiles?: Record<string, string | null>;
-  /** Explicit history label; defaults to the new revision. */
+  /** Deprecated compatibility option; sync writes no longer create custom history. */
   historyLabel?: string;
   /** Extra deletions (legacy artifacts a provider must clean up). */
   remove?: string[];
@@ -234,18 +234,11 @@ export interface WriteResult {
   written: string[];
   skipped: SyncModuleId[];
   archived: string[];
-  /** Modules this write actually changed, as recorded in the history entry. */
+  /** Modules this write actually changed in the remote modular state. */
   changedModules: SyncModuleId[];
 }
 
-/**
- * Commit a modular state.
- *
- * Only module files whose payload changed are uploaded, which keeps per-module
- * history meaningful and avoids rewriting the complete dataset for a
- * single-module change. `manifest.json` and `meta.json` are always written
- * because they carry the revision and module index.
- */
+
 /**
  * Build a conservative deletion list for obsolete application-managed history.
  * Unknown entries are preserved rather than guessing at paths or touching
@@ -300,6 +293,11 @@ function managedHistoryRemovals(
   return [...new Set(removals)];
 }
 
+/**
+ * Commit a modular state. Only changed module files are written; the manifest
+ * and metadata files track the current revision and per-module index. Custom
+ * historical snapshots are not created during normal synchronization.
+ */
 export async function writeRemoteModularState(
   store: FileStore,
   modular: ModularCloudState,

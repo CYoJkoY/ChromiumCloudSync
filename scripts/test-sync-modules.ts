@@ -427,7 +427,7 @@ function filesOf(modular: ReturnType<typeof splitCloudState>) {
 }
 
 {
-  // Tabs-only change leaves the extensions and bookmarks modules untouched.
+  // Standalone tab/window changes stay local and do not dirty the group-only cloud module.
   const remote = cloudState({
     revision: 5,
     snapshot: snapshot({
@@ -465,7 +465,7 @@ function filesOf(modular: ReturnType<typeof splitCloudState>) {
     options: { tabSyncMode: "incremental" },
     revision: 6,
   });
-  assert.deepEqual(merged.changedModules, ["tabs"]);
+  assert.deepEqual(merged.changedModules, [], "standalone tabs and windows are not serialized to the cloud");
   assert.equal(merged.snapshot.windows[0]?.tabs.length, 2);
 }
 

@@ -52,7 +52,7 @@ The current implementation synchronizes tab groups and their HTTP(S) member tabs
 
 | Capability                    | Description                                                                                                           |
 | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| **Tabs & windows**            | Standalone tabs and window layouts are not synchronized; only the member tabs needed to restore a tab group are stored. |
+| **Tab synchronization**            | Standalone tabs and window layouts are not synchronized; only the member tabs needed to restore a tab group are stored. |
 | **Tab groups**                | Preserve stable group identity, title, color, collapsed state, and group membership.                                  |
 | **Bookmarks**                 | Sync bookmark titles, URLs, parent relationships, order, and stable IDs.                                              |
 | **Extension inventory**       | Track third-party extension ID, name, version, enabled state, installation type, update information, and store links. |
@@ -94,6 +94,7 @@ Browser-managed Google account sign-in requires an OAuth client registered for t
 5. Disconnecting clears the local session and attempts to revoke the active token.
 
 The extension requests only the `https://www.googleapis.com/auth/drive.file` scope and checks every modular upload for credential-shaped keys. Access tokens are not written into synchronized data. The manual PKCE fallback requires a Client ID supplied by the user.
+
 All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
 
 <a name="readme-storage-layout"></a>

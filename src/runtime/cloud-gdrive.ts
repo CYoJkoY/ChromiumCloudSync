@@ -179,13 +179,7 @@ const EMPTY_ACCOUNT: DriveAccount = {
   photoLink: "",
 };
 
-/**
- * Whether browser-managed OAuth can be used at all.
- *
- * Detection is capability-based rather than brand-based, so a host that lacks
- * `identity.getAuthToken` falls back to the explicit manual path instead of
- * failing during authorization.
- */
+/** Return whether manifest.json declares a client ID for browser-managed OAuth. */
 function hasConfiguredIdentityOAuthClient(): boolean {
   try {
     const manifest = chrome.runtime?.getManifest?.() as
@@ -198,6 +192,10 @@ function hasConfiguredIdentityOAuthClient(): boolean {
   }
 }
 
+/**
+ * Browser-managed OAuth needs both a manifest OAuth client and the relevant
+ * Chromium Identity APIs; API presence alone does not guarantee registration.
+ */
 export function supportsBrowserManagedDriveAuth(): boolean {
   const capabilities = detectBrowserCapabilities();
   return (
@@ -314,9 +312,13 @@ async function clearDriveIdCache(): Promise<void> {
 export async function connectGoogleDriveBrowser(
   preferredEmail = "",
 ): Promise<GdriveAuthState> {
-  if (!supportsBrowserManagedDriveAuth())
+  if (!hasConfiguredIdentityOAuthClient())
     throw driveAuthError(
       "浏览器托管 Google 登录不可用：扩展 manifest.json 缺少已注册的 oauth2.client_id。请为当前扩展 ID 配置 Chrome Extension OAuth 客户端，或展开高级设置使用自有 OAuth 客户端。",
+    );
+  if (!supportsBrowserManagedDriveAuth())
+    throw driveAuthError(
+      "当前浏览器未提供完整的 Chromium Identity API，无法使用浏览器托管 Google 登录；请展开高级设置使用自有 OAuth 客户端。",
     );
   const accountId = await pickAccountId(preferredEmail);
   const token = await identityToken(true);
