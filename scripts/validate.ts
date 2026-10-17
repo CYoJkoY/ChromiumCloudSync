@@ -392,11 +392,33 @@ if (/auth\/drive(?!\.file)/.test(gdrive))
   throw new Error(
     "Google Drive must request only the minimum drive.file scope",
   );
-// Browser-managed auth must be the default; manual client config is a fallback.
-if (!/interactive,\s*\n?\s*scopes: IDENTITY_SCOPES/.test(gdrive))
-  throw new Error(
-    "Drive tokens must be minted through chrome.identity.getAuthToken with an explicit scope list",
-  );
+// The shipped default route is the explicit redirect flow configured for a Web application client.
+const googleDriveOptions = fs.readFileSync(
+  path.join(root, "src/ui/options.ts"),
+  "utf8",
+);
+for (const required of [
+  "function requestGoogleDriveRedirectOAuth",
+  "CCSyncGoogleOAuthConfig",
+  'authorizeUrl.searchParams.set("redirect_uri", redirect)',
+  'authorizeUrl.searchParams.set("response_type", "token")',
+  "parsed.origin !== redirectUrl.origin",
+  "parsed.pathname !== redirectUrl.pathname",
+  'parameters.get("state") !== state',
+  "const packagedRedirectFlowAvailable =",
+  "const canUsePackagedRedirect =",
+]) {
+  if (!googleDriveOptions.includes(required))
+    throw new Error("Google Drive redirect OAuth is missing " + required);
+}
+for (const forbidden of [
+  "requestGoogleDriveInteractiveToken",
+  "identity.getAuthToken",
+  "canUseLegacyIdentity",
+]) {
+  if (googleDriveOptions.includes(forbidden))
+    throw new Error("The Web application OAuth route must not use the Chrome Extension getAuthToken API: " + forbidden);
+}
 if (!gdrive.includes("readAuthState()") || !gdrive.includes("writeAuthState("))
   throw new Error("Drive authorization state must be stored locally");
 
@@ -422,7 +444,6 @@ if (!/assertNoCredentialsInPayload\(serialized\)/.test(cloudFiles))
 
 const bgSource = bg;
 for (const required of [
-  "connectGoogleDriveBrowser",
   "connectGoogleDriveManual",
   "gdriveAuthState",
   "gdriveBrowserManaged",
@@ -430,15 +451,42 @@ for (const required of [
 ])
   if (!bgSource.includes(required))
     throw new Error("Background worker is missing Drive auth wiring " + required);
-// An empty connect payload must select the browser-managed flow.
-if (!/clientId\s*\n?\s*\?\s*\n?\s*await connectGoogleDriveManual/.test(bgSource))
-  throw new Error(
-    "connectGdrive must default to browser-managed OAuth and use the manual client only when one is supplied",
-  );
+// Interactive authorization must arrive from the options-page redirect flow; the worker must not initiate an implicit default login.
+const connectGdriveStart = bgSource.indexOf('case "connectGdrive":');
+const completeGdriveStart = bgSource.indexOf('case "completeGdriveOAuth":', connectGdriveStart);
+if (connectGdriveStart < 0 || completeGdriveStart < 0)
+  throw new Error("Unable to locate Google Drive authorization message handlers");
+const connectGdriveHandler = bgSource.slice(connectGdriveStart, completeGdriveStart);
+if (!connectGdriveHandler.includes("Google Drive authorization must be initiated from Settings"))
+  throw new Error("connectGdrive must reject empty credentials rather than initiating a hidden default auth flow");
+if (connectGdriveHandler.includes("connectGoogleDriveBrowser"))
+  throw new Error("connectGdrive must not dispatch to the legacy getAuthToken-based interactive flow");
 
 const manifestText = fs.readFileSync(path.join(root, "manifest.json"), "utf8");
 if (!/"identity"/.test(manifestText))
   throw new Error("manifest.json must declare the identity permission");
+if (/"oauth2"/.test(manifestText))
+  throw new Error("manifest.json must not declare oauth2 for the Web application redirect client");
+
+const buildSource = fs.readFileSync(
+  path.join(root, "scripts/build.ts"),
+  "utf8",
+);
+for (const required of [
+  "delete outputManifest.oauth2",
+  "window.CCSyncGoogleOAuthConfig",
+  "process.env.GDRIVE_OAUTH_CLIENT_ID",
+]) {
+  if (!buildSource.includes(required))
+    throw new Error("Build must package the Web application OAuth Client ID outside manifest.oauth2: " + required);
+}
+for (const forbidden of [
+  "outputManifest.oauth2 =",
+  "manifest.oauth2?.client_id",
+]) {
+  if (buildSource.includes(forbidden))
+    throw new Error("Build must not inject a Web application Client ID into manifest.oauth2: " + forbidden);
+}
 
 /* ---------------------------------------------------------------------------
  * Issue #23: Google Drive as a package-backup backend
@@ -726,18 +774,18 @@ for (const required of [
   "webdavCard.hidden",
   "renderGdriveAuthState",
   "updateGoogleDriveConnectAvailability",
-  "browserManagedTokenRequestFailed",
-  "gdriveBrowserManagedTokenFailure",
   "getPackagedGoogleOAuthClientId",
-  "requestGoogleDriveExtensionOAuth",
+  "requestGoogleDriveRedirectOAuth",
+  "packagedRedirectFlowAvailable",
+  "canUsePackagedRedirect",
   'authorizeUrl.searchParams.set("response_type", "token")',
-  "gdriveExtensionTokenExpiryInvalid",
-  "requestGoogleDriveInteractiveToken",
+  "gdriveTokenExpiryInvalid",
   "requestGoogleDriveWebOAuth",
   "completeGoogleDriveWebOAuth",
   'expiresAt: session.expiresAt',
   'request("completeGdriveOAuth", {',
-  'request("connectGdrive", { token',
+  'request("connectGdrive", {',
+  "token: session.accessToken",
 ])
   if (!optionsSource.includes(required))
     throw new Error(

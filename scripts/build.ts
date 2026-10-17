@@ -9,12 +9,10 @@ const manifest = JSON.parse(
   fs.readFileSync(path.join(root, "manifest.json"), "utf8"),
 );
 const version = String(manifest.version || "").trim();
-const DRIVE_OAUTH_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const buildOAuthClientId = String(
   process.env.GDRIVE_OAUTH_CLIENT_ID || "",
 ).trim();
-const manifestOAuthClientId = String(manifest.oauth2?.client_id || "").trim();
-const gdriveOAuthClientId = buildOAuthClientId || manifestOAuthClientId;
+const gdriveOAuthClientId = buildOAuthClientId;
 
 if (
   gdriveOAuthClientId &&
@@ -111,22 +109,26 @@ for (const [sourceFile, outputFile] of [...pageArtifacts, ...styleArtifacts]) {
 }
 
 const outputManifest = { ...manifest };
-if (gdriveOAuthClientId) {
-  outputManifest.oauth2 = {
-    ...(manifest.oauth2 || {}),
-    client_id: gdriveOAuthClientId,
-    scopes: [DRIVE_OAUTH_SCOPE],
-  };
-} else {
-  // Never ship a placeholder client ID: it makes browser-managed sign-in fail
-  // with a misleading OAuth error instead of exposing the real setup requirement.
-  delete outputManifest.oauth2;
-}
+// The configured Client ID belongs to a Web application OAuth client used by
+// launchWebAuthFlow. Do not put it in manifest.oauth2: that manifest field is
+// specifically consumed by chrome.identity.getAuthToken and expects an
+// extension OAuth client.
+delete outputManifest.oauth2;
 fs.writeFileSync(
   path.join(dist, "manifest.json"),
   `${JSON.stringify(outputManifest, null, 2)}\n`,
   "utf8",
 );
+
+// Inject the public Web application Client ID into the options-page bundle.
+// It is configuration, not a secret; no Client Secret is bundled. Keeping it
+// outside manifest.oauth2 prevents the Web client from being misused by
+// legacy getAuthToken paths.
+const optionsScriptPath = path.join(dist, "options.js");
+const optionsScript = fs.readFileSync(optionsScriptPath, "utf8");
+const oauthRuntimeConfig =
+  `window.CCSyncGoogleOAuthConfig = Object.freeze({ clientId: ${JSON.stringify(gdriveOAuthClientId)} });\n`;
+fs.writeFileSync(optionsScriptPath, oauthRuntimeConfig + optionsScript, "utf8");
 
 for (const directory of ["_locales", "icons"]) {
   const source = path.join(root, directory);
