@@ -399,6 +399,7 @@ const googleDriveOptions = fs.readFileSync(
 );
 for (const required of [
   "function requestGoogleDriveRedirectOAuth",
+  "CCSyncGoogleOAuthConfig",
   'authorizeUrl.searchParams.set("redirect_uri", redirect)',
   'authorizeUrl.searchParams.set("response_type", "token")',
   "parsed.origin !== redirectUrl.origin",
@@ -464,6 +465,28 @@ if (connectGdriveHandler.includes("connectGoogleDriveBrowser"))
 const manifestText = fs.readFileSync(path.join(root, "manifest.json"), "utf8");
 if (!/"identity"/.test(manifestText))
   throw new Error("manifest.json must declare the identity permission");
+if (/"oauth2"/.test(manifestText))
+  throw new Error("manifest.json must not declare oauth2 for the Web application redirect client");
+
+const buildSource = fs.readFileSync(
+  path.join(root, "scripts/build.ts"),
+  "utf8",
+);
+for (const required of [
+  "delete outputManifest.oauth2",
+  "window.CCSyncGoogleOAuthConfig",
+  "process.env.GDRIVE_OAUTH_CLIENT_ID",
+]) {
+  if (!buildSource.includes(required))
+    throw new Error("Build must package the Web application OAuth Client ID outside manifest.oauth2: " + required);
+}
+for (const forbidden of [
+  "outputManifest.oauth2 =",
+  "manifest.oauth2?.client_id",
+]) {
+  if (buildSource.includes(forbidden))
+    throw new Error("Build must not inject a Web application Client ID into manifest.oauth2: " + forbidden);
+}
 
 /* ---------------------------------------------------------------------------
  * Issue #23: Google Drive as a package-backup backend
@@ -761,7 +784,8 @@ for (const required of [
   "completeGoogleDriveWebOAuth",
   'expiresAt: session.expiresAt',
   'request("completeGdriveOAuth", {',
-  'request("connectGdrive", { token',
+  'request("connectGdrive", {',
+  "token: session.accessToken",
 ])
   if (!optionsSource.includes(required))
     throw new Error(
