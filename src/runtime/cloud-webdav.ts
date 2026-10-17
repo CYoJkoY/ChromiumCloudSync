@@ -82,21 +82,68 @@ function safeDavPathSegments(value: string): string[] {
   return segments;
 }
 
-function normalizeFolder(value: string): string {
+export function normalizeWebdavFolder(value: string): string {
   const segments = safeDavPathSegments(value);
   return segments.length ? `/${segments.join("/")}` : "";
 }
+
+const normalizeFolder = normalizeWebdavFolder;
 
 export function webdavBound(config?: DavConfig | null): boolean {
   return !!config?.url;
 }
 
-async function ensureOrigin(url: string): Promise<void> {
-  const origin = `${new URL(url).origin}/*`;
-  if (!chrome.permissions?.request) return;
-  if (await chrome.permissions.contains({ origins: [origin] })) return;
-  if (!(await chrome.permissions.request({ origins: [origin] })))
-    throw Error("WebDAV 需要允许访问该服务器地址");
+export function normalizeWebdavBaseUrl(value: string): string {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(https?):\/\/([^/?#]+)(\/[^?#]*)?$/i);
+  if (!match || raw.includes("\\"))
+    throw Error(
+      "WebDAV 地址必须是有效的绝对 HTTP(S) URL，不能包含账号密码、查询或片段、反斜杠或歧义路径编码",
+    );
+
+  const authority = match[2] || "";
+  const rawPath = match[3] || "";
+  if (
+    authority.includes("@") ||
+    authority.includes("%") ||
+    rawPath.split("/").some((segment) => segment === "." || segment === "..") ||
+    /%(?:2e|2f|5c|25|3f|23)/i.test(rawPath)
+  )
+    throw Error(
+      "WebDAV 地址不能包含内嵌凭据、. / .. 路径段或编码后的路径分隔符和 URL 分隔符",
+    );
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw Error("WebDAV 地址不是有效的绝对 HTTP(S) URL");
+  }
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    parsed.origin === "null" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  )
+    throw Error(
+      "WebDAV 地址必须是有效的 HTTP(S) URL，账号密码应填写在独立的 WebDAV 凭据字段中",
+    );
+
+  return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
+}
+
+async function ensureOrigin(url: string): Promise<string> {
+  const baseUrl = normalizeWebdavBaseUrl(url);
+  const origin = `${new URL(baseUrl).origin}/*`;
+  if (chrome.permissions?.request) {
+    if (!(await chrome.permissions.contains({ origins: [origin] }))) {
+      if (!(await chrome.permissions.request({ origins: [origin] })))
+        throw Error("WebDAV 需要允许访问该服务器地址");
+    }
+  }
+  return baseUrl;
 }
 
 async function dav(
@@ -105,9 +152,10 @@ async function dav(
   init: RequestInit = {},
 ): Promise<Response> {
   if (!config.url) throw Error("尚未配置 WebDAV 地址");
-  await ensureOrigin(config.url);
+  const folder = normalizeFolder(config.folder);
   const clean = safeDavPathSegments(relative).join("/");
-  const target = `${config.url}${normalizeFolder(config.folder)}${clean ? `/${clean}` : ""}`;
+  const baseUrl = await ensureOrigin(config.url);
+  const target = `${baseUrl}${folder}${clean ? `/${clean}` : ""}`;
   const headers: Record<string, string> = {
     ...((init.headers as Record<string, string>) || {}),
   };

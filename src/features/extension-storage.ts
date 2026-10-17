@@ -93,6 +93,10 @@
       zh()
         ? "WebDAV 文件夹和相对路径不能包含 .、.. 路径段或 URL 特殊字符（%、?、#）。"
         : "WebDAV folder and relative paths must not contain dot segments or URL delimiters (%, ?, #).",
+    davUnsafeUrl: () =>
+      zh()
+        ? "WebDAV 地址必须是有效的绝对 HTTP(S) URL，不能包含账号密码、查询或片段、反斜杠、百分号编码或 . / .. 路径段。"
+        : "WebDAV URL must be an absolute HTTP(S) URL without embedded credentials, query/fragment, backslashes, percent escapes, or dot segments.",
     permission: () =>
       zh()
         ? "WebDAV 需要允许访问填写的服务器地址。"
@@ -394,6 +398,37 @@
     const segments = safeDavSegments(v);
     return segments.length ? `/${segments.join("/")}` : "";
   };
+  const safeDavBaseUrl = (value) => {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^(https?):\/\/([^/?#]+)(\/[^?#]*)?$/i);
+    if (!match || raw.includes("\\")) throw Error(t("davUnsafeUrl"));
+    const authority = match[2] || "";
+    const rawPath = match[3] || "";
+    if (
+      authority.includes("@") ||
+      authority.includes("%") ||
+      rawPath.split("/").some((segment) => segment === "." || segment === "..") ||
+      /%(?:2e|2f|5c|25|3f|23)/i.test(rawPath)
+    )
+      throw Error(t("davUnsafeUrl"));
+
+    let parsed;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw Error(t("davUnsafeUrl"));
+    }
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.origin === "null" ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    )
+      throw Error(t("davUnsafeUrl"));
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
+  };
   const join = (...parts) =>
     parts
       .filter(Boolean)
@@ -642,8 +677,8 @@
     return out;
   }
   async function davPermission(url) {
-    const u = new URL(url),
-      origin = `${u.origin}/*`;
+    const safeUrl = safeDavBaseUrl(url);
+    const origin = `${new URL(safeUrl).origin}/*`;
     if (!chrome.permissions?.request) return true;
     if (await chrome.permissions.contains({ origins: [origin] })) return true;
     return chrome.permissions.request({ origins: [origin] });
@@ -651,11 +686,11 @@
   const davAuth = (u, p) =>
     u || p ? `Basic ${bytes64(new TextEncoder().encode(`${u}:${p}`))}` : "";
   async function dav(cfg, relative, opt = {}) {
-    if (!(await davPermission(cfg.davUrl))) throw Error(t("permission"));
-    const base = cfg.davUrl.replace(/\/+$/, "");
+    const base = safeDavBaseUrl(cfg.davUrl);
     const folder = normDav(cfg.davFolder);
-    const root = base + (folder || "");
     const clean = safeDavSegments(relative).join("/");
+    if (!(await davPermission(base))) throw Error(t("permission"));
+    const root = base + (folder || "");
     const url = root + (clean ? `/${clean}` : "");
     const h = { ...(opt.headers || {}) },
       a = davAuth(cfg.davUser, cfg.davPass);
@@ -663,9 +698,9 @@
     return fetch(url, { ...opt, headers: h });
   }
   async function davAt(cfg, path, opt = {}) {
-    if (!(await davPermission(cfg.davUrl))) throw Error(t("permission"));
-    const root = cfg.davUrl.replace(/\/+$/, "");
+    const root = safeDavBaseUrl(cfg.davUrl);
     const clean = safeDavSegments(path).join("/");
+    if (!(await davPermission(root))) throw Error(t("permission"));
     const url = root + (clean ? `/${clean}` : "");
     const h = { ...(opt.headers || {}) },
       a = davAuth(cfg.davUser, cfg.davPass);
@@ -729,7 +764,7 @@
       .trim();
   }
   function parseWebdavListing(xml, cfg) {
-    const rootText = `${String(cfg.davUrl || "").replace(/\/+$/, "")}${normDav(cfg.davFolder)}`;
+    const rootText = `${safeDavBaseUrl(cfg.davUrl)}${normDav(cfg.davFolder)}`;
     const rootUrl = new URL(rootText);
     const rootPath = decodeURIComponent(rootUrl.pathname).replace(/\/+$/, "");
     const baseUrl = rootUrl.href.endsWith("/") ? rootUrl.href : `${rootUrl.href}/`;
@@ -1555,8 +1590,9 @@
           await githubInfo(next);
         } else if (next.backend === "webdav") {
           next.davUrl = String(next.davUrl).trim();
-          next.davFolder = normDav(next.davFolder);
           if (!next.davUrl) throw Error(t("needDav"));
+          next.davUrl = safeDavBaseUrl(next.davUrl);
+          next.davFolder = normDav(next.davFolder);
         } else if (next.backend === "gdrive") {
           next.gdriveFolder = normFolder(next.gdriveFolder);
           await test(next);

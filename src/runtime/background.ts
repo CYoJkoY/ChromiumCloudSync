@@ -72,6 +72,8 @@ import {
 } from "./cloud-gdrive.js";
 import {
   createWebdavFileStore,
+  normalizeWebdavBaseUrl,
+  normalizeWebdavFolder,
   webdavBound,
   webdavConfig,
   webdavTest,
@@ -2326,7 +2328,11 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         return { ok: true, provider: p };
       }
       case "saveWebdav": {
-        const url = String(m.url || "").trim();
+        const suppliedUrl = String(m.url || "").trim();
+        const url = suppliedUrl ? normalizeWebdavBaseUrl(suppliedUrl) : "";
+        const folder = String(m.folder || "").trim();
+        // Reject invalid folder input before displaying an optional host-permission prompt.
+        normalizeWebdavFolder(folder);
         if (url) {
           const origin = `${new URL(url).origin}/*`;
           if (
@@ -2339,7 +2345,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         }
         await setSettings({
           [KEYS.WEBDAV_URL]: url,
-          [KEYS.WEBDAV_DIR]: String(m.folder || "").trim(),
+          [KEYS.WEBDAV_DIR]: folder,
           [KEYS.WEBDAV_USER]: String(m.user || ""),
           [KEYS.WEBDAV_PASS]: String(m.pass || ""),
         });
