@@ -617,9 +617,7 @@ function updateGoogleDriveConnectAvailability(): void {
     if (!canConnect) {
       gdriveManualNoticeEl.textContent = !hasRedirectFlow
         ? i.t("gdriveIdentityUnavailable")
-        : packagedClientId
-          ? i.t("gdriveManualRequired")
-          : i.t("gdriveOAuthClientMissing");
+        : i.t("gdriveOAuthClientMissing");
     }
   }
   if (gdriveManualDetailsEl && !canConnect)
