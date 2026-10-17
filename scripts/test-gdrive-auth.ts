@@ -210,8 +210,8 @@ function respondWithAccount(email = "user@example.com") {
   assert.equal(limited.identityWebAuthFlow, true);
   assert.equal(
     supportsBrowserManagedDriveAuth(),
-    true,
-    "launchWebAuthFlow can authorize without Chromium's getAuthToken cache",
+    false,
+    "browser-managed getAuthToken is unavailable even though the extension redirect API exists",
   );
   installChrome({ withGetAuthToken: true });
 }

@@ -207,11 +207,8 @@ function hasConfiguredIdentityOAuthClient(): boolean {
  */
 export function supportsBrowserManagedDriveAuth(): boolean {
   const capabilities = detectBrowserCapabilities();
-  const webAuthFlowAvailable =
-    capabilities.identity && capabilities.identityWebAuthFlow;
   return (
-    hasConfiguredIdentityOAuthClient() &&
-    (webAuthFlowAvailable || capabilities.identityGetAuthToken)
+    hasConfiguredIdentityOAuthClient() && capabilities.identityGetAuthToken
   );
 }
 
