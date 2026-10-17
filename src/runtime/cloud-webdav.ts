@@ -67,13 +67,24 @@ export async function webdavConfig(): Promise<DavConfig> {
   };
 }
 
+function safeDavPathSegments(value: string): string[] {
+  const path = String(value || "").trim().replace(/\\/g, "/");
+  const segments = path.split("/").filter(Boolean);
+  if (
+    segments.some(
+      (segment) =>
+        segment === "." || segment === ".." || /[%?#]/.test(segment),
+    )
+  )
+    throw Error(
+      "WebDAV 路径不得包含 .、.. 路径段或 URL 特殊字符（%、?、#）",
+    );
+  return segments;
+}
+
 function normalizeFolder(value: string): string {
-  let path = String(value || "")
-    .trim()
-    .replace(/\\/g, "/");
-  if (!path) return "";
-  if (!path.startsWith("/")) path = `/${path}`;
-  return path.replace(/\/+/g, "/").replace(/\/$/, "");
+  const segments = safeDavPathSegments(value);
+  return segments.length ? `/${segments.join("/")}` : "";
 }
 
 export function webdavBound(config?: DavConfig | null): boolean {
@@ -95,7 +106,7 @@ async function dav(
 ): Promise<Response> {
   if (!config.url) throw Error("尚未配置 WebDAV 地址");
   await ensureOrigin(config.url);
-  const clean = String(relative || "").replace(/^\/+/, "");
+  const clean = safeDavPathSegments(relative).join("/");
   const target = `${config.url}${normalizeFolder(config.folder)}${clean ? `/${clean}` : ""}`;
   const headers: Record<string, string> = {
     ...((init.headers as Record<string, string>) || {}),
@@ -110,13 +121,10 @@ async function dav(
  * conflicts and "already exists" responses are all treated as success.
  */
 async function davMkdir(config: DavConfig, folder: string): Promise<void> {
-  const relative = String(folder || "")
-    .replace(/^\/+/, "")
-    .replace(/\/+$/, "");
-  if (!relative) return;
-  const normalized = normalizeFolder(relative);
+  const parts = safeDavPathSegments(folder);
+  if (!parts.length) return;
   let current = "";
-  for (const part of normalized.split("/").filter(Boolean)) {
+  for (const part of parts) {
     current += `/${part}`;
     const response = await dav(config, current.replace(/^\//, ""), {
       method: "MKCOL",
