@@ -952,13 +952,38 @@ async function queryFiles(
   token: string,
   fields = "files(id,name,mimeType,modifiedTime)",
 ): Promise<DriveFileEntry[]> {
-  const data = (await driveJson(
-    `/files?q=${encodeURIComponent(query)}&spaces=drive&pageSize=200&fields=${encodeURIComponent(fields)}`,
-    {},
-    token,
-    "查询 Google Drive 文件",
-  )) as { files?: DriveFileEntry[] };
-  return Array.isArray(data?.files) ? data.files : [];
+  const files: DriveFileEntry[] = [];
+  const seenPageTokens = new Set<string>();
+  let pageToken = "";
+
+  for (let page = 0; page < 1000; page += 1) {
+    const params = new URLSearchParams({
+      q: query,
+      spaces: "drive",
+      pageSize: "1000",
+      fields: `nextPageToken,${fields}`,
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const data = (await driveJson(
+      `/files?${params.toString()}`,
+      {},
+      token,
+      "查询 Google Drive 文件",
+    )) as { files?: DriveFileEntry[]; nextPageToken?: string };
+
+    if (Array.isArray(data?.files)) files.push(...data.files);
+
+    const nextPageToken = String(data?.nextPageToken || "");
+    if (!nextPageToken) return files;
+    if (seenPageTokens.has(nextPageToken)) {
+      throw Error("查询 Google Drive 文件失败：分页令牌重复，无法继续读取");
+    }
+    seenPageTokens.add(nextPageToken);
+    pageToken = nextPageToken;
+  }
+
+  throw Error("查询 Google Drive 文件失败：超过最大分页数量，结果不完整");
 }
 
 async function ensureFolder(
