@@ -84,20 +84,16 @@ For GitHub Gist, the extension creates or binds a private Gist. Google Drive use
 
 ### Connecting Google Drive
 
-Browser-managed Google account sign-in requires an OAuth client registered for this exact extension ID. The source manifest intentionally contains no fake or shared placeholder client ID.
+Google Drive uses the extension-specific Identity redirect flow for its default connection path. The source `manifest.json` contains no fake OAuth client; release builds inject the public Chrome Extension Client ID from the `GDRIVE_OAUTH_CLIENT_ID` repository Actions variable.
 
-1. In Google Cloud Console, configure the project and create an OAuth client of type **Chrome Extension**. Register the extension's stable Chrome Web Store / runtime ID as its Item ID.
-2. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables** and add the public Client ID as `GDRIVE_OAUTH_CLIENT_ID`. This is a Client ID, not a Client Secret; the browser-managed flow does not need a client secret.
-3. The release workflow validates that variable and injects it into the packaged `dist/manifest.json` as `oauth2.client_id`, with only the `https://www.googleapis.com/auth/drive.file` scope. Release publication fails clearly if the variable is missing or malformed instead of producing an unusable direct-login build.
-4. For a local build, set `GDRIVE_OAUTH_CLIENT_ID` in the build process environment before running `npm run build:extension` or `npm run build:zip`. For example, in PowerShell: `$env:GDRIVE_OAUTH_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com"`; then run the build command in that same session.
-5. Install/reload the newly built package and select **Google Drive → Connect with Google account**. Chromium handles account selection and consent. Existing ZIP/CRX files are not retroactively updated; build and install a new package after configuring the client.
-6. Disconnecting clears the local session and attempts to revoke the active token.
+1. In Google Cloud Console, create an OAuth client of type **Chrome Extension** and register the exact stable Chrome Web Store / runtime extension ID as its Item ID.
+2. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables** and set `GDRIVE_OAUTH_CLIENT_ID` to that public Client ID. No client secret is used by this extension flow.
+3. The release build injects that ID into `dist/manifest.json` as `oauth2.client_id` and scopes it to `https://www.googleapis.com/auth/drive.file`.
+4. When the user clicks **Connect with Google account**, the options page calls `chrome.identity.launchWebAuthFlow({ interactive: true })` directly with `response_type=token` and `chrome.identity.getRedirectURL()`. It validates the returned extension origin/path and OAuth `state`, then reads the access token and `expires_in` from the URL fragment.
+5. The access token and expiry are stored only in local extension storage, never in Drive sync files. A 60-second expiry buffer prevents near-expired tokens from being used; when the token expires or Google returns 401, the UI asks the user to reconnect rather than opening a surprise login window during background sync.
+6. If an unpacked/local build has no configured Chrome Extension client, the user-owned **Web application** OAuth / PKCE path remains available in Advanced settings. Register the exact redirect URI shown there in that client's Authorized redirect URIs and enter the matching Client ID (and client secret only if Google's configuration requires it). Never reuse the Chrome Extension client as a Web application client.
 
-The browser-managed request is started directly by the settings page's sign-in click so Chromium can associate its interactive UI with the user's action. If the Identity API does not return a result within 20 seconds, the page stops waiting, shows an error, and expands the manual fallback instead of leaving the button stuck.
-
-The manual fallback uses a different OAuth client type from browser-managed sign-in. Create your own Google Cloud OAuth client of type **Web application** (not Chrome Extension), add the exact redirect URI displayed in the expanded settings panel under **Authorized redirect URIs**, then enter that client's Client ID and its matching Client Secret if Google requires one. Never reuse the Chrome Extension client ID for this fallback. Credentials remain local to the browser profile; do not commit, share, or package a Web client secret.
-
-The repository's source manifest and ordinary local builds remain free of placeholder credentials. On Chromium forks where browser-managed sign-in fails, configure a user-owned Web application client through Advanced settings; a source-only change cannot safely supply its confidential client secret. The extension requests only the `drive.file` scope, keeps manual OAuth credentials and tokens in local extension storage, and does not copy them into synchronized data.
+This mirrors the extension-specific OAuth pattern used in the merged [Read Frog Google Drive sync implementation](https://github.com/mengxi-ream/read-frog/pull/726), while retaining ChromiumCloudSync's existing multi-file storage layout and least-privilege `drive.file` scope.
 
 All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
 
