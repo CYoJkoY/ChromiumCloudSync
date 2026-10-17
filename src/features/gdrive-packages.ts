@@ -160,12 +160,37 @@
       expression,
       fields = "files(id,name,mimeType,size,modifiedTime)",
     ) {
-      const url =
-        `${GDRIVE_API}/files?q=${encodeURIComponent(expression)}` +
-        `&spaces=drive&pageSize=500&fields=${encodeURIComponent(fields)}`;
-      const response = await send(url, {}, t("gdrive"));
-      const data = await response.json?.().catch?.(() => ({}));
-      return Array.isArray(data?.files) ? data.files : [];
+      const files = [];
+      const seenPageTokens = new Set();
+      let pageToken = "";
+
+      for (let page = 0; page < 1000; page += 1) {
+        const params = new URLSearchParams({
+          q: expression,
+          spaces: "drive",
+          pageSize: "1000",
+          fields: `nextPageToken,${fields}`,
+        });
+        if (pageToken) params.set("pageToken", pageToken);
+
+        const response = await send(
+          `${GDRIVE_API}/files?${params.toString()}`,
+          {},
+          t("gdrive"),
+        );
+        const data = await response.json?.().catch?.(() => ({}));
+        if (Array.isArray(data?.files)) files.push(...data.files);
+
+        const nextPageToken = String(data?.nextPageToken || "");
+        if (!nextPageToken) return files;
+        if (seenPageTokens.has(nextPageToken)) {
+          throw Error("Google Drive listing failed: repeated pagination token");
+        }
+        seenPageTokens.add(nextPageToken);
+        pageToken = nextPageToken;
+      }
+
+      throw Error("Google Drive listing failed: pagination limit reached; results are incomplete");
     }
 
     /* --------------------------- id cache -------------------------------- */
