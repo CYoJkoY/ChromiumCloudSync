@@ -2247,8 +2247,13 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         // The token is passed only for this in-memory connection operation.
         const token = String(m.token || "").trim();
         const clientId = String(m.clientId || "").trim();
+        const hasExpiry = m.expiresAt !== undefined && m.expiresAt !== null;
         const auth = token
-          ? await connectGoogleDriveWithToken(token, String(m.email || ""))
+          ? await connectGoogleDriveWithToken(
+              token,
+              String(m.email || ""),
+              hasExpiry ? Number(m.expiresAt) : undefined,
+            )
           : clientId
             ? await connectGoogleDriveManual(
                 clientId,

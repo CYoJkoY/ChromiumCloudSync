@@ -155,6 +155,7 @@ const {
   clearCachedDriveToken,
   connectGoogleDriveBrowser,
   connectGoogleDriveManual,
+  connectGoogleDriveWithToken,
   disconnectGoogleDrive,
   gdriveAccessToken,
   gdriveAuthState,
@@ -205,11 +206,12 @@ function respondWithAccount(email = "user@example.com") {
   installChrome({ withGetAuthToken: false });
   const limited = detectBrowserCapabilities();
   assert.equal(limited.identityGetAuthToken, false);
-  assert.equal(limited.identity, true, "web auth flow alone is not enough");
+  assert.equal(limited.identity, true, "extension redirect API is available");
+  assert.equal(limited.identityWebAuthFlow, true);
   assert.equal(
     supportsBrowserManagedDriveAuth(),
     false,
-    "manual fallback must be offered when the Identity API cannot mint tokens",
+    "browser-managed getAuthToken is unavailable even though the extension redirect API exists",
   );
   installChrome({ withGetAuthToken: true });
 }
@@ -273,6 +275,86 @@ function respondWithAccount(email = "user@example.com") {
   assert.equal(stored.mode, "identity");
   assert.equal(stored.access_token, undefined);
   assert.equal(stored.refresh_token, undefined);
+}
+
+/* --------------------------------------------------------------------------
+ * Read Frog-style extension redirect auth keeps its short-lived token locally.
+ * ------------------------------------------------------------------------ */
+{
+  reset();
+  respondWithAccount("web-flow@example.com");
+  const expiry = Date.now() + 3_600_000;
+  const auth = await connectGoogleDriveWithToken(
+    "launch-web-flow-token",
+    "web-flow@example.com",
+    expiry,
+  );
+
+  assert.equal(auth.mode, "identity-web");
+  assert.equal(auth.email, "web-flow@example.com");
+  assert.equal(await gdriveConnected(), true);
+  assert.equal(await gdriveAccessToken(), "launch-web-flow-token");
+  assert.equal(identity.getAuthTokenCalls.length, 0);
+
+  const storedTokens = storage.get("gdriveTokens") as Record<string, unknown>;
+  assert.equal(storedTokens.authFlow, "identity-web");
+  assert.equal(storedTokens.access_token, "launch-web-flow-token");
+  assert.equal(storedTokens.expiry, expiry);
+  assert.equal(storedTokens.refresh_token, undefined);
+  assert.equal(storedTokens.clientSecret, undefined);
+
+  const state = storage.get("gdriveAuth") as Record<string, unknown>;
+  assert.equal(state.mode, "identity-web");
+  assert.equal(state.access_token, undefined);
+  assert.equal(state.refresh_token, undefined);
+  assert.equal(state.clientSecret, undefined);
+}
+
+{
+  reset();
+  respondWithAccount("expired-web-flow@example.com");
+  await connectGoogleDriveWithToken(
+    "near-expiry-token",
+    "expired-web-flow@example.com",
+    Date.now() + 30_000,
+  );
+  assert.equal(await gdriveConnected(), false);
+  await assert.rejects(
+    () => gdriveAccessToken(),
+    (failure: unknown) => {
+      assert.ok(failure instanceof DriveAuthError);
+      assert.match(failure.message, /已过期/);
+      return true;
+    },
+    "expired direct tokens require an explicit reconnect",
+  );
+  assert.equal(
+    identity.getAuthTokenCalls.length,
+    0,
+    "expiry must not trigger a silent or background getAuthToken prompt",
+  );
+}
+
+{
+  reset();
+  respondWithAccount("web-flow-disconnect@example.com");
+  await connectGoogleDriveWithToken(
+    "web-flow-revoke-token",
+    "web-flow-disconnect@example.com",
+    Date.now() + 3_600_000,
+  );
+  await disconnectGoogleDrive();
+  assert.equal(
+    fetchCalls.some((call) =>
+      call.url.includes("oauth2.googleapis.com/revoke") &&
+      call.url.includes("web-flow-revoke-token"),
+    ),
+    true,
+    "disconnect revokes the locally stored launchWebAuthFlow token",
+  );
+  assert.equal(storage.has("gdriveAuth"), false);
+  assert.equal(storage.has("gdriveTokens"), false);
+  assert.equal(await gdriveConnected(), false);
 }
 
 /* --------------------------------------------------------------------------
