@@ -84,10 +84,12 @@ function randomOAuthString(length: number): string {
 
 function getPackagedGoogleOAuthClientId(): string {
   try {
-    const manifest = chrome.runtime?.getManifest?.() as
-      | { oauth2?: { client_id?: unknown } }
-      | undefined;
-    const clientId = manifest?.oauth2?.client_id;
+    const config = (
+      window as Window & {
+        CCSyncGoogleOAuthConfig?: { clientId?: unknown };
+      }
+    ).CCSyncGoogleOAuthConfig;
+    const clientId = config?.clientId;
     return typeof clientId === "string" ? clientId.trim() : "";
   } catch {
     return "";
