@@ -96,6 +96,8 @@ Google Drive's default connection path uses `chrome.identity.launchWebAuthFlow()
 
 The extension-specific redirect approach follows the pattern used by the [Read Frog Google Drive sync implementation](https://github.com/mengxi-ream/read-frog/pull/726), while retaining ChromiumCloudSync's existing file layout and least-privilege `drive.file` scope.
 
+All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
+
 <a name="readme-storage-layout"></a>
 
 ### Cloud storage layout
