@@ -380,9 +380,10 @@ async function clearDriveIdCache(): Promise<void> {
 }
 
 /**
- * Finish the browser-managed connection with a token obtained from an explicit
- * user click. The token is only used in memory for this request and is never
- * persisted to extension storage or included in synchronized state.
+ * Finish a connection with a token obtained from an explicit user action.
+ * Redirect-flow tokens are stored only in extension-local storage with their
+ * expiry so later Drive requests can reuse them; they are never synchronized.
+ * Legacy getAuthToken tokens remain in Chromium's browser-managed cache.
  */
 export async function connectGoogleDriveWithToken(
   tokenValue: string,
