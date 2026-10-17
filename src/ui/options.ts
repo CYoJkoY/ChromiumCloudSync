@@ -26,7 +26,6 @@ const providerEl = $("provider"),
   gdriveManualNoticeEl = $("gdriveManualNotice"),
   gdriveManualRedirectHelpEl = $("gdriveManualRedirectHelp");
 
-let gdriveBrowserManagedTokenFailure = false;
 
 function providerLabel(provider) {
   const names = {
@@ -62,99 +61,6 @@ providerEl?.addEventListener("change", async () => {
     showError(e);
   }
 });
-function requestGoogleDriveInteractiveToken(timeoutMs = 20000) {
-  const identity = chrome.identity as typeof chrome.identity & {
-    getAuthToken?: (
-      details: { interactive: boolean; scopes: string[] },
-      callback?: (result: unknown, grantedScopes?: string[]) => void,
-    ) => unknown;
-  };
-  if (typeof identity?.getAuthToken !== "function")
-    return Promise.reject(new Error(i.t("gdriveIdentityUnavailable")));
-
-  // Start auth synchronously inside the click handler. Consume whichever
-  // completion style this browser actually implements: callback, Promise, or
-  // an implementation that supports both. The settlement guard prevents
-  // duplicate completion when both are exposed.
-  return new Promise<string>((resolve, reject) => {
-    let settled = false;
-    let timer: ReturnType<typeof window.setTimeout> | undefined;
-    const finish = (token: string, failure?: Error) => {
-      if (settled) return;
-      settled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-      if (failure) reject(failure);
-      else resolve(token);
-    };
-    const acceptResult = (result: unknown) => {
-      const normalized =
-        typeof result === "string"
-          ? { token: result }
-          : result;
-      const token =
-        normalized &&
-        typeof normalized === "object" &&
-        "token" in normalized &&
-        typeof (normalized as { token?: unknown }).token === "string"
-          ? String((normalized as { token: string }).token).trim()
-          : "";
-      if (!token) {
-        finish("", new Error(i.t("gdriveIdentityNoToken")));
-        return;
-      }
-      finish(token);
-    };
-    timer = window.setTimeout(
-      () => finish("", new Error(i.t("gdriveIdentityTimeout"))),
-      timeoutMs,
-    );
-
-    try {
-      const returned = identity.getAuthToken!(
-        {
-          interactive: true,
-          scopes: ["https://www.googleapis.com/auth/drive.file"],
-        },
-        (result) => {
-          const apiError = chrome.runtime?.lastError;
-          if (apiError) {
-            finish(
-              "",
-              new Error(apiError.message || i.t("gdriveIdentityUnavailable")),
-            );
-            return;
-          }
-          acceptResult(result);
-        },
-      );
-      if (
-        returned &&
-        typeof returned === "object" &&
-        "then" in returned &&
-        typeof (returned as { then?: unknown }).then === "function"
-      ) {
-        Promise.resolve(returned).then(
-          (result) => {
-            if (result !== undefined && result !== null) acceptResult(result);
-          },
-          (failure: unknown) =>
-            finish(
-              "",
-              failure instanceof Error
-                ? failure
-                : new Error(String(failure)),
-            ),
-        );
-      }
-    } catch (failure) {
-      finish(
-        "",
-        failure instanceof Error ? failure : new Error(String(failure)),
-      );
-    }
-  });
-}
-
 interface GoogleOAuthPkceContext {
   verifier: string;
   challenge: string;
@@ -188,7 +94,7 @@ function getPackagedGoogleOAuthClientId(): string {
   }
 }
 
-interface GoogleDriveExtensionOAuthSession {
+interface GoogleDriveRedirectOAuthSession {
   accessToken: string;
   expiresAt: number;
 }
@@ -198,9 +104,9 @@ interface GoogleDriveExtensionOAuthSession {
  * Unlike getAuthToken(), launchWebAuthFlow does not depend on the browser's
  * Google account chooser integration. It returns the token in the URL fragment.
  */
-function requestGoogleDriveExtensionOAuth(
+function requestGoogleDriveRedirectOAuth(
   timeoutMs = 120_000,
-): Promise<GoogleDriveExtensionOAuthSession> {
+): Promise<GoogleDriveRedirectOAuthSession> {
   const identity = chrome.identity as typeof chrome.identity & {
     getRedirectURL?: () => string;
     launchWebAuthFlow?: (
@@ -501,18 +407,18 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
   const button = gdriveConnectBrowserEl;
   const manualClientId = String($("gdriveClientId")?.value || "").trim();
   const clientSecret = String($("gdriveClientSecret")?.value || "");
-  const extensionClientId = getPackagedGoogleOAuthClientId();
+  const packagedClientId = getPackagedGoogleOAuthClientId();
   const identity = chrome.identity as typeof chrome.identity & {
-    getAuthToken?: unknown;
     getRedirectURL?: () => string;
     launchWebAuthFlow?: unknown;
   };
-  const extensionWebFlowAvailable =
-    Boolean(extensionClientId) &&
+  const hasRedirectFlow =
     typeof identity?.getRedirectURL === "function" &&
     typeof identity?.launchWebAuthFlow === "function";
+  const packagedRedirectFlowAvailable =
+    Boolean(packagedClientId) && hasRedirectFlow;
   const shouldUseManualOAuth =
-    forceWebOAuth || (!extensionClientId && Boolean(manualClientId));
+    forceWebOAuth || (!packagedClientId && Boolean(manualClientId));
 
   if (shouldUseManualOAuth && !manualClientId) {
     if (gdriveManualDetailsEl) gdriveManualDetailsEl.open = true;
@@ -520,7 +426,12 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
     return;
   }
 
-  let browserManagedTokenRequestFailed = false;
+  if (!hasRedirectFlow) {
+    if (gdriveManualDetailsEl) gdriveManualDetailsEl.open = true;
+    showError(new Error(i.t("gdriveIdentityUnavailable")));
+    return;
+  }
+
   if (button) {
     button.disabled = true;
     button.textContent = i.t("gdriveConnecting");
@@ -529,23 +440,15 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
     let auth: Record<string, unknown>;
     if (shouldUseManualOAuth) {
       auth = await completeGoogleDriveWebOAuth(manualClientId, clientSecret);
-    } else if (extensionWebFlowAvailable) {
-      const session = await requestGoogleDriveExtensionOAuth();
+    } else if (packagedRedirectFlowAvailable) {
+      const session = await requestGoogleDriveRedirectOAuth();
       auth = await request("connectGdrive", {
         token: session.accessToken,
         expiresAt: session.expiresAt,
       });
-    } else if (extensionClientId && typeof identity.getAuthToken === "function") {
-      // Older hosts that cannot expose launchWebAuthFlow may still support the
-      // browser-managed identity token cache.
-      try {
-        const token = await requestGoogleDriveInteractiveToken();
-        auth = await request("connectGdrive", { token });
-      } catch (failure) {
-        browserManagedTokenRequestFailed = true;
-        throw failure;
-      }
-    } else if (manualClientId && typeof identity.launchWebAuthFlow === "function") {
+    } else if (manualClientId) {
+      // A user-supplied Web application client remains the only valid fallback
+      // when a packaged Client ID is absent. Never use it with getAuthToken().
       auth = await completeGoogleDriveWebOAuth(manualClientId, clientSecret);
     } else {
       throw new Error(i.t("gdriveExtensionClientMissing"));
@@ -563,30 +466,11 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
     if (gdriveManualDetailsEl) gdriveManualDetailsEl.open = true;
     const failureMessage =
       failure instanceof Error ? failure.message : String(failure);
-    const browserManagedFallbackNeeded =
-      !extensionWebFlowAvailable &&
-      !manualClientId &&
-      browserManagedTokenRequestFailed &&
-      [
-        i.t("gdriveIdentityTimeout"),
-        i.t("gdriveIdentityUnavailable"),
-        i.t("gdriveIdentityNoToken"),
-      ].includes(failureMessage);
-    if (browserManagedFallbackNeeded) {
-      gdriveBrowserManagedTokenFailure = true;
-      updateGoogleDriveConnectAvailability();
-    }
     if (gdriveManualNoticeEl) {
       gdriveManualNoticeEl.hidden = false;
-      gdriveManualNoticeEl.textContent = browserManagedFallbackNeeded
-        ? i.t("gdriveIdentityFallbackNotice")
-        : failureMessage;
+      gdriveManualNoticeEl.textContent = failureMessage;
     }
-    showError(
-      browserManagedFallbackNeeded
-        ? new Error(`${failureMessage}\n\n${i.t("gdriveIdentityFallbackNotice")}`)
-        : failure,
-    );
+    showError(failure);
   } finally {
     if (button) button.textContent = i.t("gdriveConnectBrowser");
     updateGoogleDriveConnectAvailability();
@@ -713,7 +597,6 @@ function refreshIntervalLabels() {
 }
 function updateGoogleDriveConnectAvailability(): void {
   const identity = chrome.identity as typeof chrome.identity & {
-    getAuthToken?: unknown;
     getRedirectURL?: () => string;
     launchWebAuthFlow?: unknown;
   };
@@ -722,24 +605,19 @@ function updateGoogleDriveConnectAvailability(): void {
   const hasRedirectFlow =
     typeof identity?.getRedirectURL === "function" &&
     typeof identity?.launchWebAuthFlow === "function";
-  const canUseExtensionFlow = Boolean(packagedClientId) && hasRedirectFlow;
-  const canUseLegacyIdentity =
-    Boolean(packagedClientId) &&
-    typeof identity?.getAuthToken === "function" &&
-    !gdriveBrowserManagedTokenFailure;
+  const canUsePackagedRedirect =
+    Boolean(packagedClientId) && hasRedirectFlow;
   const canUseManualFallback = Boolean(manualClientId) && hasRedirectFlow;
-  const canConnect =
-    canUseExtensionFlow || canUseLegacyIdentity || canUseManualFallback;
+  const canConnect = canUsePackagedRedirect || canUseManualFallback;
 
   if (gdriveManualNoticeEl) {
     gdriveManualNoticeEl.hidden = canConnect;
     if (!canConnect) {
-      gdriveManualNoticeEl.textContent =
-        gdriveBrowserManagedTokenFailure
-          ? i.t("gdriveIdentityFallbackNotice")
-          : packagedClientId
-            ? i.t("gdriveManualRequired")
-            : i.t("gdriveExtensionClientMissing");
+      gdriveManualNoticeEl.textContent = !hasRedirectFlow
+        ? i.t("gdriveIdentityUnavailable")
+        : packagedClientId
+          ? i.t("gdriveManualRequired")
+          : i.t("gdriveExtensionClientMissing");
     }
   }
   if (gdriveManualDetailsEl && !canConnect)
@@ -747,7 +625,6 @@ function updateGoogleDriveConnectAvailability(): void {
   if (gdriveConnectBrowserEl)
     gdriveConnectBrowserEl.disabled = !canConnect;
 }
-
 function renderGdriveAuthState(r) {
   if (gdriveAuthStateEl) {
     if (!r.gdriveConnected) {
