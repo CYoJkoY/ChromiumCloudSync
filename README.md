@@ -75,7 +75,7 @@ The synchronization engine is separated from the storage backend. Choose the pro
 | Provider         | What it stores                                   | Authentication / access                                     | History source                         |
 | :--------------- | :----------------------------------------------- | :---------------------------------------------------------- | :------------------------------------- |
 | **GitHub Gist**  | Modular sync files (see below) inside one Gist   | GitHub Token + private Gist                                 | Gist revision / commit history         |
-| **Google Drive** | Modular sync files inside an application folder  | Browser-managed OAuth when a matching manifest OAuth client is configured; otherwise use the manual client | No app-managed history archives |
+| **Google Drive** | Modular sync files inside an application folder  | Google OAuth Web application client with the exact extension redirect URI; manual PKCE setup remains available | No app-managed history archives |
 | **WebDAV**       | Modular sync files only                          | WebDAV URL, optional folder, username and password/app auth | No app-managed history archives |
 
 For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and keeps its authorization state in the local browser profile. WebDAV requests require the user to grant access to the configured server origin.
@@ -84,18 +84,17 @@ For GitHub Gist, the extension creates or binds a private Gist. Google Drive use
 
 ### Connecting Google Drive
 
-Google Drive uses the extension-specific Identity redirect flow for its default connection path. The source `manifest.json` contains no fake OAuth client; release builds inject the public Chrome Extension Client ID from the `GDRIVE_OAUTH_CLIENT_ID` repository Actions variable.
+Google Drive's default connection path uses `chrome.identity.launchWebAuthFlow()` with the redirect URI returned by `chrome.identity.getRedirectURL()`. Configure `GDRIVE_OAUTH_CLIENT_ID` as a Google OAuth **Web application** client ID. A **Chrome Extension** client registered only with an Item ID is not the right client configuration for this explicit redirect-based flow.
 
-1. In Google Cloud Console, create an OAuth client of type **Chrome Extension** and register the exact stable Chrome Web Store / runtime extension ID as its Item ID.
-2. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables** and set `GDRIVE_OAUTH_CLIENT_ID` to that public Client ID. No client secret is used by this extension flow.
-3. The release build injects that ID into `dist/manifest.json` as `oauth2.client_id` and scopes it to `https://www.googleapis.com/auth/drive.file`.
-4. When the user clicks **Connect with Google account**, the options page calls `chrome.identity.launchWebAuthFlow({ interactive: true })` directly with `response_type=token` and `chrome.identity.getRedirectURL()`. It validates the returned extension origin/path and OAuth `state`, then reads the access token and `expires_in` from the URL fragment.
-5. The access token and expiry are stored only in local extension storage, never in Drive sync files. A 60-second expiry buffer prevents near-expired tokens from being used; when the token expires or Google returns 401, the UI asks the user to reconnect rather than opening a surprise login window during background sync.
-6. If an unpacked/local build has no configured Chrome Extension client, the user-owned **Web application** OAuth / PKCE path remains available in Advanced settings. Register the exact redirect URI shown there in that client's Authorized redirect URIs and enter the matching Client ID (and client secret only if Google's configuration requires it). Never reuse the Chrome Extension client as a Web application client.
+1. In Google Cloud Console, open **APIs & Services → Credentials** and create an OAuth client ID of type **Web application**.
+2. In that client's **Authorized redirect URIs**, add the exact URI shown in ChromiumCloudSync's expanded Google Drive OAuth settings. It must match `chrome.identity.getRedirectURL()` exactly; the usual form is `https://<extension-id>.chromiumapp.org/`, including the trailing slash.
+3. Copy the extension ID from the actual installed build in `chrome://extensions`. Do not assume an unpacked/development build has the same ID as the Chrome Web Store listing or release CRX. Each distinct extension ID needs its own authorized redirect URI.
+4. If Google's OAuth consent screen is in **Testing** mode, add the Google account you are signing in with to its **Test users** list. Ensure the Google Drive API is enabled in the same Google Cloud project.
+5. In GitHub, open **Settings → Secrets and variables → Actions → Variables** and set `GDRIVE_OAUTH_CLIENT_ID` to this Web application client's public Client ID. The default extension flow does not use a client secret.
+6. The release build injects the Client ID into `dist/manifest.json`; the options page sends it to Google with `response_type=token`, `scope=https://www.googleapis.com/auth/drive.file`, and the exact redirect URI. The flow validates the returned redirect, OAuth `state`, token, and expiry; access tokens remain in local extension storage only.
+7. For another Chromium installation or an unpacked build with a different ID, add that build's exact redirect URI as an additional **Authorized redirect URI** to the same Web application client, or configure a separate Web application client ID. The Advanced/manual OAuth path also uses Web application credentials with PKCE.
 
-This mirrors the extension-specific OAuth pattern used in the merged [Read Frog Google Drive sync implementation](https://github.com/mengxi-ream/read-frog/pull/726), while retaining ChromiumCloudSync's existing multi-file storage layout and least-privilege `drive.file` scope.
-
-All three providers store the same set of independent module files — the provider only decides where those files live and how it versions them.
+The extension-specific redirect approach follows the pattern used by the [Read Frog Google Drive sync implementation](https://github.com/mengxi-ream/read-frog/pull/726), while retaining ChromiumCloudSync's existing file layout and least-privilege `drive.file` scope.
 
 <a name="readme-storage-layout"></a>
 
