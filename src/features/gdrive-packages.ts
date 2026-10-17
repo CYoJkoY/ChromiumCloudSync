@@ -22,6 +22,7 @@
   const GDRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
   /** extensions/<id>/v<version>/<file> plus the destination root. */
   const GDRIVE_LIST_DEPTH = 5;
+  const MAX_GDRIVE_LIST_PAGES = 1000;
   const CONTROL_FILE_RE = /(^|\/)(index|selection|metadata)\.json$/;
 
   const DRIVE_ERROR_MESSAGE_KEYS = {
@@ -160,12 +161,52 @@
       expression,
       fields = "files(id,name,mimeType,size,modifiedTime)",
     ) {
-      const url =
-        `${GDRIVE_API}/files?q=${encodeURIComponent(expression)}` +
-        `&spaces=drive&pageSize=500&fields=${encodeURIComponent(fields)}`;
-      const response = await send(url, {}, t("gdrive"));
-      const data = await response.json?.().catch?.(() => ({}));
-      return Array.isArray(data?.files) ? data.files : [];
+      const files = [];
+      const seenPageTokens = new Set();
+      let pageToken = "";
+
+      for (let page = 0; page < MAX_GDRIVE_LIST_PAGES; page += 1) {
+        const params = new URLSearchParams({
+          q: expression,
+          spaces: "drive",
+          pageSize: "1000",
+          fields: "nextPageToken,incompleteSearch," + fields,
+        });
+        if (pageToken) params.set("pageToken", pageToken);
+
+        const response = await send(
+          GDRIVE_API + "/files?" + params.toString(),
+          {},
+          t("gdrive"),
+        );
+        const data = await response.json?.().catch?.(() => ({}));
+        if (!data || typeof data !== "object" || !Array.isArray(data.files)) {
+          throw Error("Google Drive listing failed: response omitted the files array");
+        }
+        if (data.incompleteSearch === true) {
+          throw Error("Google Drive listing failed: Drive reported an incomplete search");
+        }
+        files.push(...data.files);
+
+        const nextPageToken = data.nextPageToken;
+        if (
+          nextPageToken === undefined ||
+          nextPageToken === null ||
+          nextPageToken === ""
+        ) {
+          return files;
+        }
+        if (typeof nextPageToken !== "string" || nextPageToken.trim().length === 0) {
+          throw Error("Google Drive listing failed: invalid nextPageToken; results are incomplete");
+        }
+        if (seenPageTokens.has(nextPageToken)) {
+          throw Error("Google Drive listing failed: repeated pagination token");
+        }
+        seenPageTokens.add(nextPageToken);
+        pageToken = nextPageToken;
+      }
+
+      throw Error("Google Drive listing failed: pagination limit reached; results are incomplete");
     }
 
     /* --------------------------- id cache -------------------------------- */
