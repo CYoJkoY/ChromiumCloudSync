@@ -26,6 +26,9 @@ const providerEl = $("provider"),
   gdriveManualNoticeEl = $("gdriveManualNotice"),
   gdriveManualRedirectHelpEl = $("gdriveManualRedirectHelp");
 
+let gdriveBrowserManagedAvailable = true;
+let gdriveBrowserManagedTokenFailure = false;
+
 function providerLabel(provider) {
   const names = {
     gist: i.t("providerGist"),
@@ -334,18 +337,24 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
     showError(new Error(i.t("gdriveClientIdRequired")));
     return;
   }
+  let browserManagedTokenRequestFailed = false;
   if (button) {
     button.disabled = true;
     button.textContent = i.t("gdriveConnecting");
   }
   try {
-    // A configured Web Application client uses the real Google web sign-in UI,
-    // initiated from this settings-page click. This is the compatible route for
-    // Chromium forks that do not provide Google's browser-managed account UI.
+    // Keep the browser-managed route for browsers with Google's Identity UI.
+    // User-owned Web application credentials use PKCE and must remain local.
     const auth = clientId
       ? await completeGoogleDriveWebOAuth(clientId, clientSecret)
       : await (async () => {
-          const token = await requestGoogleDriveInteractiveToken();
+          let token: string;
+          try {
+            token = await requestGoogleDriveInteractiveToken();
+          } catch (failure) {
+            browserManagedTokenRequestFailed = true;
+            throw failure;
+          }
           return request("connectGdrive", { token });
         })();
     showFeedback(
@@ -358,16 +367,35 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
     await refresh();
   } catch (failure) {
     if (gdriveManualDetailsEl) gdriveManualDetailsEl.open = true;
+    const failureMessage =
+      failure instanceof Error ? failure.message : String(failure);
+    const browserManagedFallbackNeeded =
+      !clientId &&
+      browserManagedTokenRequestFailed &&
+      [
+        i.t("gdriveIdentityTimeout"),
+        i.t("gdriveIdentityUnavailable"),
+        i.t("gdriveIdentityNoToken"),
+      ].includes(failureMessage);
+    if (browserManagedFallbackNeeded) {
+      gdriveBrowserManagedAvailable = false;
+      gdriveBrowserManagedTokenFailure = true;
+      updateGoogleDriveConnectAvailability();
+    }
     if (gdriveManualNoticeEl) {
       gdriveManualNoticeEl.hidden = false;
-      gdriveManualNoticeEl.textContent = i.t("gdriveIdentityFallbackNotice");
+      gdriveManualNoticeEl.textContent = browserManagedFallbackNeeded
+        ? i.t("gdriveIdentityFallbackNotice")
+        : failureMessage;
     }
-    showError(failure);
+    showError(
+      browserManagedFallbackNeeded
+        ? new Error(`${failureMessage}\n\n${i.t("gdriveIdentityFallbackNotice")}`)
+        : failure,
+    );
   } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = i.t("gdriveConnectBrowser");
-    }
+    if (button) button.textContent = i.t("gdriveConnectBrowser");
+    updateGoogleDriveConnectAvailability();
   }
 }
 
@@ -378,6 +406,10 @@ $("gdriveConnectBrowser")?.addEventListener("click", () => {
 $("gdriveConnect")?.addEventListener("click", () => {
   void connectGoogleDrive(true);
 });
+$("gdriveClientId")?.addEventListener(
+  "input",
+  updateGoogleDriveConnectAvailability,
+);
 $("gdriveDisconnect")?.addEventListener("click", async () => {
   if (!confirm(i.t("gdriveDisconnectConfirm"))) return;
   try {
@@ -486,6 +518,34 @@ function refreshIntervalLabels() {
   for (const option of syncIntervalEl.options)
     option.textContent = `${option.value} ${suffix}`;
 }
+function updateGoogleDriveConnectAvailability(): void {
+  const identity = chrome.identity as typeof chrome.identity & {
+    getRedirectURL?: () => string;
+    launchWebAuthFlow?: unknown;
+  };
+  const webOAuthAvailable =
+    typeof identity?.getRedirectURL === "function" &&
+    typeof identity?.launchWebAuthFlow === "function";
+  const hasManualClientId = Boolean(
+    String($("gdriveClientId")?.value || "").trim(),
+  );
+  const manualFallbackRequired =
+    !gdriveBrowserManagedAvailable &&
+    !(webOAuthAvailable && hasManualClientId);
+
+  if (gdriveManualNoticeEl) {
+    gdriveManualNoticeEl.hidden = !manualFallbackRequired;
+    if (manualFallbackRequired)
+      gdriveManualNoticeEl.textContent = gdriveBrowserManagedTokenFailure
+        ? i.t("gdriveIdentityFallbackNotice")
+        : i.t("gdriveManualRequired");
+  }
+  if (gdriveManualDetailsEl && manualFallbackRequired)
+    gdriveManualDetailsEl.open = true;
+  if (gdriveConnectBrowserEl)
+    gdriveConnectBrowserEl.disabled = manualFallbackRequired;
+}
+
 function renderGdriveAuthState(r) {
   if (gdriveAuthStateEl) {
     if (!r.gdriveConnected) {
@@ -510,23 +570,8 @@ function renderGdriveAuthState(r) {
       gdriveAuthStateEl.style.whiteSpace = "pre-line";
     }
   }
-  const browserManaged = r.gdriveBrowserManaged !== false;
-  const identity = chrome.identity as typeof chrome.identity & {
-    getRedirectURL?: () => string;
-    launchWebAuthFlow?: unknown;
-  };
-  const webOAuthAvailable =
-    typeof identity?.getRedirectURL === "function" &&
-    typeof identity?.launchWebAuthFlow === "function";
-  if (gdriveManualNoticeEl) {
-    gdriveManualNoticeEl.hidden = browserManaged;
-    if (!browserManaged)
-      gdriveManualNoticeEl.textContent = i.t("gdriveManualRequired");
-  }
-  if (gdriveManualDetailsEl && !browserManaged)
-    gdriveManualDetailsEl.open = true;
-  if (gdriveConnectBrowserEl)
-    gdriveConnectBrowserEl.disabled = !browserManaged && !webOAuthAvailable;
+  gdriveBrowserManagedAvailable = r.gdriveBrowserManaged !== false;
+  updateGoogleDriveConnectAvailability();
   if (gdriveManualRedirectHelpEl) {
     let redirectUri = "";
     try {
