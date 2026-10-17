@@ -26,7 +26,6 @@ const providerEl = $("provider"),
   gdriveManualNoticeEl = $("gdriveManualNotice"),
   gdriveManualRedirectHelpEl = $("gdriveManualRedirectHelp");
 
-let gdriveBrowserManagedAvailable = true;
 let gdriveBrowserManagedTokenFailure = false;
 
 function providerLabel(provider) {
@@ -574,7 +573,6 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
         i.t("gdriveIdentityNoToken"),
       ].includes(failureMessage);
     if (browserManagedFallbackNeeded) {
-      gdriveBrowserManagedAvailable = false;
       gdriveBrowserManagedTokenFailure = true;
       updateGoogleDriveConnectAvailability();
     }
@@ -776,7 +774,6 @@ function renderGdriveAuthState(r) {
       gdriveAuthStateEl.style.whiteSpace = "pre-line";
     }
   }
-  gdriveBrowserManagedAvailable = r.gdriveBrowserManaged !== false;
   updateGoogleDriveConnectAvailability();
   if (gdriveManualRedirectHelpEl) {
     let redirectUri = "";
