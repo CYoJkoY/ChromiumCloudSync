@@ -55,7 +55,6 @@ import {
 } from "./cloud-gist.js";
 import {
   classifyDriveError,
-  connectGoogleDriveBrowser,
   connectGoogleDriveWithToken,
   connectGoogleDriveManual,
   completeGoogleDriveManualAuth,
@@ -2248,18 +2247,23 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         const token = String(m.token || "").trim();
         const clientId = String(m.clientId || "").trim();
         const hasExpiry = m.expiresAt !== undefined && m.expiresAt !== null;
-        const auth = token
-          ? await connectGoogleDriveWithToken(
-              token,
-              String(m.email || ""),
-              hasExpiry ? Number(m.expiresAt) : undefined,
-            )
-          : clientId
-            ? await connectGoogleDriveManual(
-                clientId,
-                String(m.clientSecret || ""),
-              )
-            : await connectGoogleDriveBrowser(String(m.email || ""));
+        let auth;
+        if (token) {
+          auth = await connectGoogleDriveWithToken(
+            token,
+            String(m.email || ""),
+            hasExpiry ? Number(m.expiresAt) : undefined,
+          );
+        } else if (clientId) {
+          auth = await connectGoogleDriveManual(
+            clientId,
+            String(m.clientSecret || ""),
+          );
+        } else {
+          throw new Error(
+            "Google Drive authorization must be initiated from Settings with a redirect token or an explicit OAuth client.",
+          );
+        }
         await invalidateCloudTabCache();
         await invalidateGdriveLayout();
         return { ok: true, ...auth };
