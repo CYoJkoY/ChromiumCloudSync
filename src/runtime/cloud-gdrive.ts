@@ -389,14 +389,18 @@ export async function connectGoogleDriveWithToken(
   preferredEmail = "",
   expiresAtValue?: number,
 ): Promise<GdriveAuthState> {
-  if (!hasConfiguredIdentityOAuthClient())
-    throw driveAuthError(
-      "浏览器托管 Google 登录不可用：扩展 manifest.json 缺少已注册的 oauth2.client_id。",
-    );
   const token = String(tokenValue || "").trim();
   if (!token) throw driveAuthError("Google 授权没有返回访问令牌");
 
   const isLaunchWebAuthFlowToken = expiresAtValue !== undefined;
+  // The packaged default uses a Web application OAuth client for the explicit
+  // chromiumapp.org redirect. That public client ID intentionally does not live
+  // in manifest.oauth2, which is reserved for Chrome Extension getAuthToken().
+  // Only the legacy cached-token route requires that manifest configuration.
+  if (!isLaunchWebAuthFlowToken && !hasConfiguredIdentityOAuthClient())
+    throw driveAuthError(
+      "旧式浏览器托管授权不可用：当前构建使用 Web application OAuth 客户端，请从设置页重新连接 Google Drive。",
+    );
   const expiry = Number(expiresAtValue);
   if (
     isLaunchWebAuthFlowToken &&
@@ -665,6 +669,8 @@ export async function gdriveAccessToken(): Promise<string> {
 
   if (auth?.mode === "identity" || (!auth && !tokens?.refresh_token)) {
     if (!auth && !tokens?.refresh_token) throw driveAuthError("尚未连接 Google Drive");
+    if (auth?.mode === "identity" && !hasConfiguredIdentityOAuthClient())
+      throw driveAuthError("旧版浏览器托管 Google 授权已失效，请点击“使用 Google 账号连接”重新授权。");
     // Non-interactive: a cached Chromium token is reused, and re-authorization is
     // an explicit user action rather than a surprise prompt mid-sync.
     return identityToken(false);
@@ -695,6 +701,10 @@ export async function gdriveConnected(): Promise<boolean> {
         Number.isFinite(tokens.expiry) &&
         Date.now() < Number(tokens.expiry) - 60_000,
     );
+  // An older browser-managed session cannot be refreshed with a Web application
+  // client ID. Report it as disconnected instead of showing a false healthy state.
+  if (auth?.mode === "identity")
+    return hasConfiguredIdentityOAuthClient();
   if (auth) return true;
   return Boolean(tokens?.refresh_token);
 }
