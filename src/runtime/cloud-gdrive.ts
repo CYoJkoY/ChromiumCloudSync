@@ -46,6 +46,7 @@ const LEGACY_STATE_FILE = "chromium-cloud-sync-state.json";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const JSON_MIME = "application/json";
 export const GDRIVE_HISTORY_LIMIT = 30;
+const MAX_GDRIVE_LIST_PAGES = 1000;
 
 const LOCAL_KEYS = {
   auth: "gdriveAuth",
@@ -956,28 +957,58 @@ async function queryFiles(
   const seenPageTokens = new Set<string>();
   let pageToken = "";
 
-  for (let page = 0; page < 1000; page += 1) {
+  for (let page = 0; page < MAX_GDRIVE_LIST_PAGES; page += 1) {
     const params = new URLSearchParams({
       q: query,
       spaces: "drive",
       pageSize: "1000",
-      fields: `nextPageToken,${fields}`,
+      fields: "nextPageToken,incompleteSearch," + fields,
     });
     if (pageToken) params.set("pageToken", pageToken);
 
     const data = (await driveJson(
-      `/files?${params.toString()}`,
+      "/files?" + params.toString(),
       {},
       token,
       "查询 Google Drive 文件",
-    )) as { files?: DriveFileEntry[]; nextPageToken?: string };
+    )) as {
+      files?: unknown;
+      nextPageToken?: unknown;
+      incompleteSearch?: unknown;
+    } | null;
 
-    if (Array.isArray(data?.files)) files.push(...data.files);
+    if (!data || typeof data !== "object" || !Array.isArray(data.files)) {
+      throw Error(
+        "查询 Google Drive 文件失败：响应中缺少有效的 files 数组，结果不完整",
+      );
+    }
+    if (data.incompleteSearch === true) {
+      throw Error(
+        "查询 Google Drive 文件失败：Drive 搜索结果不完整，无法保证文件列表完整",
+      );
+    }
+    files.push(...(data.files as DriveFileEntry[]));
 
-    const nextPageToken = String(data?.nextPageToken || "");
-    if (!nextPageToken) return files;
+    const nextPageToken = data.nextPageToken;
+    if (
+      nextPageToken === undefined ||
+      nextPageToken === null ||
+      nextPageToken === ""
+    ) {
+      return files;
+    }
+    if (
+      typeof nextPageToken !== "string" ||
+      nextPageToken.trim().length === 0
+    ) {
+      throw Error(
+        "查询 Google Drive 文件失败：分页令牌格式无效，结果不完整",
+      );
+    }
     if (seenPageTokens.has(nextPageToken)) {
-      throw Error("查询 Google Drive 文件失败：分页令牌重复，无法继续读取");
+      throw Error(
+        "查询 Google Drive 文件失败：分页令牌重复，无法继续读取完整列表",
+      );
     }
     seenPageTokens.add(nextPageToken);
     pageToken = nextPageToken;
