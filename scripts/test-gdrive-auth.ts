@@ -530,6 +530,189 @@ function respondWithAccount(email = "user@example.com") {
 }
 
 /* --------------------------------------------------------------------------
+ * Manual OAuth reconnect preserves refresh credentials only for the same
+ * client and positively identified account.
+ * ------------------------------------------------------------------------ */
+{
+  reset();
+  installChrome();
+  let activeEmail = "manual@example.com";
+  let exchangeCount = 0;
+  fetchResponder = (call) => {
+    if (call.url.includes("/about"))
+      return {
+        ok: true,
+        status: 200,
+        body: { user: { emailAddress: activeEmail, displayName: "Manual Test" } },
+      };
+    if (call.url.includes("oauth2.googleapis.com/token")) {
+      exchangeCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          access_token: `manual-access-${exchangeCount}`,
+          expires_in: 3600,
+          ...(exchangeCount === 1 ? { refresh_token: "manual-refresh" } : {}),
+        },
+      };
+    }
+    return { ok: true, status: 200, body: {} };
+  };
+
+  const chromeMock = (globalThis as unknown as {
+    chrome: { identity: Record<string, unknown> };
+  }).chrome;
+  chromeMock.identity.launchWebAuthFlow = async (details: unknown) => {
+    const requestUrl = new URL(
+      String((details as { url?: unknown })?.url || "https://example.com/"),
+    );
+    const state = requestUrl.searchParams.get("state") || "";
+    return `https://example.chromiumapp.org/?code=auth-code-${exchangeCount}&state=${encodeURIComponent(state)}`;
+  };
+
+  await connectGoogleDriveManual("same-client-id", "saved-client-secret");
+  await connectGoogleDriveManual("same-client-id", "");
+  const reconnected = storage.get("gdriveTokens") as Record<string, unknown>;
+  assert.equal(reconnected.refresh_token, "manual-refresh");
+  assert.equal(reconnected.clientSecret, "saved-client-secret");
+  assert.equal(reconnected.access_token, "manual-access-2");
+
+  activeEmail = "different@example.com";
+  await assert.rejects(
+    () => connectGoogleDriveManual("same-client-id", ""),
+    (failure: unknown) => {
+      assert.ok(failure instanceof DriveAuthError);
+      assert.match(failure.message, /无法安全复用/);
+      return true;
+    },
+    "a refresh token must not be reused after switching Google accounts",
+  );
+  const afterAccountSwitch = storage.get("gdriveTokens") as Record<string, unknown>;
+  assert.equal(afterAccountSwitch.refresh_token, "manual-refresh");
+  assert.equal(afterAccountSwitch.access_token, "manual-access-2");
+  assert.equal(
+    (storage.get("gdriveAuth") as Record<string, unknown>).email,
+    "manual@example.com",
+    "failed account switch leaves the existing authorized account intact",
+  );
+}
+
+/* --------------------------------------------------------------------------
+ * A first-time manual OAuth exchange without a refresh token must fail without
+ * persisting a connected-looking session.
+ * ------------------------------------------------------------------------ */
+{
+  reset();
+  installChrome();
+  fetchResponder = (call) => {
+    if (call.url.includes("/about"))
+      return {
+        ok: true,
+        status: 200,
+        body: { user: { emailAddress: "first-time@example.com", displayName: "First" } },
+      };
+    if (call.url.includes("oauth2.googleapis.com/token"))
+      return {
+        ok: true,
+        status: 200,
+        body: { access_token: "access-only", expires_in: 3600 },
+      };
+    return { ok: true, status: 200, body: {} };
+  };
+  const chromeMock = (globalThis as unknown as {
+    chrome: { identity: Record<string, unknown> };
+  }).chrome;
+  chromeMock.identity.launchWebAuthFlow = async (details: unknown) => {
+    const requestUrl = new URL(
+      String((details as { url?: unknown })?.url || "https://example.com/"),
+    );
+    const state = requestUrl.searchParams.get("state") || "";
+    return `https://example.chromiumapp.org/?code=first-time-code&state=${encodeURIComponent(state)}`;
+  };
+
+  await assert.rejects(
+    () => connectGoogleDriveManual("first-time-client"),
+    /可续期的 refresh token/,
+  );
+  assert.equal(storage.has("gdriveTokens"), false);
+  assert.equal(storage.has("gdriveAuth"), false);
+  assert.equal(await gdriveConnected(), false);
+}
+
+/* --------------------------------------------------------------------------
+ * An invalid successful refresh response must not overwrite a cached token.
+ * ------------------------------------------------------------------------ */
+{
+  reset();
+  installChrome();
+  fetchResponder = (call) => {
+    if (call.url.includes("/about"))
+      return {
+        ok: true,
+        status: 200,
+        body: { user: { emailAddress: "refresh@example.com", displayName: "Refresh" } },
+      };
+    if (call.url.includes("oauth2.googleapis.com/token"))
+      return {
+        ok: true,
+        status: 200,
+        body: { access_token: "manual-access", refresh_token: "manual-refresh", expires_in: 3600 },
+      };
+    return { ok: true, status: 200, body: {} };
+  };
+  const chromeMock = (globalThis as unknown as {
+    chrome: { identity: Record<string, unknown> };
+  }).chrome;
+  chromeMock.identity.launchWebAuthFlow = async (details: unknown) => {
+    const requestUrl = new URL(
+      String((details as { url?: unknown })?.url || "https://example.com/"),
+    );
+    const state = requestUrl.searchParams.get("state") || "";
+    return `https://example.chromiumapp.org/?code=refresh-code&state=${encodeURIComponent(state)}`;
+  };
+  await connectGoogleDriveManual("refresh-client");
+  const expired = storage.get("gdriveTokens") as Record<string, unknown>;
+  const expiredAt = Date.now() - 60_000;
+  storage.set("gdriveTokens", {
+    ...expired,
+    access_token: "expired-access",
+    expiry: expiredAt,
+  });
+
+  fetchResponder = (call) => {
+    if (call.url.includes("oauth2.googleapis.com/token"))
+      return {
+        ok: true,
+        status: 200,
+        body: { access_token: { malformed: true }, expires_in: 3600 },
+      };
+    return { ok: true, status: 200, body: {} };
+  };
+  await assert.rejects(
+    () => gdriveAccessToken(),
+    /without an access token/,
+  );
+
+  fetchResponder = (call) => {
+    if (call.url.includes("oauth2.googleapis.com/token"))
+      return {
+        ok: true,
+        status: 200,
+        body: { access_token: "new-access", expires_in: "3600" },
+      };
+    return { ok: true, status: 200, body: {} };
+  };
+  await assert.rejects(
+    () => gdriveAccessToken(),
+    /invalid access-token lifetime/,
+  );
+  const afterFailedRefresh = storage.get("gdriveTokens") as Record<string, unknown>;
+  assert.equal(afterFailedRefresh.access_token, "expired-access");
+  assert.equal(afterFailedRefresh.expiry, expiredAt);
+}
+
+/* --------------------------------------------------------------------------
  * Reconnect after a revoked cached token does not need credentials again.
  * ------------------------------------------------------------------------ */
 {
