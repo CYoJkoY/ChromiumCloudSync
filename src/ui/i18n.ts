@@ -268,8 +268,6 @@
       gdriveManualTitle: "Advanced: use your own OAuth client",
       gdriveManualHelp:
         "Use this if Chromium-managed Google sign-in is unavailable. Create your own Google Cloud OAuth client of type Web application (not Chrome Extension), add the exact redirect URI shown below under Authorized redirect URIs, and enter that client's ID and its matching secret if Google requires it. Credentials stay local to this browser profile; never commit or share the secret.",
-      gdriveManualRequired:
-        "This build cannot use browser-managed Google sign-in. A Chromium fork without Google's browser account integration needs a Google Cloud OAuth client of type Web application and the exact redirect URI shown in Advanced settings. Configure that client here; the extension cannot open a valid Google authorization flow without a registered client ID.",
       gdriveOAuthPreparing: "Preparing secure Google authorization. Wait a moment and click Connect again.",
       gdriveWebAuthTimeout: "Google web authorization did not return within 2 minutes. The browser may have blocked the authorization window or the redirect URI/client configuration may be invalid.",
       gdriveWebAuthCancelled: "Google web authorization was closed or canceled.",
@@ -632,8 +630,6 @@
     gdriveManualTitle: "高级：使用自有 OAuth 客户端",
     gdriveManualHelp:
       "当浏览器托管的 Google 登录不可用时使用。请自行创建 Google Cloud Web application OAuth 客户端（不是 Chrome Extension），将下方 URI 原样加入 Authorized redirect URIs，并填写该客户端的 ID，以及 Google 要求时与之匹配的密钥。凭据只保存在当前浏览器配置文件中；不要提交或分享密钥。",
-    gdriveManualRequired:
-      "当前浏览器无法使用浏览器托管的 Google 登录。若 Chromium 衍生浏览器没有 Google 浏览器账号集成，需要创建 Google Cloud 类型为 Web application 的 OAuth 客户端，并将高级设置显示的重定向 URI 原样加入授权重定向 URI。没有已注册的客户端 ID，扩展无法发起有效的 Google 授权流程。",
     gdriveOAuthPreparing: "正在准备安全的 Google 授权，请稍候片刻后再次点击连接。",
     gdriveWebAuthTimeout: "Google 网页授权超过 2 分钟仍未返回。浏览器可能阻止了授权窗口，或 OAuth 客户端/重定向 URI 配置无效。",
     gdriveWebAuthCancelled: "Google 网页授权窗口已关闭或授权已取消。",
