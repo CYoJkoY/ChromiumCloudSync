@@ -213,6 +213,37 @@ assert.equal(
   false,
 );
 
+// Unsafe WebDAV folders and relative paths must be rejected before fetch.
+const unsafeDavRequests: string[] = [];
+const unsafeDavPage = loadPage(async (input) => {
+  unsafeDavRequests.push(String(input));
+  return { ok: true, status: 204 } as Response;
+});
+const safeDavConfig = {
+  davUrl: "https://example.test/dav",
+  davFolder: "/packages",
+  davUser: "",
+  davPass: "",
+};
+await assert.rejects(
+  () =>
+    unsafeDavPage.davDelete(
+      { ...safeDavConfig, davFolder: "../../outside" },
+      "extensions/old/v1/old.crx",
+    ),
+);
+await assert.rejects(
+  () => unsafeDavPage.davDelete(safeDavConfig, "../outside.crx"),
+);
+await assert.rejects(
+  () => unsafeDavPage.davDelete(safeDavConfig, "%2e%2e/outside.crx"),
+);
+assert.equal(
+  unsafeDavRequests.length,
+  0,
+  "invalid WebDAV paths are rejected before any remote request",
+);
+
 const responseXml = (href: string, collection = false, size = 0) =>
   `<d:response><d:href>${href}</d:href><d:propstat><d:prop><d:resourcetype>${collection ? "<d:collection/>" : ""}</d:resourcetype><d:getcontentlength>${size}</d:getcontentlength></d:prop></d:propstat></d:response>`;
 const webdavCalls: string[] = [];

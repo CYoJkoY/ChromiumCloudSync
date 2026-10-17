@@ -89,6 +89,10 @@
         ? "该 Token 没有仓库写入权限，请确认 Contents 为 Read and write。"
         : "This token cannot write to the repository. Grant Contents: Read and write.",
     needDav: () => (zh() ? "请输入 WebDAV 地址。" : "Enter a WebDAV URL."),
+    davUnsafePath: () =>
+      zh()
+        ? "WebDAV 文件夹和相对路径不能包含 .、.. 路径段或 URL 特殊字符（%、?、#）。"
+        : "WebDAV folder and relative paths must not contain dot segments or URL delimiters (%, ?, #).",
     permission: () =>
       zh()
         ? "WebDAV 需要允许访问填写的服务器地址。"
@@ -371,13 +375,24 @@
       .trim()
       .replace(/^\/+|\/+$/g, "")
       .replace(/\\+/g, "/");
-  const normDav = (v) => {
-    let x = String(v || "")
+  const safeDavSegments = (value) => {
+    const segments = String(value || "")
       .trim()
-      .replace(/\\/g, "/");
-    if (!x) return "";
-    if (!x.startsWith("/")) x = "/" + x;
-    return x.replace(/\/+/g, "/").replace(/\/$/, "") || "";
+      .replace(/\\/g, "/")
+      .split("/")
+      .filter(Boolean);
+    if (
+      segments.some(
+        (segment) =>
+          segment === "." || segment === ".." || /[%?#]/.test(segment),
+      )
+    )
+      throw Error(t("davUnsafePath"));
+    return segments;
+  };
+  const normDav = (v) => {
+    const segments = safeDavSegments(v);
+    return segments.length ? `/${segments.join("/")}` : "";
   };
   const join = (...parts) =>
     parts
@@ -640,7 +655,7 @@
     const base = cfg.davUrl.replace(/\/+$/, "");
     const folder = normDav(cfg.davFolder);
     const root = base + (folder || "");
-    const clean = String(relative || "").replace(/^\/+/, "");
+    const clean = safeDavSegments(relative).join("/");
     const url = root + (clean ? `/${clean}` : "");
     const h = { ...(opt.headers || {}) },
       a = davAuth(cfg.davUser, cfg.davPass);
@@ -650,7 +665,7 @@
   async function davAt(cfg, path, opt = {}) {
     if (!(await davPermission(cfg.davUrl))) throw Error(t("permission"));
     const root = cfg.davUrl.replace(/\/+$/, "");
-    const clean = String(path || "").replace(/^\/+/, "");
+    const clean = safeDavSegments(path).join("/");
     const url = root + (clean ? `/${clean}` : "");
     const h = { ...(opt.headers || {}) },
       a = davAuth(cfg.davUser, cfg.davPass);
