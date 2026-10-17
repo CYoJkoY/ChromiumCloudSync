@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           CLIENT_ID="${GDRIVE_OAUTH_CLIENT_ID:-}"
           if [[ -z "$CLIENT_ID" ]]; then
-            echo "::error title=Missing Google Drive OAuth client::Set the repository Actions variable GDRIVE_OAUTH_CLIENT_ID to a Google Cloud Chrome Extension OAuth client registered for this extension's exact ID."
+            echo "::error title=Missing Google Drive OAuth client::Set GDRIVE_OAUTH_CLIENT_ID to a Google Cloud OAuth Web application client ID and register the exact https://<extension-id>.chromiumapp.org/ URI under Authorized redirect URIs."
             exit 1
           fi
           if [[ ! "$CLIENT_ID" =~ ^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
@@ -138,7 +138,7 @@ jobs:
           if (!manifest.oauth2?.scopes?.includes(requiredScope)) {
             throw new Error("The release manifest is missing the required drive.file scope.");
           }
-          console.log("Google Drive browser-managed OAuth is configured in the release manifest.");
+          console.log("Google Drive redirect OAuth client ID and drive.file scope are configured in the release manifest.");
           NODE
 
       - name: Locate release ZIP
