@@ -116,7 +116,7 @@ function requestGoogleDriveRedirectOAuth(
   };
   const clientId = getPackagedGoogleOAuthClientId();
   if (!clientId)
-    return Promise.reject(new Error(i.t("gdriveExtensionClientMissing")));
+    return Promise.reject(new Error(i.t("gdriveOAuthClientMissing")));
   if (
     typeof identity?.getRedirectURL !== "function" ||
     typeof identity?.launchWebAuthFlow !== "function"
@@ -172,7 +172,7 @@ function requestGoogleDriveRedirectOAuth(
       finish(String(redirectedUrl || ""));
     };
     timer = window.setTimeout(
-      () => finish("", new Error(i.t("gdriveExtensionAuthTimeout"))),
+      () => finish("", new Error(i.t("gdriveRedirectAuthTimeout"))),
       timeoutMs,
     );
 
@@ -243,7 +243,7 @@ function requestGoogleDriveRedirectOAuth(
       expiresIn <= 60 ||
       expiresIn > 86_400
     )
-      throw new Error(i.t("gdriveExtensionTokenExpiryInvalid"));
+      throw new Error(i.t("gdriveTokenExpiryInvalid"));
 
     return {
       accessToken,
@@ -451,7 +451,7 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
       // when a packaged Client ID is absent. Never use it with getAuthToken().
       auth = await completeGoogleDriveWebOAuth(manualClientId, clientSecret);
     } else {
-      throw new Error(i.t("gdriveExtensionClientMissing"));
+      throw new Error(i.t("gdriveOAuthClientMissing"));
     }
 
     showFeedback(
@@ -617,7 +617,7 @@ function updateGoogleDriveConnectAvailability(): void {
         ? i.t("gdriveIdentityUnavailable")
         : packagedClientId
           ? i.t("gdriveManualRequired")
-          : i.t("gdriveExtensionClientMissing");
+          : i.t("gdriveOAuthClientMissing");
     }
   }
   if (gdriveManualDetailsEl && !canConnect)
