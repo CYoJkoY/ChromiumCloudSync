@@ -2247,7 +2247,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         const token = String(m.token || "").trim();
         const clientId = String(m.clientId || "").trim();
         const hasExpiry = m.expiresAt !== undefined && m.expiresAt !== null;
-        let auth;
+        let auth: Awaited<ReturnType<typeof connectGoogleDriveWithToken>>;
         if (token) {
           auth = await connectGoogleDriveWithToken(
             token,
