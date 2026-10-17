@@ -252,67 +252,120 @@
       const size = u32(bytes, at + 12);
       const offset = u32(bytes, at + 16);
       if (offset === 0xffffffff || size === 0xffffffff) return null;
-      if (offset + size > bytes.length) return null;
-      return { entries, size, offset };
+      if (offset + size > at) return null;
+      return { entries, size, offset, endOffset: at };
     }
     return null;
   }
 
-  async function inflateRaw(bytes) {
+  async function inflateRaw(bytes, maxOutputBytes = Number.MAX_SAFE_INTEGER) {
     if (typeof DecompressionStream === "undefined") return null;
+    let reader = null;
     try {
       const stream = new Blob([bytes])
         .stream()
         .pipeThrough(new DecompressionStream("deflate-raw"));
-      return new Uint8Array(await new Response(stream).arrayBuffer());
+      reader = stream.getReader();
+      const chunks = [];
+      let totalBytes = 0;
+      while (true) {
+        const result = await reader.read();
+        if (result.done) break;
+        const chunk = result.value;
+        const nextTotal = totalBytes + chunk.byteLength;
+        if (nextTotal > maxOutputBytes) {
+          await reader.cancel();
+          return null;
+        }
+        chunks.push(chunk);
+        totalBytes = nextTotal;
+      }
+
+      const output = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        output.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return output;
     } catch {
       return null;
+    } finally {
+      reader?.releaseLock();
     }
   }
 
-  async function readLocalEntry(bytes, offset, method, size) {
-    if (offset + 30 > bytes.length) return null;
-    if (u32(bytes, offset) !== ZIP_LOCAL_SIG) return null;
+  async function readLocalEntry(
+    bytes,
+    offset,
+    method,
+    compressedSize,
+    maxOutputBytes = Number.MAX_SAFE_INTEGER,
+  ) {
+    if (offset + 30 > bytes.length || u32(bytes, offset) !== ZIP_LOCAL_SIG)
+      return null;
     const nameLen = u16(bytes, offset + 26);
     const extraLen = u16(bytes, offset + 28);
     const start = offset + 30 + nameLen + extraLen;
-    if (start + size > bytes.length) return null;
-    const data = bytes.subarray(start, start + size);
-    if (method === ZIP_METHOD_STORE) return data;
-    if (method === ZIP_METHOD_DEFLATE) return await inflateRaw(data);
+    if (
+      !Number.isSafeInteger(compressedSize) ||
+      compressedSize < 0 ||
+      start + compressedSize > bytes.length
+    )
+      return null;
+    const data = bytes.subarray(start, start + compressedSize);
+    if (method === ZIP_METHOD_STORE)
+      return data.length <= maxOutputBytes ? data : null;
+    if (method === ZIP_METHOD_DEFLATE)
+      return await inflateRaw(data, maxOutputBytes);
     return null;
   }
 
-  /** Read one stored entry by name; returns null when it is absent/unreadable. */
-  async function readZipEntry(bytes, wanted) {
+  /** Read one ZIP entry by name; an optional output limit bounds decompression. */
+  async function readZipEntry(bytes, wanted, maxOutputBytes = Number.MAX_SAFE_INTEGER) {
     const data = toBytes(bytes);
     const name = String(wanted || "");
     if (!name) return null;
     const eocd = findEndOfCentralDirectory(data);
     if (!eocd) return null;
+    const centralEnd = eocd.offset + eocd.size;
+    if (centralEnd > eocd.endOffset) return null;
+
     let at = eocd.offset;
     for (let i = 0; i < eocd.entries; i += 1) {
-      if (at + 46 > data.length) return null;
+      if (at + 46 > centralEnd || at + 46 > data.length) return null;
       if (u32(data, at) !== ZIP_CENTRAL_SIG) return null;
       const method = u16(data, at + 10);
-      const size = u32(data, at + 20);
+      const compressedSize = u32(data, at + 20);
+      const uncompressedSize = u32(data, at + 24);
       const nameLen = u16(data, at + 28);
       const extraLen = u16(data, at + 30);
       const commentLen = u16(data, at + 32);
       const offset = u32(data, at + 42);
+      const nextEntry = at + 46 + nameLen + extraLen + commentLen;
+      if (nextEntry > centralEnd || nextEntry > data.length) return null;
+
       const entryName = new TextDecoder().decode(
         data.subarray(at + 46, at + 46 + nameLen),
       );
-      if (entryName === name)
-        return await readLocalEntry(data, offset, method, size);
-      at += 46 + nameLen + extraLen + commentLen;
+      if (entryName === name) {
+        if (uncompressedSize > maxOutputBytes) return null;
+        return await readLocalEntry(
+          data,
+          offset,
+          method,
+          compressedSize,
+          maxOutputBytes,
+        );
+      }
+      at = nextEntry;
     }
     return null;
   }
 
   /** Extension name and version from an uploaded ZIP's `manifest.json`. */
   async function readZipManifestInfo(bytes) {
-    const entry = await readZipEntry(bytes, MANIFEST_FILE);
+    const entry = await readZipEntry(bytes, MANIFEST_FILE, MAX_MANIFEST_BYTES);
     if (!entry) return null;
     try {
       const json = JSON.parse(new TextDecoder().decode(entry));
