@@ -123,22 +123,27 @@ jobs:
       - name: Build release ZIP
         run: npm run build:zip
 
-      - name: Verify packaged Google Drive OAuth manifest
+      - name: Verify packaged Google Drive redirect OAuth configuration
         shell: bash
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const manifest = JSON.parse(fs.readFileSync("dist/manifest.json", "utf8"));
+          const optionsSource = fs.readFileSync("dist/options.js", "utf8");
           const expectedClientId = process.env.GDRIVE_OAUTH_CLIENT_ID;
           const requiredScope = "https://www.googleapis.com/auth/drive.file";
-          if (!expectedClientId || manifest.oauth2?.client_id !== expectedClientId) {
-            throw new Error("The release manifest does not contain the configured Google Drive OAuth Client ID.");
+          const expectedConfig = `window.CCSyncGoogleOAuthConfig = Object.freeze({ clientId: ${JSON.stringify(expectedClientId)} });`;
+          if (!expectedClientId || !optionsSource.includes(expectedConfig)) {
+            throw new Error("The release options bundle does not contain the configured Google Drive Web application Client ID.");
           }
-          if (!manifest.oauth2?.scopes?.includes(requiredScope)) {
-            throw new Error("The release manifest is missing the required drive.file scope.");
+          if (manifest.oauth2) {
+            throw new Error("A Web application OAuth Client ID must not be written to manifest.oauth2; that field is for the Chrome Extension getAuthToken flow.");
           }
-          console.log("Google Drive redirect OAuth client ID and drive.file scope are configured in the release manifest.");
+          if (!optionsSource.includes(requiredScope)) {
+            throw new Error("The release options bundle is missing the required drive.file scope.");
+          }
+          console.log("Google Drive Web application OAuth client and drive.file scope are configured outside manifest.oauth2.");
           NODE
 
       - name: Locate release ZIP
