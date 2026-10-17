@@ -137,7 +137,7 @@ for (const directory of ["_locales", "icons"]) {
 
 if (!makeZip) {
   fs.rmSync(compilerOut, { recursive: true, force: true });
-  console.log(`Prepared runnable extension in ${dist}; Google Drive browser-managed OAuth ${gdriveOAuthClientId ? "configured" : "not configured"}`);
+  console.log(`Prepared runnable extension in ${dist}; Google Drive redirect OAuth client ${gdriveOAuthClientId ? "configured" : "not configured"}`);
   process.exit(0);
 }
 
