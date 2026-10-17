@@ -511,21 +511,63 @@ export async function completeGoogleDriveManualAuth(
       `Google token exchange failed: ${String(data?.error_description || data?.error || response.status)}`,
     );
 
-  const accessToken = String(data.access_token || "").trim();
+  const accessToken =
+    typeof data.access_token === "string" ? data.access_token.trim() : "";
+  const expiresIn = data.expires_in;
   if (!accessToken)
     throw driveAuthError("Google token exchange completed without an access token");
+  if (
+    typeof expiresIn !== "number" ||
+    !Number.isFinite(expiresIn) ||
+    expiresIn <= 0 ||
+    expiresIn > 86_400
+  )
+    throw driveAuthError("Google token exchange returned an invalid access-token lifetime");
 
+  // Google may omit refresh_token when the user has already granted this
+  // client offline access. Reuse the stored credential only for the same
+  // client and the same positively identified Google account; never silently
+  // transfer a refresh token across accounts or client IDs.
+  const previousState = await readLocal([LOCAL_KEYS.tokens]);
+  const previousTokens = previousState[LOCAL_KEYS.tokens] as GdriveTokens | undefined;
+  const previousAuth = await readAuthState();
+  const account = await fetchDriveAccount(accessToken);
+  const sameClient = previousTokens?.clientId === id;
+  const sameAccount =
+    previousAuth?.mode === "manual" &&
+    Boolean(previousAuth.email) &&
+    Boolean(account.email) &&
+    previousAuth.email.toLowerCase() === account.email.toLowerCase();
+  const responseRefreshToken =
+    typeof data.refresh_token === "string" ? data.refresh_token.trim() : "";
+  const storedRefreshToken =
+    typeof previousTokens?.refresh_token === "string"
+      ? previousTokens.refresh_token.trim()
+      : "";
+  const refreshToken =
+    responseRefreshToken ||
+    (sameClient && sameAccount ? storedRefreshToken : "");
+  if (!refreshToken)
+    throw driveAuthError(
+      "Google 未返回可续期的 refresh token，且无法安全复用当前凭据。请重新授权并确认已授予离线访问权限；现有连接未被更改。",
+    );
+
+  const previousClientSecret =
+    typeof previousTokens?.clientSecret === "string"
+      ? previousTokens.clientSecret
+      : "";
+  const effectiveClientSecret =
+    clientSecret || (sameClient ? previousClientSecret : "");
   await writeLocal({
     [LOCAL_KEYS.tokens]: {
       clientId: id,
-      clientSecret,
-      refresh_token: String(data.refresh_token || ""),
+      clientSecret: effectiveClientSecret,
+      refresh_token: refreshToken,
       access_token: accessToken,
-      expiry: Date.now() + Number(data.expires_in || 3600) * 1000,
+      expiry: Date.now() + expiresIn * 1000,
     } satisfies GdriveTokens,
   });
   await clearDriveIdCache();
-  const account = await fetchDriveAccount(accessToken);
   return writeAuthState("manual", account);
 }
 
@@ -641,14 +683,26 @@ async function manualAccessToken(tokens: GdriveTokens): Promise<string> {
   const data = (await response.json()) as Record<string, unknown>;
   if (!response.ok)
     throw driveError(response.status, data, "Google Drive 授权已失效，请重新连接");
+  const accessToken =
+    typeof data.access_token === "string" ? data.access_token.trim() : "";
+  const expiresIn = data.expires_in;
+  if (!accessToken)
+    throw driveAuthError("Google token refresh completed without an access token");
+  if (
+    typeof expiresIn !== "number" ||
+    !Number.isFinite(expiresIn) ||
+    expiresIn <= 0 ||
+    expiresIn > 86_400
+  )
+    throw driveAuthError("Google token refresh returned an invalid access-token lifetime");
   await writeLocal({
     [LOCAL_KEYS.tokens]: {
       ...tokens,
-      access_token: String(data.access_token || ""),
-      expiry: Date.now() + Number(data.expires_in || 3600) * 1000,
+      access_token: accessToken,
+      expiry: Date.now() + expiresIn * 1000,
     } satisfies GdriveTokens,
   });
-  return String(data.access_token || "");
+  return accessToken;
 }
 
 /** Resolve a Drive access token for whichever authorization mode is active. */
@@ -707,8 +761,17 @@ export async function gdriveConnected(): Promise<boolean> {
   // client ID. Report it as disconnected instead of showing a false healthy state.
   if (auth?.mode === "identity")
     return hasConfiguredIdentityOAuthClient();
-  if (auth) return true;
-  return Boolean(tokens?.refresh_token);
+  if (auth?.mode === "manual")
+    return Boolean(
+      typeof tokens?.clientId === "string" &&
+        tokens.clientId.trim().length > 0 &&
+        typeof tokens.refresh_token === "string" &&
+        tokens.refresh_token.trim().length > 0,
+    );
+  return Boolean(
+    typeof tokens?.refresh_token === "string" &&
+      tokens.refresh_token.trim().length > 0,
+  );
 }
 
 /** Connection state for Settings: account, mode, scope, and fallback availability. */
