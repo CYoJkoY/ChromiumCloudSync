@@ -269,7 +269,7 @@ The release workflow validates the version, runs tests and a Chromium smoke test
 Open **Settings** and configure the provider you want to use:
 
 1. **GitHub Gist** — enter and validate a GitHub Token, then create or bind a private sync Gist.
-2. **Google Drive** — register a Chrome Extension OAuth client for the extension ID and configure its Client ID in `manifest.json`; until a registered client is supplied, use the advanced OAuth client option.
+2. **Google Drive** — configure a Google OAuth Web application client and register the exact `chrome.identity.getRedirectURL()` value shown in the extension's Google Drive OAuth settings; configure its Client ID through the release variable or the advanced OAuth settings.
 3. **WebDAV** — enter the server URL and optional remote folder, credentials, then test the connection.
 4. Run **Sync now** once.
 5. Enable automatic synchronization when required.
