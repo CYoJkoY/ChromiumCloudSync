@@ -1025,3 +1025,55 @@ body.popup-page .cloud-state-meta {
   margin: 8px 0;
   font-size: 10px;
 }
+
+/* Google Drive settings: restore a readable vertical rhythm between controls. */
+#gdriveCard > .card-desc {
+  margin-top: 10px;
+  line-height: 1.65;
+}
+
+#gdriveCard > .card-title + .card-desc {
+  margin-top: 0;
+}
+
+#gdriveCard > #gdriveAuthState {
+  margin-top: 16px;
+  padding: 12px 14px;
+  line-height: 1.65;
+}
+
+#gdriveCard > .backend-actions {
+  margin-top: 14px;
+  row-gap: 10px;
+}
+
+#gdriveCard > #gdriveManualNotice {
+  margin-top: 12px;
+  padding: 12px 14px;
+  line-height: 1.65;
+}
+
+#gdriveCard > .gdrive-manual {
+  display: block;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+#gdriveCard > .gdrive-manual > summary {
+  padding-block: 8px;
+  line-height: 1.5;
+}
+
+#gdriveCard > .gdrive-manual > .card-desc {
+  margin-top: 10px;
+  line-height: 1.65;
+}
+
+#gdriveCard > .gdrive-manual > .ccsync-ext-grid {
+  margin-top: 14px;
+}
+
+#gdriveCard > .gdrive-manual > .backend-actions {
+  margin-top: 14px;
+}
