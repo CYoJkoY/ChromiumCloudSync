@@ -972,30 +972,20 @@ async function ensureFolder(
     token,
   );
   if (existing[0]?.id) return existing[0].id;
-  const boundary = `ccsync-folder-${randomString(8)}`;
   const metadata = parentId
     ? { name, mimeType: FOLDER_MIME, parents: [parentId] }
     : { name, mimeType: FOLDER_MIME };
-  const response = await fetch(`${DRIVE_API}/files?fields=id`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`,
+  const data = (await driveJson(
+    `/files?fields=id`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(metadata),
     },
-    body: te.encode(
-      `--${boundary}\r\nContent-Type: ${JSON_MIME}; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}--`,
-    ),
-  });
-  const text = await response.text();
-  let data: unknown = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = { raw: text };
-  }
-  if (!response.ok)
-    throw driveError(response.status, data, "创建 Google Drive 文件夹");
-  const id = String((data as { id?: string })?.id || "");
+    token,
+    "创建 Google Drive 文件夹",
+  )) as { id?: string };
+  const id = String(data?.id || "");
   if (!id) throw Error("创建 Google Drive 文件夹失败：未返回文件 ID");
   return id;
 }
