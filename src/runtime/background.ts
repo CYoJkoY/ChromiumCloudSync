@@ -637,7 +637,24 @@ async function buildLocalState(
   };
   return { state, revision, conflicts: clean };
 }
+let cloudMutationTail: Promise<unknown> = Promise.resolve();
+
+function serializeCloudMutation<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const pending = cloudMutationTail.then(operation, operation);
+  cloudMutationTail = pending.then(
+    () => undefined,
+    () => undefined,
+  );
+  return pending;
+}
+
 async function pushSnapshot() {
+  return serializeCloudMutation(pushSnapshotExclusive);
+}
+
+async function pushSnapshotExclusive() {
   const localSnapshot = await createSnapshot();
   let settings = await getSettings(),
     gistId = settings[KEYS.GIST_ID] || "";
@@ -1271,7 +1288,11 @@ async function historyData() {
     migratedFromLegacy: !!loaded.migratedFromLegacy,
   };
 }
-async function rollbackHistory(revision) {
+function rollbackHistory(revision) {
+  return serializeCloudMutation(() => rollbackHistoryExclusive(revision));
+}
+
+async function rollbackHistoryExclusive(revision) {
   const settings = await getSettings();
   if (!(await providerBound())) throw Error("尚未配置云同步后端");
   if (!revision) throw Error("缺少历史 Revision");
@@ -1333,7 +1354,11 @@ async function saveState(loaded, nextState) {
   });
   return { revision };
 }
-async function updateManagedCloudState(mutator) {
+function updateManagedCloudState(mutator) {
+  return serializeCloudMutation(() => updateManagedCloudStateExclusive(mutator));
+}
+
+async function updateManagedCloudStateExclusive(mutator) {
   if (!(await providerBound()))
     throw Error("尚未配置云同步后端");
 
@@ -1767,43 +1792,47 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
         }
       }
       case "configureGist": {
-        const token = (m.token || "").trim();
-        if (!token) throw Error("未配置 GitHub Token");
-        if (!m.gistId) {
-          await removeLocal([KEYS.GIST_ID, KEYS.ETAG]);
-          await setSettings({ [KEYS.GITHUB_TOKEN]: token });
-          return { gistId: "" };
-        }
-        const r = await readGistRaw(String(m.gistId), token);
-        if (!gistContainsSyncData(r.files))
-          throw Error("指定 Gist 不包含 Chromium Cloud Sync 数据");
-        await setSettings({
-          [KEYS.GITHUB_TOKEN]: token,
-          [KEYS.GIST_ID]: m.gistId,
-          [KEYS.ETAG]: r.headers.get("ETag") || "",
+        return serializeCloudMutation(async () => {
+          const token = (m.token || "").trim();
+          if (!token) throw Error("未配置 GitHub Token");
+          if (!m.gistId) {
+            await removeLocal([KEYS.GIST_ID, KEYS.ETAG]);
+            await setSettings({ [KEYS.GITHUB_TOKEN]: token });
+            return { gistId: "" };
+          }
+          const r = await readGistRaw(String(m.gistId), token);
+          if (!gistContainsSyncData(r.files))
+            throw Error("指定 Gist 不包含 Chromium Cloud Sync 数据");
+          await setSettings({
+            [KEYS.GITHUB_TOKEN]: token,
+            [KEYS.GIST_ID]: m.gistId,
+            [KEYS.ETAG]: r.headers.get("ETag") || "",
+          });
+          await invalidateCloudTabCache();
+          return { gistId: m.gistId };
         });
-        await invalidateCloudTabCache();
-        return { gistId: m.gistId };
       }
       case "createGist": {
-        const snap = await createSnapshot(),
-          state = {
-            schemaVersion: SCHEMA_VERSION,
-            revision: 1,
-            updatedAt: snap.updatedAt,
-            snapshot: snap,
-            tombstones: [],
-            conflicts: [],
-          },
-          created = await createRemote(state);
-        await setSettings({
-          [KEYS.SYNC_REVISION]: 1,
-          [KEYS.BASE_SNAPSHOT]: snap,
-          [KEYS.BASE_REVISION]: 1,
-          [KEYS.LAST_SYNC]: snap.updatedAt,
+        return serializeCloudMutation(async () => {
+          const snap = await createSnapshot(),
+            state = {
+              schemaVersion: SCHEMA_VERSION,
+              revision: 1,
+              updatedAt: snap.updatedAt,
+              snapshot: snap,
+              tombstones: [],
+              conflicts: [],
+            },
+            created = await createRemote(state);
+          await setSettings({
+            [KEYS.SYNC_REVISION]: 1,
+            [KEYS.BASE_SNAPSHOT]: snap,
+            [KEYS.BASE_REVISION]: 1,
+            [KEYS.LAST_SYNC]: snap.updatedAt,
+          });
+          await publishCanonicalCloudTabState(state);
+          return { id: String(created.location || ""), revision: 1 };
         });
-        await publishCanonicalCloudTabState(state);
-        return { id: String(created.location || ""), revision: 1 };
       }
       case "snapshot":
         return createSnapshot();
@@ -2234,13 +2263,15 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
       case "storageLayout":
         return storageLayoutStatus();
       case "setProvider": {
-        const value = ["gdrive", "webdav"].includes(String(m.provider))
-          ? String(m.provider)
-          : "gist";
-        await setSettings({ [KEYS.PROVIDER]: value });
-        await invalidateCloudTabCache();
-        await setupAlarms();
-        return { provider: value };
+        return serializeCloudMutation(async () => {
+          const value = ["gdrive", "webdav"].includes(String(m.provider))
+            ? String(m.provider)
+            : "gist";
+          await setSettings({ [KEYS.PROVIDER]: value });
+          await invalidateCloudTabCache();
+          await setupAlarms();
+          return { provider: value };
+        });
       }
       case "connectGdrive": {
         // UI-initiated browser OAuth starts directly in the click handler so
