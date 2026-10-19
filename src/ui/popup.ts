@@ -145,7 +145,6 @@ function cloudStateMetaText(payload) {
   lines.push(`${i.t("revision")} ${payload.revision ?? 0}`);
   lines.push(
     i.t("cloudStateSummary", {
-      windows: counts.windows ?? 0,
       groups: counts.groups ?? 0,
       tabs: counts.tabs ?? 0,
     }),

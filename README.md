@@ -61,7 +61,7 @@ The current implementation synchronizes tab groups and their HTTP(S) member tabs
 | **Conflict visibility**       | Keep unresolved field conflicts explicit for review.                                                                  |
 | **Provider-independent sync** | Run manual and automatic synchronization through the selected cloud provider.                                         |
 | **Automatic sync**            | Optional background synchronization with configurable intervals; disabled by default.                                 |
-| **History & rollback**        | Use provider-native history plus a local index of up to 30 recent entries where supported.                            |
+| **History & rollback**        | Use provider-native history where supported; normal sync does not create a separate application history archive.     |
 | **Package backup**            | Store selected CRX/ZIP packages separately in a GitHub private repository, WebDAV, or Google Drive, including packaging them straight from the browser profile or an unpacked source folder. |
 | **Bilingual UI**              | English and Simplified Chinese interfaces.                                                                            |
 | **Theme controls**            | Explicit theme controls for settings and auxiliary pages.                                                             |
