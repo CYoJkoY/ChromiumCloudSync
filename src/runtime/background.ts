@@ -2113,9 +2113,6 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
               )
                 return false;
 
-              const movedId = tabs[index].syncId;
-              const targetId = tabs[target].syncId;
-
               [tabs[index], tabs[target]] = [
                 tabs[target],
                 tabs[index],
@@ -2123,51 +2120,10 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
               tabs.forEach((tab, tabIndex) => {
                 tab.index = tabIndex;
               });
-
-              let updatedWindow = false;
-              for (
-                const window of
-                state.snapshot.windows || []
-              ) {
-                const a = window.tabs.findIndex(
-                  (tab) => tab.syncId === movedId,
-                );
-                const b = window.tabs.findIndex(
-                  (tab) => tab.syncId === targetId,
-                );
-                if (a < 0 || b < 0)
-                  continue;
-
-                [window.tabs[a], window.tabs[b]] = [
-                  window.tabs[b],
-                  window.tabs[a],
-                ];
-                window.tabs.forEach(
-                  (tab, tabIndex) => {
-                    tab.index = tabIndex;
-                  },
-                );
-                updatedWindow = true;
-              }
-
-              return updatedWindow;
+              return true;
             }
-
-            const window = (
-              state.snapshot.windows || []
-            ).find(
-              (w) =>
-                w.syncId ===
-                String(m.containerSyncId || ""),
-            );
-            if (!window)
-              return false;
-
-            return moveTabWithinWindow(
-              window,
-              id,
-              direction,
-            );
+            // Standalone cloud tabs and window layout are no longer persisted.
+            return false;
           },
         );
       case "moveCloudGroup":
@@ -2181,23 +2137,12 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             if (!current)
               return false;
 
-            const window = (state.snapshot.windows || []).find(
-              (candidate) =>
-                (candidate.tabs || []).some(
-                  (tab) => tab.group?.syncId === id,
-                ),
+            const orderedGroups = groups
+              .slice()
+              .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+            const index = orderedGroups.findIndex(
+              (group) => group.syncId === id,
             );
-            if (!window)
-              return false;
-
-            const groupOrder = [];
-            for (const tab of window.tabs || []) {
-              const groupId = tab.group?.syncId;
-              if (groupId && !groupOrder.includes(groupId))
-                groupOrder.push(groupId);
-            }
-
-            const index = groupOrder.indexOf(id);
             const target =
               m.direction === "up"
                 ? index - 1
@@ -2210,27 +2155,13 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             )
               return false;
 
-            [groupOrder[index], groupOrder[target]] = [
-              groupOrder[target],
-              groupOrder[index],
+            [orderedGroups[index], orderedGroups[target]] = [
+              orderedGroups[target],
+              orderedGroups[index],
             ];
-
-            if (!reorderTabGroupBlocks(window, groupOrder))
-              return false;
-
-            const firstIndexes = new Map();
-            for (let tabIndex = 0; tabIndex < window.tabs.length; tabIndex += 1) {
-              const groupId = window.tabs[tabIndex].group?.syncId;
-              if (groupId && !firstIndexes.has(groupId))
-                firstIndexes.set(groupId, tabIndex);
-            }
-
-            for (const group of groups) {
-              const firstIndex = firstIndexes.get(group.syncId);
-              if (firstIndex !== undefined)
-                group.index = firstIndex;
-            }
-
+            orderedGroups.forEach((group, groupIndex) => {
+              group.index = groupIndex;
+            });
             return true;
           },
         );

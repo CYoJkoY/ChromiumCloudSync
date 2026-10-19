@@ -38,6 +38,74 @@ const legacy = migrateCloudState({
 assert.equal(legacy.snapshot.bookmarks.length, 2);
 assert.equal(legacy.snapshot.bookmarks[1].parentSyncId, "root");
 
+const legacyWindowWithGroups = migrateCloudState({
+  schemaVersion: 10,
+  revision: 3,
+  updatedAt: "2026-09-09T00:00:00.000Z",
+  snapshot: {
+    schemaVersion: 10,
+    extensions: [],
+    windows: [
+      {
+        syncId: "legacy-window",
+        state: "normal",
+        focused: true,
+        tabs: [
+          {
+            syncId: "grouped-tab",
+            url: "https://example.com/grouped",
+            title: "Grouped",
+            pinned: false,
+            active: true,
+            index: 0,
+            group: {
+              syncId: "group-a",
+              title: "Saved group",
+              color: "blue",
+              collapsed: false,
+            },
+          },
+          {
+            syncId: "standalone-tab",
+            url: "https://example.com/standalone",
+            title: "Standalone",
+            pinned: false,
+            active: false,
+            index: 1,
+          },
+        ],
+      },
+    ],
+    groups: [
+      {
+        syncId: "group-a",
+        title: "Saved group",
+        color: "blue",
+        collapsed: false,
+        tabs: [
+          {
+            syncId: "grouped-tab",
+            url: "https://example.com/grouped",
+            title: "Grouped",
+            pinned: false,
+            active: true,
+            index: 0,
+          },
+        ],
+      },
+    ],
+    bookmarks: [],
+  },
+  tombstones: [],
+  conflicts: [],
+});
+assert.deepEqual(legacyWindowWithGroups.snapshot.windows, []);
+assert.equal(legacyWindowWithGroups.snapshot.groups.length, 1);
+assert.deepEqual(
+  legacyWindowWithGroups.snapshot.groups[0]?.tabs.map((tab) => tab.url),
+  ["https://example.com/grouped"],
+);
+
 const fullyTyped = migrateCloudState({
   schemaVersion: 10,
   revision: 7,
@@ -101,7 +169,8 @@ const fullyTyped = migrateCloudState({
   ],
 });
 assert.equal(fullyTyped.snapshot.extensions[0].syncId, "extension-a");
-assert.equal(fullyTyped.snapshot.windows[0].tabs[0].url, "https://example.com");
+assert.deepEqual(fullyTyped.snapshot.windows, []);
+assert.deepEqual(fullyTyped.snapshot.groups, []);
 
 for (const version of SUPPORTED_SCHEMA_VERSIONS) {
   const migrated = migrateCloudState({
@@ -153,11 +222,12 @@ assert.throws(
       ...base,
       snapshot: {
         ...base.snapshot,
-        windows: [
+        groups: [
           {
-            syncId: "window-a",
-            state: "normal",
-            focused: true,
+            syncId: "group-a",
+            title: "Bad",
+            color: "grey",
+            collapsed: false,
             tabs: [
               {
                 syncId: "tab-a",

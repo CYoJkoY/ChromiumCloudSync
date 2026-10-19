@@ -405,12 +405,13 @@ function state(overrides: Partial<CloudState> = {}): CloudState {
     tombstones: [],
     conflicts: [],
   });
-  assert.equal(validated.snapshot.windows.length, 1);
-  assert.equal(validated.snapshot.windows[0]?.state, "maximized");
+  assert.deepEqual(validated.snapshot.windows, []);
+  assert.equal(validated.snapshot.groups.length, 1);
+  assert.equal(validated.snapshot.groups[0]?.tabs[0]?.url, "https://example.com/1");
   assert.equal(
-    validated.snapshot.windows[0]?.tabs[0]?.group?.syncId,
+    validated.snapshot.groups[0]?.tabs[0]?.group?.syncId,
     "group-a",
-    "group reference re-attached from canonical metadata",
+    "group member retains its group reference",
   );
   assert.equal(validated.snapshot.extensions.length, 1, "extensions preserved");
   assert.equal(validated.snapshot.bookmarks.length, 1, "bookmarks preserved");

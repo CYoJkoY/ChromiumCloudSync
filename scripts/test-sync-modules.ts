@@ -387,7 +387,7 @@ function filesOf(modular: ReturnType<typeof splitCloudState>) {
   assert.deepEqual(merged.changedModules, ["bookmarks"]);
   assert.equal(merged.revision, 6);
   assert.equal(merged.snapshot.bookmarks[0]?.title, "Local title");
-  assert.deepEqual(merged.snapshot.windows, remote.snapshot.windows);
+  assert.deepEqual(merged.snapshot.windows, []);
   validateState({ ...merged.state, snapshot: merged.snapshot });
 }
 
@@ -466,7 +466,7 @@ function filesOf(modular: ReturnType<typeof splitCloudState>) {
     revision: 6,
   });
   assert.deepEqual(merged.changedModules, [], "standalone tabs and windows are not serialized to the cloud");
-  assert.equal(merged.snapshot.windows[0]?.tabs.length, 2);
+  assert.deepEqual(merged.snapshot.windows, []);
 }
 
 console.log("sync-modules tests: OK");

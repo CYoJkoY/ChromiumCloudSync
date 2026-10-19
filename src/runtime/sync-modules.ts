@@ -63,8 +63,6 @@ export interface BookmarksModuleData {
 }
 
 export interface TabsModuleData {
-  /** Legacy payloads may still contain windows; new writes omit them. */
-  windows?: WindowRecord[];
   groups: TabGroupRecord[];
 }
 
@@ -327,7 +325,7 @@ export function combineModularState(modular: ModularCloudState): CloudState {
     extensions: arrayOf<ExtensionRecord>(
       (extensionsModule.data as ExtensionsModuleData).extensions,
     ),
-    windows: arrayOf<WindowRecord>((tabsModule.data as TabsModuleData).windows),
+    windows: [],
     bookmarks: arrayOf<BookmarkRecord>(
       (bookmarksModule.data as BookmarksModuleData).bookmarks,
     ),
@@ -456,7 +454,7 @@ export function mergeModularCloudState(
     schemaVersion: SCHEMA_VERSION,
     updatedAt,
     extensions: extensions.extensions,
-    windows: tabs.windows,
+    windows: [],
     bookmarks: bookmarks.bookmarks,
     groups: tabs.groups,
   };

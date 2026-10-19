@@ -25,8 +25,8 @@ import {
  * rendered as two different tab sets.
  *
  * This module is the single projection consumed by every cloud-tab surface: it
- * applies tombstones, reconciles windows and groups into one dataset, and
- * re-emits a snapshot that restore actions can consume directly.
+ * applies tombstones, reconciles legacy window projections with groups into one
+ * dataset, and re-emits a group-only snapshot for cloud writes.
  */
 
 export const CLOUD_TAB_STATE_VERSION = 1;
@@ -457,7 +457,10 @@ function reconcileSnapshot(
 
   return {
     ...clone(snapshot),
-    windows: reconciledWindows,
+    // Windows are a local browser layout and are intentionally excluded from
+    // the cloud protocol. The canonical windows projection above remains
+    // available to legacy UI callers, while group member tabs stay restorable.
+    windows: [],
     groups: reconciledGroups,
   };
 }

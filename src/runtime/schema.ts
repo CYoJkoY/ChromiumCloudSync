@@ -112,10 +112,14 @@ function normalizeSnapshotShape(input: unknown): Snapshot {
   if (isRecord(value.syncMeta)) delete value.syncMeta.devices;
   value.schemaVersion = SCHEMA_VERSION;
   if (!Array.isArray(value.extensions)) value.extensions = [];
-  if (!Array.isArray(value.windows)) value.windows = [];
+  const legacyWindows = Array.isArray(value.windows) ? value.windows : [];
   if (!Array.isArray(value.bookmarks)) value.bookmarks = [];
   if (!Array.isArray(value.groups))
-    value.groups = deriveGroupsFromWindows(value.windows);
+    value.groups = deriveGroupsFromWindows(legacyWindows);
+  // Window layout and standalone tabs are intentionally not part of the cloud
+  // protocol. Group member tabs remain in groups because their URLs are needed
+  // when a user restores a group.
+  value.windows = [];
   return value as Snapshot;
 }
 
