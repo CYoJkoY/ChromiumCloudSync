@@ -952,7 +952,6 @@ function cloudTabsMetaText(payload) {
   lines.push(`${i.t("revision")} ${payload.revision ?? 0}`);
   lines.push(
     i.t("cloudStateSummary", {
-      windows: counts.windows ?? 0,
       groups: counts.groups ?? 0,
       tabs: counts.tabs ?? 0,
     }),
@@ -997,9 +996,10 @@ function ensureCloudTabsMeta() {
 let cloudTabsRefreshToken = 0;
 
 async function refreshCloudTabs(forceRemote = false) {
-  if (!cloudTabsManager) return;
+  if (!cloudTabsManager) return false;
 
   const token = ++cloudTabsRefreshToken;
+  cloudTabsManager.setAttribute("aria-busy", "true");
 
   cloudTabsManager.replaceChildren();
   const meta = ensureCloudTabsMeta();
@@ -1037,94 +1037,30 @@ async function refreshCloudTabs(forceRemote = false) {
     }
 
     const localTabIds = new Set(data.localTabIds || []);
-    const windows = Array.isArray(data.windows) ? data.windows : [];
-    const detachedGroups = Array.isArray(data.detachedGroups)
-      ? data.detachedGroups
-      : [];
+    const groups = Array.isArray(data.groups) ? data.groups : [];
 
-    if (!windows.length && !detachedGroups.length) {
+    if (!groups.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
       empty.textContent = i.t("cloudTabsEmpty");
       cloudTabsManager.append(empty);
-      return;
+      return true;
     }
 
-    for (const [windowIndex, cloudWindow] of windows.entries()) {
-      const windowSection = document.createElement("details");
-      windowSection.className = "cloud-window-section";
-      windowSection.open = windowIndex === 0;
-
-      const windowTabs = cloudWindow.tabs || [];
-
-      windowSection.append(
-        createCloudDisclosureSummary(
-          i.t("window") + " " + (windowIndex + 1),
-          i.t("groupTabCount", { count: windowTabs.length }),
-        ),
+    for (const group of groups)
+      cloudTabsManager.append(
+        createCloudGroupSection(group, group.tabs || [], localTabIds),
       );
-
-      const body = document.createElement("div");
-      body.className = "cloud-window-body";
-
-      if (!windowTabs.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = i.t("cloudTabsEmpty");
-        body.append(empty);
-        windowSection.append(body);
-        cloudTabsManager.append(windowSection);
-        continue;
-      }
-
-      for (const group of cloudWindow.groups || [])
-        body.append(
-          createCloudGroupSection(group, group.tabs || [], localTabIds),
-        );
-
-      const ungrouped = cloudWindow.ungroupedTabs || [];
-      if (ungrouped.length)
-        body.append(
-          createCloudUngroupedSection(
-            ungrouped,
-            localTabIds,
-            cloudWindow.syncId,
-          ),
-        );
-
-      windowSection.append(body);
-      cloudTabsManager.append(windowSection);
-    }
-
-    if (detachedGroups.length) {
-      const detachedSection = document.createElement("details");
-      detachedSection.className = "cloud-detached-section";
-      detachedSection.open = false;
-      detachedSection.append(
-        createCloudDisclosureSummary(
-          i.t("cloudOnlyGroups"),
-          i.t("groupTabCount", {
-            count: detachedGroups.reduce(
-              (total, group) => total + (group.tabs || []).length,
-              0,
-            ),
-          }),
-        ),
-      );
-      const body = document.createElement("div");
-      body.className = "cloud-window-body";
-      for (const group of detachedGroups)
-        body.append(
-          createCloudGroupSection(group, group.tabs || [], localTabIds),
-        );
-      detachedSection.append(body);
-      cloudTabsManager.append(detachedSection);
-    }
+    return true;
   } catch (e) {
     // A superseded request must not overwrite the current view with an error
     // banner either.
     if (token !== cloudTabsRefreshToken) return;
     showError(e);
+    return false;
+  } finally {
+    if (token === cloudTabsRefreshToken)
+      cloudTabsManager.setAttribute("aria-busy", "false");
   }
 }
 
@@ -1146,7 +1082,8 @@ bindAction("refreshCloudTabs", async (_e, b) => {
   b.disabled = true;
   b.textContent = i.t("processing");
   try {
-    await refreshCloudTabs(true);
+    const refreshed = await refreshCloudTabs(true);
+    if (!refreshed) return;
     showFeedback(
       "success",
       i.t("cloudTabsRefreshed"),

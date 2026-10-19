@@ -21,7 +21,7 @@ const DICT = {
       "The Popup's Tabs action restores ungrouped HTTP(S) tabs and does not automatically create or restore tab groups. Use the separate Restore action on a cloud tab group to restore its restorable tabs in a new browser window and apply the group's metadata.",
     cloudTabsTitle: "Cloud tabs",
     cloudTabsBody:
-      "Settings → Cloud tabs is available in Incremental mode. It provides a hierarchical view of cloud windows, tab groups, and ungrouped tabs. Add current browser tabs to cloud merges the current browser's tabs, windows, and groups into the persistent cloud collection; it does not replace the browser's current state.",
+      "Settings → Cloud tabs is available in Incremental mode. It provides a flat view of cloud tab groups and their member tabs. Add current browser tab groups to cloud merges the current groups and member tabs into the persistent cloud collection; it does not replace the browser's current state.",
     syncTitle: "Sync model",
     syncBody:
       "The sync engine keeps a local base snapshot and performs a three-way merge between base, local, and remote state. Stable synchronization IDs are used for tabs, windows, tab groups, and bookmarks. Deletions are represented by tombstones so stale devices do not silently recreate removed items. Conflicting field changes remain visible as conflicts instead of being silently discarded.",

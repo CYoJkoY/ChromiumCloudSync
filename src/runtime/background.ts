@@ -316,13 +316,32 @@ async function getObjectMap(key) {
   const s = await readLocal([key]);
   return s[key] || {};
 }
-async function getStableLocalId(kind, id, key) {
-  const map = await getObjectMap(key),
-    k = String(id);
-  if (map[k]) return map[k];
-  map[k] = `${kind}-${crypto.randomUUID()}`;
-  await setSettings({ [key]: map });
-  return map[k];
+const stableIdLocks = new Map();
+async function getStableLocalIds(kind, ids, key) {
+  const previous = stableIdLocks.get(key) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => { release = resolve; });
+  const queued = previous.then(() => current);
+  stableIdLocks.set(key, queued);
+  await previous;
+  try {
+    const map = await getObjectMap(key);
+    let changed = false;
+    const result = new Map();
+    for (const id of ids) {
+      const localId = String(id);
+      if (!map[localId]) {
+        map[localId] = kind + "-" + crypto.randomUUID();
+        changed = true;
+      }
+      result.set(localId, map[localId]);
+    }
+    if (changed) await setSettings({ [key]: map });
+    return result;
+  } finally {
+    release();
+    if (stableIdLocks.get(key) === queued) stableIdLocks.delete(key);
+  }
 }
 function extensionStoreInfo(ext) {
   const id = ext.id,
@@ -367,11 +386,16 @@ function isRestrictedUrl(url) {
 async function collectTabGroups() {
   if (!chrome.tabGroups?.query) return [];
   const groups = await chrome.tabGroups.query({});
+  const syncIds = await getStableLocalIds(
+    "group",
+    groups.map((group) => group.id),
+    KEYS.GROUP_SYNC_IDS,
+  );
   return Promise.all(
-    groups.map(async (g) => ({
+    groups.map((g) => ({
       localId: g.id,
       windowId: g.windowId,
-      syncId: await getStableLocalId("group", g.id, KEYS.GROUP_SYNC_IDS),
+      syncId: syncIds.get(String(g.id)),
       title: g.title || "",
       color: g.color || "grey",
       collapsed: !!g.collapsed,
@@ -383,7 +407,7 @@ async function collectBookmarks() {
     map = await getObjectMap(KEYS.BOOKMARK_SYNC_IDS),
     flat = [];
   let changed = false;
-  async function walk(node, parentSyncId = null, index = 0) {
+  function walk(node, parentSyncId = null, index = 0) {
     let syncId = node.id === "0" ? "root-bookmarks" : map[String(node.id)];
     if (!syncId) {
       syncId = `bookmark-${crypto.randomUUID()}`;
@@ -398,9 +422,9 @@ async function collectBookmarks() {
       ...(node.url ? { url: node.url } : {}),
     });
     for (let i = 0; i < (node.children || []).length; i++)
-      await walk(node.children[i], syncId, i);
+      walk(node.children[i], syncId, i);
   }
-  for (const r of tree) await walk(r, null, 0);
+  for (const r of tree) walk(r, null, 0);
   if (changed) await setSettings({ [KEYS.BOOKMARK_SYNC_IDS]: map });
   return flat;
 }
@@ -409,30 +433,32 @@ async function collectGroupSnapshots(groups) {
   if (!meta.length) return [];
 
   const all = await chrome.tabs.query({});
+  const syncIds = await getStableLocalIds(
+    "tab",
+    all
+      .filter((tab) => !isRestrictedUrl(tab.url))
+      .map((tab) => tab.id)
+      .filter((id) => typeof id === "number"),
+    KEYS.TAB_SYNC_IDS,
+  );
 
   return Promise.all(
-    meta.map(async (g) => {
-      const tabs = await Promise.all(
-        all
+    meta.map((g) => {
+      const tabs = all
           .filter(
             (t) =>
               t.groupId === g.localId &&
               !isRestrictedUrl(t.url),
           )
           .sort((a, b) => a.index - b.index)
-          .map(async (t) => ({
-            syncId: await getStableLocalId(
-              "tab",
-              t.id,
-              KEYS.TAB_SYNC_IDS,
-            ),
+          .map((t) => ({
+            syncId: syncIds.get(String(t.id)),
             url: t.url,
             title: t.title || "",
             pinned: !!t.pinned,
             active: !!t.active,
             index: t.index,
-          })),
-      );
+          }));
 
       return {
         syncId: g.syncId,
@@ -446,14 +472,18 @@ async function collectGroupSnapshots(groups) {
   );
 }
 async function createSnapshot() {
-  const s = await getSettings(),
-    groups = await collectTabGroups();
+  const [s, groups, extensions, bookmarks] = await Promise.all([
+    getSettings(),
+    collectTabGroups(),
+    collectExtensions(),
+    collectBookmarks(),
+  ]);
   return {
     schemaVersion: SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
-    extensions: await collectExtensions(),
+    extensions,
     windows: [],
-    bookmarks: await collectBookmarks(),
+    bookmarks,
     groups: await collectGroupSnapshots(groups),
     syncMeta: { gistId: s[KEYS.GIST_ID] || null },
   };

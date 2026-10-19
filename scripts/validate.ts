@@ -840,7 +840,7 @@ for (const required of [
 for (const required of [
   "refreshCloudTabs(true)",
   "cloudTabStateChanged",
-  "detachedGroups",
+  "data.groups",
   "forceRemote",
 ])
   if (!optionsSource.includes(required))
