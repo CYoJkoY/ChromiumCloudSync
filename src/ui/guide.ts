@@ -39,7 +39,7 @@ const DICT = {
       "CRX and ZIP backups are separate from browser-state synchronization. Open Settings → Third-party extensions and configure a backend. The extension list is opt-in: check what you want to back up and the selection saves itself. To stop hunting for installers, use Back up from a local folder and point it at the browser user-data directory (the one containing Extensions), a single Extensions directory, or an unpacked extension’s source directory — the files found there are packaged into a ZIP per extension and uploaded under the extension’s own ID and version. Upload several CRX / ZIP…, or dropping files onto the list, still works for packages you already have, and each archive is matched to its extension by its own ID or manifest. Chromium does not let this extension read another extension’s installed directory by ID, so the folder or the file always comes from you; downloading a backup also does not bypass the browser’s install confirmation. Deselecting or uninstalling does not silently delete cloud files: use Clean up unused backups to review and permanently remove packages for unselected IDs, including older versions. The index keeps the full inventory so cleanup can find every recorded file.",
     historyTitle: "History and rollback",
     historyBody:
-      "History depends on the selected provider: GitHub Gist uses Gist revisions, Google Drive uses file revisions, and WebDAV archives previous current-state files in its history area. The History page can inspect revisions and create a new current revision by rolling back to a selected version.",
+      "History depends on the selected provider: GitHub Gist and Google Drive keep provider-native revisions. WebDAV stores current state only, and the extension does not create application-managed archives.",
     settingsTitle: "Settings workflow",
     settingsBody:
       "Settings is organized by synchronization function. The Sync panel selects GitHub Gist, Google Drive, or WebDAV and exposes the backend-specific connection controls. GitHub Gist uses one Gist ID field: enter a compatible ID to use it, or leave it blank to create a new synchronization Gist. Google Drive uses OAuth. WebDAV uses the configured URL, folder, and optional username/password. The same panel contains automatic-sync controls, restore behavior, and the tab synchronization mode. Settings → Cloud tabs provides hierarchical cloud-tab management in Incremental mode.",
@@ -93,7 +93,7 @@ const DICT = {
       "CRX / ZIP 备份与浏览器状态同步完全分离。打开“设置 → 第三方扩展”配置后端。扩展列表默认不选：勾选需要备份的扩展，选择会自动保存。如果不想再逐个寻找安装包，点击“从本地文件夹备份”，选择浏览器的用户数据目录（包含 Extensions 文件夹的那个）、单个 Extensions 目录，或某个解包扩展的源码目录；扫描到的文件会按扩展 ID 和版本打成 ZIP 并上传。“上传多个 CRX / ZIP…”或把文件拖到列表上同样可用，每个安装包会按自身的 ID 或 manifest.json 自动对应到扩展。Chromium 不允许本扩展按 ID 读取其他扩展的安装目录，因此文件夹或文件始终由你提供；下载备份后也仍需由浏览器确认安装。取消选择或卸载不会静默删除云端文件：点击“清理未选扩展备份”即可检查并永久删除未选 ID 的所有扩展包（包括旧版本）。索引会保留完整清单，确保清理时能找到已上传的文件。",
     historyTitle: "历史与回滚",
     historyBody:
-      "历史记录取决于所选择的存储后端：GitHub Gist 使用 Gist Revision，Google Drive 使用文件修订历史，WebDAV 会归档之前的当前状态文件并维护 history 索引。“历史”页面可以查看版本，并通过回滚操作创建新的当前 Revision。",
+      "历史记录取决于所选择的存储后端：GitHub Gist 和 Google Drive 使用服务商原生修订记录；WebDAV 只保存当前状态，扩展不再创建应用自管历史归档。",
     settingsTitle: "设置工作流",
     settingsBody:
       "设置页面按照同步功能组织。“同步”面板可选择 GitHub Gist、Google Drive 或 WebDAV，并显示对应后端配置。GitHub Gist 使用一个 Gist ID 输入框：输入兼容 ID 就使用该 Gist，留空则创建新的同步 Gist。Google Drive 使用 OAuth。WebDAV 使用服务器地址、目录及可选用户名/密码。该面板同时提供自动同步、恢复方式和标签页同步模式设置；“云端标签页”页在增量模式下提供层级化管理。",

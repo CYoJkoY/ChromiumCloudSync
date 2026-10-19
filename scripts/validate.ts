@@ -287,7 +287,7 @@ for (const provider of [
   const text = fs.readFileSync(path.join(root, file), "utf8");
   if (!text.includes(`export function ${factory}`))
     throw new Error(`${file} must export ${factory}`);
-  for (const required of ["read(", "write(", "remove(", "list(", "history:"])
+  for (const required of ["read(", "write(", "remove(", "list("])
     if (!text.includes(required))
       throw new Error(`${file} FileStore is missing ${required}`);
 }
@@ -398,15 +398,17 @@ const googleDriveOptions = fs.readFileSync(
   "utf8",
 );
 for (const required of [
-  "function requestGoogleDriveRedirectOAuth",
+  "function requestGoogleDriveWebOAuth",
   "CCSyncGoogleOAuthConfig",
   'authorizeUrl.searchParams.set("redirect_uri", redirect)',
-  'authorizeUrl.searchParams.set("response_type", "token")',
+  'authorizeUrl.searchParams.set("response_type", "code")',
+  'authorizeUrl.searchParams.set("code_challenge", pkce.challenge)',
+  'authorizeUrl.searchParams.set("code_challenge_method", "S256")',
+  'redirectUrl.protocol !== "https:"',
   "parsed.origin !== redirectUrl.origin",
   "parsed.pathname !== redirectUrl.pathname",
-  'parameters.get("state") !== state',
+  'parsed.searchParams.get("state") !== pkce.state',
   "const packagedRedirectFlowAvailable =",
-  "const canUsePackagedRedirect =",
 ]) {
   if (!googleDriveOptions.includes(required))
     throw new Error("Google Drive redirect OAuth is missing " + required);
@@ -775,17 +777,11 @@ for (const required of [
   "renderGdriveAuthState",
   "updateGoogleDriveConnectAvailability",
   "getPackagedGoogleOAuthClientId",
-  "requestGoogleDriveRedirectOAuth",
+  "requestGoogleDriveWebOAuth",
   "packagedRedirectFlowAvailable",
-  "canUsePackagedRedirect",
-  'authorizeUrl.searchParams.set("response_type", "token")',
-  "gdriveTokenExpiryInvalid",
   "requestGoogleDriveWebOAuth",
   "completeGoogleDriveWebOAuth",
-  'expiresAt: session.expiresAt',
   'request("completeGdriveOAuth", {',
-  'request("connectGdrive", {',
-  "token: session.accessToken",
 ])
   if (!optionsSource.includes(required))
     throw new Error(

@@ -3,17 +3,8 @@ import { detectBrowserCapabilities } from "./browser-capabilities.js";
 import {
   HISTORY_INDEX_FILE,
   LEGACY_MONOLITHIC_FILE,
-  MANIFEST_FILE,
-  META_FILE,
-  MODULE_FILES,
-  SYNC_MODULE_IDS,
 } from "./sync-modules.js";
-import type {
-  FileStore,
-  FileStoreReadResult,
-  HistoryEntry,
-} from "./cloud-files.js";
-import type { SyncModuleId } from "./sync-modules.js";
+import type { FileStore, FileStoreReadResult } from "./cloud-files.js";
 
 /**
  * Google Drive transport.
@@ -25,9 +16,7 @@ import type { SyncModuleId } from "./sync-modules.js";
  * ```text
  * Chromium Cloud Sync/
  *   manifest.json  meta.json  extensions.json  bookmarks.json  tabs.json
- *   history/
- *     index.json
- *     <label>--manifest.json  <label>--meta.json  <label>--extensions.json …
+ *   (legacy history/ folder is read only for cleanup)
  * ```
  *
  * The pre-modular single-file payload (`chromium-cloud-sync-state.json`) is
@@ -45,7 +34,6 @@ export const GDRIVE_INDEX_FILE = "index.json";
 const LEGACY_STATE_FILE = "chromium-cloud-sync-state.json";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const JSON_MIME = "application/json";
-export const GDRIVE_HISTORY_LIMIT = 30;
 const MAX_GDRIVE_LIST_PAGES = 1000;
 
 const LOCAL_KEYS = {
@@ -1135,15 +1123,9 @@ async function resolveLayout(): Promise<DriveLayout> {
     await writeLocal({ [LOCAL_KEYS.folderId]: folderId });
     await writeIdCache({});
   }
-  let historyFolderId = String(state[LOCAL_KEYS.historyFolderId] || "");
-  if (!historyFolderId) {
-    historyFolderId = await ensureFolder(
-      GDRIVE_HISTORY_FOLDER,
-      folderId,
-      token,
-    );
-    await writeLocal({ [LOCAL_KEYS.historyFolderId]: historyFolderId });
-  }
+  // New syncs do not create an application-managed history folder. Keep a
+  // cached legacy id only so cleanup can remove files created by older builds.
+  const historyFolderId = String(state[LOCAL_KEYS.historyFolderId] || "");
   return { token, folderId, historyFolderId, ids: await readIdCache() };
 }
 
@@ -1197,8 +1179,20 @@ async function resolveFileId(
   const location = driveLocation(logicalName);
   const cacheKey = `${location.scope}:${location.name}`;
   if (layout.ids[cacheKey]) return layout.ids[cacheKey];
-  const parentId =
-    location.scope === "history" ? layout.historyFolderId : layout.folderId;
+  let parentId = layout.folderId;
+  if (location.scope === "history") {
+    if (!layout.historyFolderId) {
+      const folders = await queryFiles(
+        `name='${escapeQueryValue(GDRIVE_HISTORY_FOLDER)}' and '${escapeQueryValue(layout.folderId)}' in parents and trashed=false`,
+        layout.token,
+      );
+      layout.historyFolderId = folders[0]?.id || "";
+      if (layout.historyFolderId)
+        await writeLocal({ [LOCAL_KEYS.historyFolderId]: layout.historyFolderId });
+    }
+    parentId = layout.historyFolderId;
+    if (!parentId) return null;
+  }
   const found = await queryFiles(
     `name='${escapeQueryValue(location.name)}' and '${escapeQueryValue(parentId)}' in parents and trashed=false`,
     layout.token,
@@ -1356,43 +1350,7 @@ async function readLegacyStateFile(
   return readTextById(layout, fileId);
 }
 
-interface DriveHistoryIndex {
-  schemaVersion?: number;
-  entries?: Array<{
-    id: string;
-    createdAt: string;
-    revision?: number;
-    files?: string[];
-    /** Modules whose payload changed in this archived revision. */
-    modules?: string[];
-  }>;
-}
-
-const PROTOCOL_FILES = [
-  MANIFEST_FILE,
-  META_FILE,
-  ...SYNC_MODULE_IDS.map((moduleId) => MODULE_FILES[moduleId]),
-];
-
 export function createGdriveFileStore(): FileStore {
-  const readIndex = async (
-    layout: DriveLayout,
-  ): Promise<DriveHistoryIndex> => {
-    const id = await resolveFileId(layout, HISTORY_INDEX_FILE);
-    if (!id) return { schemaVersion: 2, entries: [] };
-    const text = await readTextById(layout, id);
-    if (!text) return { schemaVersion: 2, entries: [] };
-    try {
-      const parsed = JSON.parse(text) as DriveHistoryIndex;
-      return {
-        schemaVersion: 2,
-        entries: Array.isArray(parsed.entries) ? parsed.entries : [],
-      };
-    } catch {
-      return { schemaVersion: 2, entries: [] };
-    }
-  };
-
   return {
     id: "gdrive",
     async read(names: string[]): Promise<FileStoreReadResult> {
@@ -1452,111 +1410,6 @@ export function createGdriveFileStore(): FileStore {
         return entries.map((entry) => entry.name);
       });
     },
-    history: {
-      async archive(label, entries, meta) {
-        await withLayout(async (layout) => {
-        for (const entry of entries)
-          await uploadText(layout, `history/${label}/${entry.name}`, entry.text);
-        const index = await readIndex(layout);
-        let revision = Number(meta?.revision) || 0;
-        if (!revision) {
-          const metaText = entries.find((entry) => entry.name === META_FILE)?.text;
-          if (metaText) {
-            try {
-              revision =
-                Number((JSON.parse(metaText) as { revision?: number }).revision) ||
-                0;
-            } catch {
-              revision = 0;
-            }
-          }
-        }
-        index.schemaVersion = 2;
-        index.entries = [
-          ...(index.entries || []).filter((entry) => entry.id !== label),
-          {
-            id: label,
-            createdAt: new Date().toISOString(),
-            revision,
-            files: entries.map((entry) => entry.name),
-            modules: (meta?.modules || []).map((moduleId) => String(moduleId)),
-          },
-        ].slice(-GDRIVE_HISTORY_LIMIT);
-        await uploadText(
-          layout,
-          HISTORY_INDEX_FILE,
-          JSON.stringify(index, null, 2),
-        );
-        // Trim archives beyond the retention window.
-        const retained = (index.entries || []).length;
-        if (retained >= GDRIVE_HISTORY_LIMIT) await pruneHistory(layout, index);
-        });
-      },
-      async list(): Promise<HistoryEntry[]> {
-        return withLayout(async (layout) => {
-        const index = await readIndex(layout);
-        return (index.entries || [])
-          .slice()
-          .reverse()
-          .map((entry, position) => ({
-            id: entry.id,
-            createdAt: entry.createdAt,
-            current: position === 0,
-            layout: "modular",
-            revision: Number(entry.revision) || 0,
-            modules: (entry.modules || []).filter((moduleId) =>
-              SYNC_MODULE_IDS.includes(moduleId as SyncModuleId),
-            ) as SyncModuleId[],
-          }));
-        });
-      },
-      async read(entryId) {
-        return withLayout(async (layout) => {
-        const files: Record<string, string | null> = {};
-        await Promise.all(
-          PROTOCOL_FILES.map(async (name) => {
-            const id = await resolveFileId(layout, `history/${entryId}/${name}`);
-            files[name] = id ? await readTextById(layout, id) : null;
-          }),
-        );
-        if (PROTOCOL_FILES.every((name) => files[name] === null))
-          throw Error(`读取 Google Drive 历史版本失败：${entryId}`);
-        return files;
-        });
-      },
-    },
-  };
-}
 
-async function pruneHistory(
-  layout: DriveLayout,
-  index: DriveHistoryIndex,
-): Promise<void> {
-  const keep = new Set(
-    (index.entries || []).flatMap((entry) =>
-      (entry.files || []).map((name) => `history/${entry.id}/${name}`),
-    ),
-  );
-  const entries = await queryFiles(
-    `'${escapeQueryValue(layout.historyFolderId)}' in parents and trashed=false`,
-    layout.token,
-  );
-  for (const entry of entries) {
-    if (entry.name === GDRIVE_INDEX_FILE) continue;
-    const logical = `history/${entry.name.replace(/--/g, "/")}`;
-    if (keep.has(logical)) continue;
-    delete layout.ids[`history:${entry.name}`];
-    const response = await driveFetch(
-      `/files/${encodeURIComponent(entry.id)}`,
-      { method: "DELETE" },
-      layout.token,
-    );
-    if (!response.ok && response.status !== 404)
-      throw driveError(
-        response.status,
-        await parseErrorBody(response),
-        "清理 Google Drive 历史文件",
-      );
-  }
-  await writeIdCache(layout.ids);
+  };
 }

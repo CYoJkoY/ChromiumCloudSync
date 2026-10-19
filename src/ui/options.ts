@@ -96,164 +96,6 @@ function getPackagedGoogleOAuthClientId(): string {
   }
 }
 
-interface GoogleDriveRedirectOAuthSession {
-  accessToken: string;
-  expiresAt: number;
-}
-
-/**
- * Start Google's extension OAuth flow from the options-page click handler.
- * Unlike getAuthToken(), launchWebAuthFlow does not depend on the browser's
- * Google account chooser integration. It returns the token in the URL fragment.
- */
-function requestGoogleDriveRedirectOAuth(
-  timeoutMs = 120_000,
-): Promise<GoogleDriveRedirectOAuthSession> {
-  const identity = chrome.identity as typeof chrome.identity & {
-    getRedirectURL?: () => string;
-    launchWebAuthFlow?: (
-      details: { url: string; interactive: boolean },
-      callback?: (redirectUrl?: string) => void,
-    ) => unknown;
-  };
-  const clientId = getPackagedGoogleOAuthClientId();
-  if (!clientId)
-    return Promise.reject(new Error(i.t("gdriveOAuthClientMissing")));
-  if (
-    typeof identity?.getRedirectURL !== "function" ||
-    typeof identity?.launchWebAuthFlow !== "function"
-  )
-    return Promise.reject(new Error(i.t("gdriveIdentityUnavailable")));
-
-  let redirect = "";
-  let redirectUrl: URL;
-  try {
-    redirect = identity.getRedirectURL();
-    redirectUrl = new URL(redirect);
-    if (
-      redirectUrl.protocol !== "https:" ||
-      redirectUrl.username ||
-      redirectUrl.password ||
-      redirectUrl.search ||
-      redirectUrl.hash
-    )
-      throw new Error(i.t("gdriveManualRedirectUnavailable"));
-  } catch {
-    return Promise.reject(new Error(i.t("gdriveManualRedirectUnavailable")));
-  }
-
-  const state = randomOAuthString(24);
-  const authorizeUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  authorizeUrl.searchParams.set("client_id", clientId);
-  authorizeUrl.searchParams.set("redirect_uri", redirect);
-  authorizeUrl.searchParams.set("response_type", "token");
-  authorizeUrl.searchParams.set("scope", "https://www.googleapis.com/auth/drive.file");
-  authorizeUrl.searchParams.set("prompt", "select_account");
-  authorizeUrl.searchParams.set("state", state);
-
-  // Invoke launchWebAuthFlow synchronously before yielding the click's call stack.
-  return new Promise<string>((resolve, reject) => {
-    let settled = false;
-    let timer: ReturnType<typeof window.setTimeout> | undefined;
-    const finish = (redirectedUrl: string, failure?: Error) => {
-      if (settled) return;
-      settled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-      if (failure) reject(failure);
-      else resolve(redirectedUrl);
-    };
-    const callback = (redirectedUrl?: string) => {
-      const apiError = chrome.runtime?.lastError;
-      if (apiError) {
-        finish(
-          "",
-          new Error(apiError.message || i.t("gdriveManualRedirectUnavailable")),
-        );
-        return;
-      }
-      finish(String(redirectedUrl || ""));
-    };
-    timer = window.setTimeout(
-      () => finish("", new Error(i.t("gdriveRedirectAuthTimeout"))),
-      timeoutMs,
-    );
-
-    try {
-      const returned = identity.launchWebAuthFlow!(
-        { url: authorizeUrl.toString(), interactive: true },
-        callback,
-      );
-      if (
-        returned &&
-        typeof returned === "object" &&
-        "then" in returned &&
-        typeof (returned as { then?: unknown }).then === "function"
-      ) {
-        Promise.resolve(returned).then(
-          (redirectedUrl) => {
-            if (redirectedUrl !== undefined && redirectedUrl !== null)
-              finish(String(redirectedUrl));
-          },
-          (failure: unknown) =>
-            finish(
-              "",
-              failure instanceof Error
-                ? failure
-                : new Error(String(failure)),
-            ),
-        );
-      }
-    } catch (failure) {
-      finish(
-        "",
-        failure instanceof Error ? failure : new Error(String(failure)),
-      );
-    }
-  }).then((responseUrl) => {
-    if (!responseUrl) throw new Error(i.t("gdriveWebAuthCancelled"));
-
-    let parsed: URL;
-    try {
-      parsed = new URL(responseUrl);
-    } catch {
-      throw new Error(i.t("gdriveOAuthRedirectMismatch"));
-    }
-    if (
-      parsed.origin !== redirectUrl.origin ||
-      parsed.pathname !== redirectUrl.pathname
-    )
-      throw new Error(i.t("gdriveOAuthRedirectMismatch"));
-
-    const parameters = new URLSearchParams(parsed.hash.replace(/^#/, ""));
-    const authError =
-      parameters.get("error") || parsed.searchParams.get("error");
-    if (authError)
-      throw new Error(
-        authError === "access_denied"
-          ? i.t("gdriveWebAuthCancelled")
-          : authError,
-      );
-    if (parameters.get("state") !== state)
-      throw new Error(i.t("gdriveOAuthStateMismatch"));
-
-    const accessToken = String(parameters.get("access_token") || "").trim();
-    if (!accessToken) throw new Error(i.t("gdriveIdentityNoToken"));
-
-    const expiresIn = Number(parameters.get("expires_in") || 0);
-    if (
-      !Number.isFinite(expiresIn) ||
-      expiresIn <= 60 ||
-      expiresIn > 86_400
-    )
-      throw new Error(i.t("gdriveTokenExpiryInvalid"));
-
-    return {
-      accessToken,
-      expiresAt: Date.now() + expiresIn * 1000,
-    };
-  });
-}
-
 async function createGoogleOAuthPkceContext(): Promise<GoogleOAuthPkceContext> {
   const verifier = randomOAuthString(64);
   const digest = new Uint8Array(
@@ -313,6 +155,20 @@ function requestGoogleDriveWebOAuth(clientIdValue: string): Promise<GoogleOAuthR
   void prepareGoogleOAuthContext();
 
   const redirect = identity.getRedirectURL();
+  let redirectUrl: URL;
+  try {
+    redirectUrl = new URL(redirect);
+    if (
+      redirectUrl.protocol !== "https:" ||
+      redirectUrl.username ||
+      redirectUrl.password ||
+      redirectUrl.search ||
+      redirectUrl.hash
+    )
+      throw new Error(i.t("gdriveManualRedirectUnavailable"));
+  } catch {
+    return Promise.reject(new Error(i.t("gdriveManualRedirectUnavailable")));
+  }
   const authorizeUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authorizeUrl.searchParams.set("client_id", clientId);
   authorizeUrl.searchParams.set("redirect_uri", redirect);
@@ -382,6 +238,11 @@ function requestGoogleDriveWebOAuth(clientIdValue: string): Promise<GoogleOAuthR
   }).then((responseUrl) => {
     if (!responseUrl) throw new Error(i.t("gdriveWebAuthCancelled"));
     const parsed = new URL(responseUrl);
+    if (
+      parsed.origin !== redirectUrl.origin ||
+      parsed.pathname !== redirectUrl.pathname
+    )
+      throw new Error(i.t("gdriveOAuthRedirectMismatch"));
     if (parsed.searchParams.get("state") !== pkce.state)
       throw new Error(i.t("gdriveOAuthStateMismatch"));
     const code = parsed.searchParams.get("code");
@@ -443,11 +304,10 @@ async function connectGoogleDrive(forceWebOAuth = false): Promise<void> {
     if (shouldUseManualOAuth) {
       auth = await completeGoogleDriveWebOAuth(manualClientId, clientSecret);
     } else if (packagedRedirectFlowAvailable) {
-      const session = await requestGoogleDriveRedirectOAuth();
-      auth = await request("connectGdrive", {
-        token: session.accessToken,
-        expiresAt: session.expiresAt,
-      });
+      // The packaged client uses the same PKCE authorization-code exchange as
+      // the manual fallback. The user only needs to choose a Google account;
+      // no Client Secret is required for the public Web client.
+      auth = await completeGoogleDriveWebOAuth(packagedClientId, "");
     } else if (manualClientId) {
       // A user-supplied Web application client remains the only valid fallback
       // when a packaged Client ID is absent. Never use it with getAuthToken().

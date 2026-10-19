@@ -86,8 +86,10 @@ fs.rmSync(compilerOut, { recursive: true, force: true });
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });
 
-const tsc = process.platform === "win32" ? "tsc.cmd" : "tsc";
-execFileSync(tsc, ["-p", path.join(root, "tsconfig.json")], {
+const tscEntry = path.join(root, "node_modules", "typescript", "bin", "tsc");
+if (!fs.existsSync(tscEntry))
+  throw new Error(`Missing TypeScript compiler entry: ${tscEntry}`);
+execFileSync(process.execPath, [tscEntry, "-p", path.join(root, "tsconfig.json")], {
   cwd: root,
   stdio: "inherit",
 });

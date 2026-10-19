@@ -459,6 +459,41 @@ function respondWithAccount(email = "user@example.com") {
 }
 
 /* --------------------------------------------------------------------------
+ * Public Web client PKCE authorization-code exchange accepts no client secret.
+ * ------------------------------------------------------------------------ */
+{
+  reset();
+  respondWithAccount("public-web@example.com");
+  const chromeMock = (globalThis as unknown as { chrome: { identity: Record<string, unknown> } }).chrome;
+  let authorization: URL | null = null;
+  chromeMock.identity.launchWebAuthFlow = async (details: unknown) => {
+    authorization = new URL(String((details as { url?: unknown })?.url || ""));
+    const state = authorization.searchParams.get("state") || "";
+    return `https://example.chromiumapp.org/?code=public-client-code&state=${encodeURIComponent(state)}`;
+  };
+  fetchResponder = (call) => {
+    if (call.url.includes("oauth2.googleapis.com/token"))
+      return { ok: true, status: 200, body: { access_token: "public-access", refresh_token: "public-refresh", expires_in: 3600 } };
+    if (call.url.includes("/about"))
+      return { ok: true, status: 200, body: { user: { emailAddress: "public-web@example.com" } } };
+    return { ok: true, status: 200, body: {} };
+  };
+  const auth = await connectGoogleDriveManual("public-web-client.apps.googleusercontent.com", "");
+  assert.equal(auth.mode, "manual");
+  assert.equal(authorization?.searchParams.get("response_type"), "code");
+  assert.equal(authorization?.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(authorization?.searchParams.get("scope"), GDRIVE_SCOPE);
+  assert.equal(authorization?.searchParams.get("redirect_uri"), "https://example.chromiumapp.org/");
+  const exchange = fetchCalls.find((call) => call.url.includes("oauth2.googleapis.com/token"));
+  assert.ok(exchange);
+  const exchangeBody = new URLSearchParams(String(exchange.init.body || ""));
+  assert.equal(exchangeBody.has("client_secret"), false);
+  assert.ok((exchangeBody.get("code_verifier") || "").length >= 64);
+  assert.equal(exchangeBody.get("client_id"), "public-web-client.apps.googleusercontent.com");
+  assert.equal((storage.get("gdriveTokens") as Record<string, unknown>).clientSecret, "");
+}
+
+/* --------------------------------------------------------------------------
  * Manual fallback still works and is labelled as manual.
  * ------------------------------------------------------------------------ */
 {

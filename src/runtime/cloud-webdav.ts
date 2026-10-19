@@ -1,6 +1,5 @@
 import { readLocal } from "./storage.js";
 import {
-  HISTORY_INDEX_FILE,
   LEGACY_MONOLITHIC_FILE,
   MANIFEST_FILE,
   META_FILE,
@@ -8,46 +7,20 @@ import {
   SYNC_MODULE_IDS,
 } from "./sync-modules.js";
 import { LEGACY_ALT_FILE } from "./cloud-files.js";
-import type {
-  FileStore,
-  FileStoreReadResult,
-  HistoryEntry,
-} from "./cloud-files.js";
-import type { SyncModuleId } from "./sync-modules.js";
+import type { FileStore, FileStoreReadResult } from "./cloud-files.js";
 
 /**
  * WebDAV transport.
  *
  * WebDAV is a plain file store, so the modular layout maps directly onto the
- * configured folder. WebDAV has no server-side versioning that an MV3 service
- * worker can rely on (PROPFIND responses are XML and DOMParser is unavailable
- * in a worker), so this provider maintains its own `history/` archive and
- * `history/index.json` control file.
+ * configured folder. WebDAV has no provider history that the extension needs
+ * to mirror, so normal sync stores only the current modular files.
  */
-
-export const WEBDAV_HISTORY_LIMIT = 30;
-const WEBDAV_HISTORY_INDEX_SCHEMA = 2;
-
 interface DavConfig {
   url: string;
   folder: string;
   user: string;
   pass: string;
-}
-
-interface DavIndexEntry {
-  id: string;
-  createdAt: string;
-  layout?: "modular" | "legacy";
-  revision?: number;
-  files?: string[];
-  /** Modules whose payload changed in this archived revision. */
-  modules?: string[];
-}
-
-interface DavIndex {
-  schemaVersion?: number;
-  entries?: DavIndexEntry[];
 }
 
 export async function webdavConfig(): Promise<DavConfig> {
@@ -236,19 +209,6 @@ export function createWebdavFileStore(): FileStore {
     return cached;
   };
 
-  const readIndex = async (cfg: DavConfig): Promise<DavIndex> => {
-    const text = await davReadText(cfg, HISTORY_INDEX_FILE);
-    if (!text) return { schemaVersion: WEBDAV_HISTORY_INDEX_SCHEMA, entries: [] };
-    try {
-      const parsed = JSON.parse(text) as DavIndex;
-      return {
-        schemaVersion: WEBDAV_HISTORY_INDEX_SCHEMA,
-        entries: Array.isArray(parsed.entries) ? parsed.entries : [],
-      };
-    } catch {
-      return { schemaVersion: WEBDAV_HISTORY_INDEX_SCHEMA, entries: [] };
-    }
-  };
 
   return {
     id: "webdav",
@@ -285,87 +245,6 @@ export function createWebdavFileStore(): FileStore {
       }
       return present;
     },
-    history: {
-      async archive(label, entries, meta) {
-        const cfg = await config();
-        for (const entry of entries)
-          await davWriteText(cfg, `history/${label}/${entry.name}`, entry.text);
-        const index = await readIndex(cfg);
-        const files = entries.map((entry) => entry.name);
-        let revision = Number(meta?.revision) || 0;
-        if (!revision) {
-          const metaText = entries.find((entry) => entry.name === META_FILE)?.text;
-          if (metaText) {
-            try {
-              revision = Number((JSON.parse(metaText) as { revision?: number }).revision) || 0;
-            } catch {
-              revision = 0;
-            }
-          }
-        }
-        index.entries = [
-          ...(index.entries || []).filter((entry) => entry.id !== label),
-          {
-            id: label,
-            createdAt: new Date().toISOString(),
-            layout: "modular",
-            revision,
-            files,
-            modules: (meta?.modules || []).map((moduleId) => String(moduleId)),
-          },
-        ].slice(-WEBDAV_HISTORY_LIMIT);
-        index.schemaVersion = WEBDAV_HISTORY_INDEX_SCHEMA;
-        await davWriteText(
-          cfg,
-          HISTORY_INDEX_FILE,
-          JSON.stringify(index, null, 2),
-        );
-      },
-      async list(): Promise<HistoryEntry[]> {
-        const cfg = await config();
-        const index = await readIndex(cfg);
-        return (index.entries || [])
-          .slice()
-          .reverse()
-          .map((entry, position) => ({
-            id: entry.id,
-            createdAt: entry.createdAt,
-            current: position === 0,
-            layout: entry.layout === "modular" ? "modular" : "legacy",
-            revision: Number(entry.revision) || 0,
-            modules: (entry.modules || []).filter((moduleId) =>
-              SYNC_MODULE_IDS.includes(moduleId as SyncModuleId),
-            ) as SyncModuleId[],
-          }));
-      },
-      async read(entryId) {
-        const cfg = await config();
-        const index = await readIndex(cfg);
-        const entry = (index.entries || []).find((item) => item.id === entryId);
-        const layout = entry?.layout === "modular" ? "modular" : "legacy";
-        if (layout === "legacy") {
-          // Pre-modular archives stored one combined document per entry.
-          const text = await davReadText(
-            cfg,
-            `history/${encodeURIComponent(entryId)}.json`,
-          );
-          if (text === null)
-            throw Error(`读取 WebDAV 历史版本失败：${entryId}`);
-          return { [LEGACY_MONOLITHIC_FILE]: text };
-        }
-        const files: Record<string, string | null> = {};
-        await Promise.all(
-          PROTOCOL_FILES.map(async (name) => {
-            files[name] = await davReadText(
-              cfg,
-              `history/${entryId}/${name}`,
-            );
-          }),
-        );
-        if (PROTOCOL_FILES.every((name) => files[name] === null))
-          throw Error(`读取 WebDAV 历史版本失败：${entryId}`);
-        return files;
-      },
-    },
+
   };
 }

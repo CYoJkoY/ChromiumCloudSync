@@ -20,7 +20,7 @@ Sync orchestration
 Modular storage domain ───────── Split / combine / module-scoped merge
      │
      ▼
-Provider file protocol ───────── FileStore (read / write / remove / list / history)
+Provider file protocol ───────── FileStore (read / write / remove / list)
      │
      ├──► GitHub Gist transport
      ├──► Google Drive transport
@@ -69,7 +69,7 @@ Popup, options, history, guide, and recovery pages own presentation, locale/them
 
 ### Transport
 
-`cloud-files.ts` defines the provider-agnostic file protocol: a `FileStore` exposes `read`, `write`, `remove`, `list`, and an optional `history` adapter, and the protocol layer implements `readRemoteModularState`, `writeRemoteModularState`, `listRemoteHistory`, `readHistoryEntryState`, and `persistLegacyMigration` on top of it. Every provider — `cloud-gist.ts`, `cloud-gdrive.ts`, `cloud-webdav.ts` — implements only file placement, transport, and its native history model. Adding a provider therefore does not require touching merge, migration, or history semantics.
+`cloud-files.ts` defines the provider-agnostic file protocol: a `FileStore` exposes `read`, `write`, `remove`, and `list`, and the protocol layer implements current-state reads, writes, migration, and cleanup on top of it. Gist keeps its provider-native commit history; Google Drive and WebDAV store current modular files only.
 
 The sync protocol follows optimistic concurrency: fetch remote state, merge against the local base, write a new revision, then read the remote result back and verify revision plus snapshot checksum. A verification mismatch causes another merge attempt instead of treating an unverified write as success.
 
@@ -100,8 +100,8 @@ meta.json              revisions, tombstone counts, migration record, orphan tom
 extensions.json        module envelope: extension inventory
 bookmarks.json         module envelope: bookmark collection
 tabs.json              module envelope: windows, tabs, and tab groups
-history/index.json     provider history index where the provider has no native history
-history/<label>/...    complete point-in-time archive of every protocol file
+history/index.json     legacy application-managed index, cleaned when recognized
+history/<label>/...    legacy application-managed archive, cleaned when recognized
 ```
 
 Rules the layout enforces:
@@ -109,7 +109,7 @@ Rules the layout enforces:
 - A module envelope carries only `{ module, revision, updatedAt, checksum, data, tombstones }`. Conflicts, revisions of other modules, and schema metadata stay in `meta.json`, so no module file is coupled to unrelated data.
 - Tombstones are partitioned by owning module; a tombstone whose collection maps to no module is retained in `meta.json` as an orphan instead of being dropped.
 - `diffModuleChanges` compares `{ data, tombstones }` checksums, and `bumpModuleRevisions` advances a module revision only when that module changed. `serializeModularState` then omits unchanged module files, so a bookmark edit uploads `bookmarks.json` plus the two control files and leaves `extensions.json` and `tabs.json` byte-identical.
-- History entries archive the complete protocol file set before an overwrite, so a rollback restores every module rather than only the modules that changed. Providers with native versioning (Gist commits, Drive revisions) map that history onto the same interface.
+- Gist commits and Drive revisions remain provider-native. The extension no longer creates application-managed archives for Drive or WebDAV; recognized legacy archives are cleaned after a successful sync.
 
 ### Legacy migration
 

@@ -1264,9 +1264,8 @@ async function restoreBookmarks(nodes) {
 /**
  * Provider-agnostic history view.
  *
- * Gist uses native commit history; Google Drive and WebDAV use the
- * application-managed `history/index.json` control file. The shape returned to
- * the UI is identical for all three.
+ * Gist exposes provider-native commit history. Google Drive and WebDAV do not
+ * expose application-managed history because sync stores current state only.
  */
 async function historyData() {
   if (!(await providerBound())) throw Error("尚未配置云同步后端");
