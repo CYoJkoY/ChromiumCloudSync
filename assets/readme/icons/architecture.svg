@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="architecture-title architecture-desc">
   <title id="architecture-title">Architecture</title>
   <desc id="architecture-desc">A bounded core connected to ports.</desc>
-  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <style>svg{color:#8A4E2E}@media (prefers-color-scheme:dark){svg{color:#C78E5C}}</style>
   <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <rect x="8.5" y="8.5" width="7" height="7" rx="1.5"/>
     <path d="M4 12h4.5M15.5 12H20M12 4v4.5M12 15.5V20"/>

@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="security-title security-desc">
   <title id="security-title">Privacy and security</title>
   <desc id="security-desc">A shield with a key opening.</desc>
-  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <style>svg{color:#8A4E2E}@media (prefers-color-scheme:dark){svg{color:#C78E5C}}</style>
   <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 3.8 19 6v5.5c0 4-2.7 7-7 8.7-4.3-1.7-7-4.7-7-8.7V6z"/>
     <path d="M12 10.5v3.5M10.8 10.5h2.4v2.2h-2.4z"/>

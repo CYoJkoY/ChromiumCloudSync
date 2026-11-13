@@ -6,7 +6,7 @@
 </picture>
 
 <p>
-  <img src="https://img.shields.io/badge/Manifest-V3-A6382A?style=flat-square" alt="Manifest V3">
+  <img src="https://img.shields.io/badge/Manifest-V3-8A4E2E?style=flat-square" alt="Manifest V3">
   <img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?style=flat-square&label=release" alt="Latest release">
   <img src="https://img.shields.io/github/license/CYoJkoY/ChromiumCloudSync?style=flat-square" alt="MIT license">
   <img src="https://img.shields.io/github/actions/workflow/status/CYoJkoY/ChromiumCloudSync/release.yml?style=flat-square&label=release" alt="Release workflow status">

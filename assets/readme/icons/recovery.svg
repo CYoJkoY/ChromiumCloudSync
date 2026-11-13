@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="recovery-title recovery-desc">
   <title id="recovery-title">Extension recovery</title>
   <desc id="recovery-desc">An arrow returning into a container.</desc>
-  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <style>svg{color:#8A4E2E}@media (prefers-color-scheme:dark){svg{color:#C78E5C}}</style>
   <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <path d="M4 16.5V20h16v-3.5"/>
     <path d="M12 4v9M8.5 9.5 12 13l3.5-3.5"/>

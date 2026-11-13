@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="features-title features-desc">
   <title id="features-title">Features</title>
   <desc id="features-desc">Three aligned capability blocks.</desc>
-  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <style>svg{color:#8A4E2E}@media (prefers-color-scheme:dark){svg{color:#C78E5C}}</style>
   <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/>
     <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/>

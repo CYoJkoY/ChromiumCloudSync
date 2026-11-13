@@ -25,8 +25,8 @@ code, pre, .mono, .ccsync-ext-meta, .ccsync-ext-cloud-meta { font-family: var(--
 .primary, .secondary, .action-tile, .nav-tab, .nav-action, .choice-switch, .field, .select {
  border-radius: 2px; box-shadow: none; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
-html[data-theme="dark"] .primary { color: var(--bg); }
+.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+html[data-theme="dark"] .primary { color: var(--accent-contrast); }
 .primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .secondary { background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); }
 .secondary:hover, .action-tile:hover, .nav-tab:hover, .nav-action:hover { background: var(--surface-2); border-color: var(--line-strong); }
