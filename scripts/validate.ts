@@ -535,13 +535,15 @@ for (const required of [
 for (const forbidden of ["extension-storage.js", "extension-backup.css"])
   if (htmlFiles.some((file) => fs.readFileSync(path.join(root, "src/ui/pages", file), "utf8").includes(forbidden)))
     throw new Error("Built pages must not reference removed extension package backup assets: " + forbidden);
-// The optional native-helper full backup is independent from the removed
-// package backup; its Settings entry has to keep a live mount point and script.
-if (!optionsHtml.includes('id="fullBackupHost"'))
-  throw new Error("Settings must keep the full extension backup host");
-if (!optionsHtml.includes('<script type="module" src="full-backup-ui.js"></script>'))
-  throw new Error("Settings must load the full extension backup UI");
-
+// The full-file backup flow and its native helper were removed entirely. Keep
+// the removed surface from creeping back into the shipped pages or manifest.
+for (const file of htmlFiles) {
+  const html = fs.readFileSync(path.join(root, "src/ui/pages", file), "utf8");
+  if (/fullBackup|full-backup|native helper/i.test(html))
+    throw new Error(`${file} must not reference the removed full backup feature`);
+}
+if ((manifest.permissions || []).includes("nativeMessaging"))
+  throw new Error("nativeMessaging was only used by the removed full backup helper");
 const optionsSource = fs.readFileSync(
   path.join(root, "src/ui/options.ts"),
   "utf8",

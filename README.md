@@ -264,7 +264,6 @@ Chromium Cloud Sync
 │   ├── storage.ts               serialized local mutations
 │   ├── sync-core.ts             per-module merge, tombstones, checksums
 │   ├── sync-modules.ts          modular storage domain (split/combine/migrate)
-│   ├── full-backup-runtime.ts   native backup composition root
 │   └── types.ts
 ├── cloud providers/
 │   ├── cloud-files.ts           provider-agnostic FileStore protocol
@@ -272,15 +271,9 @@ Chromium Cloud Sync
 │   ├── cloud-gdrive.ts          Google Drive transport
 │   └── cloud-webdav.ts          WebDAV transport
 ├── features/
-│   ├── full-backup.ts          portable full-extension-backup use case
-│   ├── full-backup-cloud.ts    provider-independent cloud chunks
- │   ├── full-backup.ts          portable full-extension-backup use case
- │   ├── full-backup-cloud.ts    provider-independent cloud chunks
  │   └── update.ts
 └── ui/
     ├── popup / options / guide / history / extensions
-    ├── full-backup.ts           native helper workflow and restore confirmation
-    ├── full-backup.ts           native helper workflow and restore confirmation
     ├── i18n.ts
     ├── theme.ts
     └── styles/
@@ -360,7 +353,7 @@ The release workflow reports a specific decoding or key-validation error if the 
 
 ## <img src="assets/readme/icons/roadmap.svg" width="24" height="24" alt=""> Project status & roadmap
 
-The current core is browser-state synchronization and extension inventory/recovery, with optional full extension data backup through the native helper.
+The current core is browser-state synchronization and extension inventory/recovery.
 
 Current providers are GitHub Gist, Google Drive, and WebDAV.
 

@@ -12,7 +12,7 @@ const DICT = {
     storageBody:
       "The cloud snapshot contains tab groups and their HTTP(S) member tabs, bookmarks, and installed third-party extension metadata. Standalone tabs and whole-window layouts are not uploaded. Extension metadata helps detect missing extensions; it does not contain third-party extension settings.",
     storageNote:
-      "Third-party extension settings are intentionally outside the synchronization scope. Supported persistent data uses the separate Full extension backup flow and optional native helper.",
+      "Third-party extension settings and private extension storage are intentionally outside the synchronization scope.",
     providerTitle: "Storage providers",
     providerBody:
       "GitHub Gist, Google Drive, and WebDAV are supported storage backends. The selected backend stores the synchronized browser-state snapshot; provider credentials remain local to the browser.",
@@ -34,12 +34,6 @@ const DICT = {
     recoveryTitle: "Extension Recovery Center",
     recoveryBody:
       "Use the Extension Recovery Center to review extensions that exist in the cloud inventory but are not installed locally. When a verified Chrome Web Store or Microsoft Edge Add-ons link is available, the page provides a direct installation link. Installation itself remains a manual browser action.",
-    fullBackupTitle: "Full extension data backup",
-    fullBackupBody:
-      "This advanced workflow backs up supported persistent data from a browser Profile. It is separate from sync, uses its own cloud destination, and requires building and registering the optional native helper (see native/README.md).",
-    fullBackupRestoreTitle: "Full data restore",
-    fullBackupRestoreBody:
-      "1. In Settings > Local, expand Open full-file backup (native helper). 2. Connect or refresh the helper, choose the matching Profile, extension IDs, and data categories, then preview the scope. 3. Schedule the offline backup and quit every Chromium browser; ready archives upload on next start, or use Upload ready backups. 4. To restore, list cloud backups, download, verify, and preview one, then confirm the restore task. Close browsers before replacing selected data; originals remain available for rollback. Database recovery requires the same OS, browser family, and major version. Passwords, cookies, Preferences, caches, temporary files, OPFS / storage buckets, and unknown database layouts are excluded. Restoring program files does not install an extension.",
     historyTitle: "History and rollback",
     historyBody:
       "History depends on the selected provider: GitHub Gist and Google Drive keep provider-native revisions. WebDAV stores current state only, and the extension does not create application-managed archives.",
@@ -48,10 +42,10 @@ const DICT = {
       "Settings is organized by function. In Sync, choose GitHub Gist, Google Drive, or WebDAV and follow that provider's connection controls. GitHub Gist uses one Gist ID field: enter a compatible ID to use it, or leave it blank to create a new synchronization Gist. Google Drive normally connects through the browser's Google account chooser; an optional OAuth client is available under Advanced if that path is unavailable. WebDAV uses the configured URL, folder, and optional username/password. The Sync panel also contains automatic-sync, restore, and tab synchronization settings. Cloud tabs is available in Incremental mode and groups entries by window, tab group, and ungrouped tabs.",
     privacyTitle: "Privacy and security",
     privacyBody:
-      "New sync Gists created by the extension are private. The current synchronization payload is normal JSON in the Gist and is not end-to-end encrypted. Treat access to the private Gist as access to the synchronized browser data. Full extension data backups are not end-to-end encrypted either; use a private cloud destination and a least-privilege credential. GitHub download links saved for missing extensions stay on this device.",
+      "New sync Gists created by the extension are private. The current synchronization payload is normal JSON in the Gist and is not end-to-end encrypted. Treat access to the private Gist as access to the synchronized browser data. Use a least-privilege credential. GitHub download links saved for missing extensions stay on this device.",
     troubleTitle: "Troubleshooting",
     troubleBody:
-      "If synchronization fails, first open the popup and read the detailed status message. Then verify the GitHub Token and Gist binding in Settings. For full extension backups, verify that the native helper is connected and registered for this extension ID, that the matching browser Profile is selected, and that the backup destination credentials are valid. Offline backups and restores run only while every Chromium browser is closed; close background processes before scheduling or restoring. If the helper cannot be found, follow native/README.md to rebuild and re-register it.",
+      "If synchronization fails, first open the popup and read the detailed status message. Then verify the provider binding in Settings: the GitHub Token and Gist ID, the Google Drive connection, or the WebDAV URL and folder. Confirm that the selected provider matches the destination that holds your data, and retry after the provider status shows as connected.",
     scopeTitle: "Synchronization scope",
     scopeBody:
       "Chromium Cloud Sync synchronizes tab groups and their HTTP(S) member tabs, bookmarks, and third-party extension metadata. Standalone tabs and whole-window layouts are not uploaded. Third-party extension settings and private extension storage are excluded. For missing extensions, you can save a GitHub download URL in the Extension Recovery Center; the URL is remembered locally by extension ID.",
@@ -69,7 +63,7 @@ const DICT = {
     storageBody:
       "云端快照包含标签组及其 HTTP(S) 成员标签页、书签，以及已安装第三方扩展的元数据。独立标签页和整个窗口布局不会上传。扩展元数据用于检测缺失扩展，不包含第三方扩展的内部设置。",
     storageNote:
-      "第三方扩展设置被明确排除在同步范围之外。受支持的持久数据通过独立的“扩展完整备份”和可选本机助手处理。",
+      "第三方扩展设置和扩展私有存储被明确排除在同步范围之外。",
     providerTitle: "存储后端",
     providerBody:
       "当前支持 GitHub Gist、Google Drive 和 WebDAV。选中的后端负责保存同步的浏览器状态快照；后端凭据只保存在当前浏览器本地。",
@@ -91,12 +85,6 @@ const DICT = {
     recoveryTitle: "扩展恢复中心",
     recoveryBody:
       "打开“扩展恢复中心”，可以查看云端清单中存在但当前浏览器没有安装的扩展。如果能够确认 Chrome 网上应用店或 Microsoft Edge 加载项链接，页面会提供直接安装入口。扩展安装仍然由用户手动确认。",
-    fullBackupTitle: "扩展完整数据备份",
-    fullBackupBody:
-      "此高级流程用于备份浏览器 Profile 中受支持的持久数据。它独立于同步，使用单独的云端存储，并需要构建、注册可选的本机助手（参见 native/README.md）。",
-    fullBackupRestoreTitle: "完整数据恢复",
-    fullBackupRestoreBody:
-      "1. 在“设置 → 本地”展开“打开完整文件备份（本机助手）”。2. 连接或刷新助手，选择对应的 Profile、扩展 ID 和数据类别，然后预览范围。3. 安排离线备份并退出所有 Chromium 浏览器；就绪归档会在下次启动时上传，也可使用“上传就绪备份”。4. 恢复时先列出云端备份，再下载、校验并预览，然后确认恢复任务。替换数据前请关闭浏览器；原数据会保留以便回滚。数据库恢复要求相同操作系统、浏览器系列和主版本。密码、Cookie、Preferences、缓存、临时数据、OPFS / Storage Buckets 和未知数据库格式不包含在内。恢复程序文件不等于安装扩展。",
     historyTitle: "历史与回滚",
     historyBody:
       "历史记录取决于所选择的存储后端：GitHub Gist 和 Google Drive 使用服务商原生修订记录；WebDAV 只保存当前状态，扩展不再创建应用自管历史归档。",
@@ -105,10 +93,10 @@ const DICT = {
       "设置按功能组织。在“同步”中选择 GitHub Gist、Google Drive 或 WebDAV，并按页面提示连接。GitHub Gist 使用一个 Gist ID 输入框：输入兼容 ID 就使用该 Gist，留空则创建新的同步 Gist。Google Drive 通常通过浏览器的 Google 账号选择器连接；如果该方式不可用，可展开“高级”并配置自己的 OAuth client。WebDAV 使用服务器地址、目录及可选用户名/密码。“同步”还提供自动同步、恢复方式和标签页同步模式；“云端标签页”仅在增量模式下可用，并按窗口、标签组和未分组标签页展示条目。",
     privacyTitle: "隐私与安全",
     privacyBody:
-      "插件创建的同步 Gist 默认是私有的。当前同步载荷以普通 JSON 保存在 Gist 中，并不是端到端加密。应将能够访问这个私有 Gist 视为能够访问同步的浏览器数据。扩展完整数据备份同样不是端到端加密，建议使用私有的云端存储和最小权限凭据；为缺失扩展保存的 GitHub 下载地址只保存在本机。",
+      "插件创建的同步 Gist 默认是私有的。当前同步载荷以普通 JSON 保存在 Gist 中，并不是端到端加密。应将能够访问这个私有 Gist 视为能够访问同步的浏览器数据。建议使用最小权限凭据；为缺失扩展保存的 GitHub 下载地址只保存在本机。",
     troubleTitle: "故障排查",
     troubleBody:
-      "同步失败时，先打开 Popup 查看详细状态信息，然后在设置中检查 GitHub Token 和 Gist 绑定。扩展完整数据备份失败时，请确认本机助手已连接并针对当前扩展 ID 注册、选择了正确的浏览器 Profile，且备份存储的凭据有效。离线备份和恢复只在关闭所有 Chromium 浏览器后执行；安排任务或恢复前请关闭后台进程。如果找不到助手，请按 native/README.md 重新构建并注册。",
+      "同步失败时，先打开 Popup 查看详细状态信息，然后在设置中检查存储后端：GitHub Token 和 Gist ID、Google Drive 连接，或 WebDAV 地址与目录。确认所选后端与存放数据的云端一致，并在后端状态显示已连接后重试。",
     scopeTitle: "同步范围",
     scopeBody:
       "Chromium Cloud Sync 同步标签组及其 HTTP(S) 成员标签页、书签以及第三方扩展元数据。独立标签页和整个窗口布局不会上传；第三方扩展设置或扩展私有存储也不在范围内。缺失扩展可以在“扩展恢复中心”保存 GitHub 下载地址，该地址只按扩展 ID 保存在本机。",

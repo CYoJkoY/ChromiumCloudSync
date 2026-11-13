@@ -27,10 +27,6 @@ if (
 const makeZip = process.argv.includes("--zip");
 
 const runtimeArtifacts = [
-  ["src/features/full-backup.ts", "full-backup.js"],
-  ["src/features/full-backup-cloud.ts", "full-backup-cloud.js"],
-  ["src/runtime/full-backup-runtime.ts", "full-backup-runtime.js"],
-  ["src/ui/full-backup.ts", "full-backup-ui.js"],
   ["src/runtime/background.ts", "background.js"],
   ["src/runtime/browser-capabilities.ts", "browser-capabilities.js"],
   ["src/runtime/cloud-files.ts", "cloud-files.js"],
