@@ -535,6 +535,12 @@ for (const required of [
 for (const forbidden of ["extension-storage.js", "extension-backup.css"])
   if (htmlFiles.some((file) => fs.readFileSync(path.join(root, "src/ui/pages", file), "utf8").includes(forbidden)))
     throw new Error("Built pages must not reference removed extension package backup assets: " + forbidden);
+// The optional native-helper full backup is independent from the removed
+// package backup; its Settings entry has to keep a live mount point and script.
+if (!optionsHtml.includes('id="fullBackupHost"'))
+  throw new Error("Settings must keep the full extension backup host");
+if (!optionsHtml.includes('<script type="module" src="full-backup-ui.js"></script>'))
+  throw new Error("Settings must load the full extension backup UI");
 
 const optionsSource = fs.readFileSync(
   path.join(root, "src/ui/options.ts"),

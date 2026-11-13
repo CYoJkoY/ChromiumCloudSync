@@ -75,7 +75,7 @@ The synchronization engine is separated from the storage backend. Choose the pro
 | Provider         | What it stores                                   | Authentication / access                                     | History source                         |
 | :--------------- | :----------------------------------------------- | :---------------------------------------------------------- | :------------------------------------- |
 | **GitHub Gist**  | Modular sync files (see below) inside one Gist   | GitHub Token + private Gist                                 | Gist revision / commit history         |
-| **Google Drive** | Modular sync files inside an application folder  | Google OAuth Web application client with the exact extension redirect URI; manual PKCE setup remains available | No app-managed history archives |
+| **Google Drive** | Modular sync files inside an application folder  | Packaged Google account authorization; optional own Web application client as an Advanced fallback | No app-managed history archives |
 | **WebDAV**       | Modular sync files only                          | WebDAV URL, optional folder, username and password/app auth | No app-managed history archives |
 
 For GitHub Gist, the extension creates or binds a private Gist. Google Drive uses the `drive.file` scope and keeps its authorization state in the local browser profile. WebDAV requests require the user to grant access to the configured server origin.
@@ -84,13 +84,13 @@ For GitHub Gist, the extension creates or binds a private Gist. Google Drive use
 
 ### Connecting Google Drive
 
-Google Drive's default connection path uses `chrome.identity.launchWebAuthFlow()` with the redirect URI returned by `chrome.identity.getRedirectURL()`. Configure `GDRIVE_OAUTH_CLIENT_ID` as a Google OAuth **Web application** client ID. A **Chrome Extension** client registered only with an Item ID is not the right client configuration for this explicit redirect-based flow.
+Google Drive normally connects through the browser's Google account chooser; the extension uses its packaged public OAuth client and requests the `drive.file` scope. Users do not need to create their own OAuth client when the installed build has a client configured. If the account chooser is unavailable, expand **Advanced: use your own OAuth client** in Settings and follow the on-screen redirect URI instructions. This fallback requires a Google OAuth **Web application** client; a **Chrome Extension** client registered only with an Item ID is not compatible with this redirect-based flow.
 
-1. In Google Cloud Console, open **APIs & Services → Credentials** and create an OAuth client ID of type **Web application**.
+1. For a build without a packaged client, in Google Cloud Console open **APIs & Services → Credentials** and create an OAuth client ID of type **Web application**. Skip these setup steps when using a build with a configured packaged client.
 2. In that client's **Authorized redirect URIs**, add the exact URI shown in ChromiumCloudSync's expanded Google Drive OAuth settings. It must match `chrome.identity.getRedirectURL()` exactly; the usual form is `https://<extension-id>.chromiumapp.org/`, including the trailing slash.
 3. Copy the extension ID from the actual installed build in `chrome://extensions`. Do not assume an unpacked/development build has the same ID as the Chrome Web Store listing or release CRX. Each distinct extension ID needs its own authorized redirect URI.
 4. If Google's OAuth consent screen is in **Testing** mode, add the Google account you are signing in with to its **Test users** list. Ensure the Google Drive API is enabled in the same Google Cloud project.
-5. In GitHub, open **Settings → Secrets and variables → Actions → Variables** and set `GDRIVE_OAUTH_CLIENT_ID` to this Web application client's public Client ID. The default extension flow does not use a client secret.
+5. For maintainers building a release, set `GDRIVE_OAUTH_CLIENT_ID` under **Settings → Secrets and variables → Actions → Variables** to the Web application client's public Client ID. The client ID is injected into the build; no Client Secret is bundled.
 6. The release build injects the public Client ID into the generated `options.js` runtime configuration, **not** `manifest.oauth2`. That manifest field is for Chrome Extension clients consumed by `getAuthToken`, whereas this flow uses a Web application client with `launchWebAuthFlow`. The options page sends a PKCE authorization-code request with `response_type=code`, the `drive.file` scope, and the exact redirect URI. The extension exchanges the code with the verifier and keeps the resulting refresh token in local extension storage only; no Client Secret is bundled.
 7. For another Chromium installation or an unpacked build with a different ID, add that build's exact redirect URI as an additional **Authorized redirect URI** to the same Web application client, or configure a separate Web application client ID. The Advanced/manual OAuth path also uses Web application credentials with PKCE.
 
@@ -225,7 +225,7 @@ The release workflow validates the version, runs tests and a Chromium smoke test
 Open **Settings** and configure the provider you want to use:
 
 1. **GitHub Gist** — enter and validate a GitHub Token, then create or bind a private sync Gist.
-2. **Google Drive** — configure a Google OAuth Web application client and register the exact `chrome.identity.getRedirectURL()` value shown in the extension's Google Drive OAuth settings; configure its Client ID through the release variable or the advanced OAuth settings.
+2. **Google Drive** — select **Google Drive** and choose **Connect with Google account**. If the browser-managed account chooser is unavailable, expand **Advanced: use your own OAuth client** and follow the on-screen setup instructions. Release maintainers can optionally package a client ID into their build.
 3. **WebDAV** — enter the server URL and optional remote folder, credentials, then test the connection.
 4. Run **Sync now** once.
 5. Enable automatic synchronization when required.
@@ -264,6 +264,7 @@ Chromium Cloud Sync
 │   ├── storage.ts               serialized local mutations
 │   ├── sync-core.ts             per-module merge, tombstones, checksums
 │   ├── sync-modules.ts          modular storage domain (split/combine/migrate)
+│   ├── full-backup-runtime.ts   native backup composition root
 │   └── types.ts
 ├── cloud providers/
 │   ├── cloud-files.ts           provider-agnostic FileStore protocol
@@ -271,9 +272,15 @@ Chromium Cloud Sync
 │   ├── cloud-gdrive.ts          Google Drive transport
 │   └── cloud-webdav.ts          WebDAV transport
 ├── features/
-│   └── update.ts
+│   ├── full-backup.ts          portable full-extension-backup use case
+│   ├── full-backup-cloud.ts    provider-independent cloud chunks
+ │   ├── full-backup.ts          portable full-extension-backup use case
+ │   ├── full-backup-cloud.ts    provider-independent cloud chunks
+ │   └── update.ts
 └── ui/
     ├── popup / options / guide / history / extensions
+    ├── full-backup.ts           native helper workflow and restore confirmation
+    ├── full-backup.ts           native helper workflow and restore confirmation
     ├── i18n.ts
     ├── theme.ts
     └── styles/
@@ -282,6 +289,8 @@ Chromium Cloud Sync
 The runtime layer coordinates browser APIs, local storage, provider dispatch, diagnostics, schema migration, and synchronization. `sync-core.ts` contains per-module merge and tombstone logic; `sync-modules.ts` owns the modular storage layout (module split/combine, per-module revisions and change detection, legacy migration); `schema.ts` validates and migrates cloud state.
 
 `cloud-files.ts` defines one provider-agnostic file protocol — read, write, remove, list, and history — and each provider module implements only file placement, transport, and its native history model. Adding a provider therefore does not require touching merge, migration, or history semantics, and no provider needs to know how another one stores files. The UI layer provides the operational surfaces.
+
+For module ownership, synchronization flow, change recipes, and contributor setup, see the [Contributor Guide](docs/ARCHITECTURE.md).
 
 <a name="readme-development"></a>
 
@@ -351,7 +360,7 @@ The release workflow reports a specific decoding or key-validation error if the 
 
 ## <img src="assets/readme/icons/roadmap.svg" width="24" height="24" alt=""> Project status & roadmap
 
-The current core is browser-state synchronization, extension inventory/recovery, and separate package backup through a pluggable cloud-provider layer.
+The current core is browser-state synchronization and extension inventory/recovery, with optional full extension data backup through the native helper.
 
 Current providers are GitHub Gist, Google Drive, and WebDAV.
 

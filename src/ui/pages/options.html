@@ -313,6 +313,18 @@
                   <button class="secondary" id="refreshStorageLayout" data-i18n="refresh" type="button">Refresh</button>
                 </div>
               </section>
+              <section class="card full-backup-panel">
+                <div class="card-title">
+                  <span>Full extension data backup</span>
+                </div>
+                <p class="card-desc">
+                  Back up supported persistent data from a browser Profile. This workflow is independent from synchronization, uses its own cloud destination, and requires the optional native helper.
+                </p>
+                <details class="advanced-backup">
+                  <summary>Open full-file backup (native helper)</summary>
+                  <section class="full-backup" id="fullBackupHost" aria-label="Full extension backup"></section>
+                </details>
+              </section>
             </div>
           </main>
         </div>
@@ -322,5 +334,6 @@
     <script src="theme.js"></script>
     <script src="i18n.js"></script>
     <script src="options.js"></script>
+    <script type="module" src="full-backup-ui.js"></script>
   </body>
 </html>

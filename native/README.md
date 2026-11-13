@@ -24,14 +24,19 @@ XDG_STATE_HOME/ChromiumCloudSync on Linux (default ~/.local/state).
 CCSYNC_HOME is a test override. Profile discovery uses LOCALAPPDATA,
 Application Support, or XDG configuration roots independently.
 
-Save the cloud destination in Settings > Full extension backup > Cloud destination
-and legacy program-only packages. Select a Profile, extension IDs and categories,
-preview, then schedule. Quit all Chromium browsers, including background processes.
-The detached worker waits up to 30 minutes. On next start ready tasks upload
-automatically; an alarm retries every five minutes. Cloud records publish last.
+In the extension, open Settings > Local and expand Open full-file backup (native
+helper). Configure its cloud destination independently from browser sync. Choose
+Connect / refresh native helper, then
+select a Profile, extension IDs and data categories. Choose Preview backup scope
+and review the result before choosing Schedule offline backup. Quit all Chromium
+browsers, including background processes. The detached worker waits up to 30
+minutes. On the next extension start, ready tasks upload automatically; an alarm
+retries every five minutes. Use Upload ready backups to trigger the upload manually.
+Cloud records publish last.
 
-Download verifies every part and ZIP checksum before a restore preview. Confirm
-replacement and close browsers. Selected scopes are replaced, including deletion
+Choose List cloud backups, then Download, verify and preview restore. The download
+verifies every part and ZIP checksum before the task appears for restore confirmation.
+Confirm replacement in Tasks and close browsers. Selected scopes are replaced, including deletion
 of selected data absent from the snapshot. Originals remain in the task rollback
 directory. Use Roll back after browser closes to recover them. Keep this directory
 until accepting the restore.

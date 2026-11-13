@@ -285,6 +285,12 @@ body {
   font-size: 14px;
   line-height: 1.35;
 }
+.guide-section h3 {
+  margin: 14px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
 .guide-section p {
   margin: 7px 0 0;
   color: var(--text-2);
