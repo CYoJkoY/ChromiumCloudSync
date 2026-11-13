@@ -1,257 +1,146 @@
-# Chromium Cloud Sync Architecture
+# Contributor Guide
 
-Chromium Cloud Sync is a Manifest V3 extension. Chromium is the runtime; no local server, embedded browser, or project-operated backend is required.
+This guide explains where to make a change, how data moves through Chromium Cloud Sync, and how to verify it. The project is a Manifest V3 browser extension. Chromium APIs are its runtime; it does not require a local server or a project-operated backend.
 
-## Layered architecture
+## Get a working build
 
-```text
-Chromium APIs
-     │
-     ▼
-Platform adapters ─────────────── Browser capability detection
-     │
-     ▼
-Storage boundary ─────────────── Serialized local mutations
-     │
-     ▼
-Sync orchestration
-     │
-     ▼
-Modular storage domain ───────── Split / combine / module-scoped merge
-     │
-     ▼
-Provider file protocol ───────── FileStore (read / write / remove / list)
-     │
-     ├──► GitHub Gist transport
-     ├──► Google Drive transport
-     └──► WebDAV transport
-     │
-     ▼
-Sync domain
-     ├── Snapshot model
-     ├── 3-way merge (per module)
-     ├── Tombstones
-     ├── Conflict handling
-     └── Revision/checksum consistency
-     │
-     ▼
-Schema boundary
-     ├── Runtime validation
-     └── Version migration
-     │
-     ▼
-UI / diagnostics
+Requirements: Node.js 22 or later, npm, and Chromium for the browser smoke test. CI currently uses Node.js 22.
+
+```sh
+npm install
+npm run build
 ```
 
-## Responsibility boundaries
+The build writes the unpacked extension to `dist/`. In Chromium, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `dist/`. Changes to TypeScript require another build and an extension reload.
 
-### UI
+Useful checks: `npm run typecheck` for the strict TypeScript project, `npm test` for the unit and contract tests, `npm run validate` for the complete source/build/package validation, and `npm run smoke` for a real Chromium load and runtime ping. The smoke test needs Playwright Chromium; install it with `npx playwright install chromium`.
 
-Popup, options, history, guide, and recovery pages own presentation, locale/theme state, and user actions. They should not implement merge rules or direct GitHub transport.
+## First use: sync and backups
 
-### Background service worker
+These are three separate features with separate destinations and purposes. Browser-state sync stores bookmarks, tab-group data and third-party extension inventory metadata. It does not copy another extension's private settings or files. Package backup stores installable CRX/ZIP files. Full extension backup captures selected local extension data and requires the optional native helper.
 
-`background.ts` is the orchestration boundary. It coordinates browser collection, merge execution, remote reads/writes, alarms, and recovery operations. Mutable state that must survive worker termination belongs in extension storage rather than module globals. MV3 service workers are event-driven and can be terminated while idle, so lifecycle resilience is a hard requirement.
+### Synchronize browser state
 
-### Domain
+1. Open the extension's **Settings** page and choose **GitHub Gist**, **Google Drive**, or **WebDAV** under **Cloud sync provider**.
+2. Complete that provider's connection: validate a GitHub token and save or create the Gist; authorize Google Drive in the browser; or enter the WebDAV URL and any credentials, save, and test the connection. Credentials stay on this device.
+3. Choose **Sync now**. Automatic sync is off by default; enable and save it in the same Settings panel if you want background runs. The popup reports provider binding, last sync time, revision, conflicts, and automatic-sync state.
 
-`sync-core.ts` contains deterministic merge, tombstone, conflict, checksum, and entity operations. `types.ts` defines the shared domain contract so new synchronized resources can be introduced without re-defining object shapes in multiple modules.
+The first sync merges browser state according to the sync rules; it is not a full profile clone. Standalone tabs and whole-window layouts are not synchronized.
 
-`sync-modules.ts` is the modular storage domain. It splits a `CloudState` into the three synchronized modules, combines module files back into one coherent state, derives per-module change sets and revisions, and migrates a legacy monolithic payload. Merge rules stay in `sync-core.ts` as per-module functions (`mergeExtensionsModule`, `mergeBookmarksModule`, `mergeTabsModule`) that `mergeSnapshots` composes, so module-scoped merging reuses exactly the same conflict and tombstone semantics as the composed merge.
+### Back up CRX / ZIP packages
 
-### Schema
+Open **Settings → Extension packages** and set **Storage backend** to enable GitHub, WebDAV, or Google Drive package storage; it is separate from the browser-state sync destination. For GitHub, enter a private `owner/repository` and use a fine-grained token limited to that repository with **Contents: Read and write**. For WebDAV, enter the server URL and optional folder and credentials, then grant the requested server permission. For Drive, first authorize Google Drive under **Settings → Sync**, then select it here. Save the storage settings and test the connection when offered.
 
-`schema.ts` is the trust boundary for cloud state. Incoming Gist data is migrated into the current schema and validated before business logic consumes it. Future schema versions are rejected explicitly rather than silently downgraded.
+Nothing is selected initially. Check the extensions to include; the selection saves automatically. Choose **Back up from a local folder** and select the browser user-data directory or an unpacked extension's source directory. The page scans the folder, matches files to installed extension IDs, packages them, and uploads them. If you already have archives, choose **Upload several CRX / ZIP…** or drop them onto the list. Review **Cloud backups** to download a saved package. A ZIP built from unpacked files is installed with **Load unpacked** and Chromium assigns it an ID based on its path; reinstalling from the extension store is preferred when available. Package backup contains program files, not an extension's profile data. Deselecting an extension does not delete existing cloud files; use **Clean up unused backups** only after reviewing its permanent-deletion confirmation.
 
-### Storage
+### Back up and restore full extension data
 
-`storage.ts` centralizes `chrome.storage.local` access and serializes mutations through a single promise queue. This prevents concurrent read-modify-write operations from overwriting each other across asynchronous code paths.
+This advanced workflow is under **Settings → Extension packages → Advanced: full-file backup (native helper)**. It is independent from both browser-state sync and package backup. The helper must be built and registered for the current extension ID and OS; follow [`native/README.md`](../native/README.md). Registration changes the current user's Native Messaging configuration. Configure a private GitHub, WebDAV, or Google Drive destination in the full-backup settings, then:
 
-### Transport
+1. Choose **Connect / refresh native helper**, select or register the target browser profile, select extension IDs and data categories, and choose **Preview backup scope**. Review the preview before scheduling.
+2. Choose **Schedule offline backup**. Exit every Chromium browser, including background processes, and leave them closed while the helper works. Ready jobs upload after the next extension start; **Upload ready backups** is also available. Check the task list for completion or errors.
+3. For restore, list cloud backups and choose **Download, verify and preview restore**. Review the task preview, then explicitly confirm replacement of the selected extensions and categories. Close all Chromium browsers for the restore to run. The completed task offers rollback; close all browsers again before rolling back.
 
-`cloud-files.ts` defines the provider-agnostic file protocol: a `FileStore` exposes `read`, `write`, `remove`, and `list`, and the protocol layer implements current-state reads, writes, migration, and cleanup on top of it. Gist keeps its provider-native commit history; Google Drive and WebDAV store current modular files only.
+Restoration replaces data within the selected scope, including removing selected files that are absent from the snapshot. Database restoration requires the same OS, browser family, and major version. The helper does not install extensions; restore program files separately through the browser. Browser account sync may later replace `storage.sync` data. Unsupported or excluded data categories and other limits are documented in [`native/README.md`](../native/README.md). These cloud backups are not end-to-end encrypted and selected extension data can contain sensitive information; use a private destination with least-privilege credentials.
 
-The sync protocol follows optimistic concurrency: fetch remote state, merge against the local base, write a new revision, then read the remote result back and verify revision plus snapshot checksum. A verification mismatch causes another merge attempt instead of treating an unverified write as success.
-
-Credentials never travel through the protocol layer. The Gist transport receives its token through `configureGithubTokenSource`, registered once by the orchestrator, so the transport module cannot import the settings layer and cannot form an import cycle.
-
-### Provider authorization
-
-Authorization is a provider concern, and each provider keeps its credentials inside the local browser profile:
-
-- **Google Drive** prefers browser-managed OAuth. `connectGoogleDriveBrowser()` calls `chrome.identity.getAuthToken({ interactive: true, scopes: ["…/auth/drive.file"] })`, so Chromium's account chooser performs authorization and Chromium owns the token cache — the extension stores no access or refresh token. The connected account is read back from Drive's `about` endpoint and recorded locally as `{ mode, email, accountId, displayName, photoLink, scope, connectedAt }`. A `401` from Drive drops the cached token and retries once before surfacing an auth failure; disconnecting removes the cached token, clears all cached tokens, and revokes server-side.
-- **Manual OAuth** (`connectGoogleDriveManual`) is an explicit fallback for hosts where the Identity API cannot mint a token — typically unpacked development builds with no registered OAuth client. `browser-capabilities.ts` probes `identity.getAuthToken` and `removeCachedAuthToken`/`clearAllCachedAuthTokens`, and the UI only presents the manual client fields, with an explanatory notice, when that probe fails. `DriveAuthError` distinguishes "reconnect required" from a Drive fault.
-- **GitHub Gist** uses a user-supplied token resolved through the registered token source.
-- **WebDAV** uses the configured origin credentials.
-
-`assertNoCredentialsInPayload` runs on every modular write and rejects any payload containing a credential-shaped key (`access_token`, `refresh_token`, `client_secret`, `code_verifier`, …) at any depth. The check is key-based, so ordinary synchronized data such as a bookmark URL containing `access_token=` in its query string is unaffected.
-
-### Diagnostics
-
-`diagnostics.ts` records the last sync outcome, revision context, changed counts, and categorized failures so users and maintainers can distinguish authentication, validation, network, and concurrency problems.
-
-## Modular storage layout
-
-Cloud storage is split into independent module files instead of one monolithic payload. Each synchronized resource is its own file, so a provider can upload, download, and version it independently.
+## Find the right place
 
 ```text
-manifest.json          storage layout, schema version, module index, legacy archive pointer
-meta.json              revisions, tombstone counts, migration record, orphan tombstones
-extensions.json        module envelope: extension inventory
-bookmarks.json         module envelope: bookmark collection
-tabs.json              module envelope: windows, tabs, and tab groups
-history/index.json     legacy application-managed index, cleaned when recognized
-history/<label>/...    legacy application-managed archive, cleaned when recognized
+src/
+├── runtime/     Sync orchestration, domain rules, storage, schema, providers
+├── features/    Package backup, full extension backup, and update capabilities
+└── ui/          Popup, options, history, guide, extension recovery pages
+native/          Optional native companion for local full-backup workflows
+scripts/         Build, validation, smoke test, and focused test runners
+docs/            Contributor and architecture notes
 ```
 
-Rules the layout enforces:
+| Change | Start here | Keep the responsibility here |
+| --- | --- | --- |
+| Merge, tombstone, checksum rule | `src/runtime/sync-core.ts` | Pure sync-domain logic |
+| Cloud file layout or module revisions | `src/runtime/sync-modules.ts` | Split/combine and modular state rules |
+| Cloud payload validation or migration | `src/runtime/schema.ts` | External data boundary and schema lifecycle |
+| Local extension storage | `src/runtime/storage.ts` | Serialized `chrome.storage.local` access |
+| Provider-independent remote protocol | `src/runtime/cloud-files.ts` | `FileStore` protocol and modular read/write |
+| Provider transport or authorization | `src/runtime/cloud-gist.ts`, `cloud-gdrive.ts`, `cloud-webdav.ts` | One provider adapter |
+| Browser API collection and orchestration | `src/runtime/background.ts` | MV3 composition root and message/alarm handling |
+| Package index or local archive source | `src/features/package-index.ts`, `extension-local-source.ts` | Package-backup domain and local file handling |
+| Full extension backup job, chunks, or native protocol | `src/features/full-backup.ts`, `full-backup-cloud.ts`, `src/runtime/full-backup-runtime.ts` | Portable use case, provider-neutral cloud adapter, and MV3 composition root |
+| Screen behavior or wording | Matching `src/ui/` module and page | Presentation, user actions, localization |
+| Native companion behavior | `native/src/` | Native host implementation and protocol |
 
-- A module envelope carries only `{ module, revision, updatedAt, checksum, data, tombstones }`. Conflicts, revisions of other modules, and schema metadata stay in `meta.json`, so no module file is coupled to unrelated data.
-- Tombstones are partitioned by owning module; a tombstone whose collection maps to no module is retained in `meta.json` as an orphan instead of being dropped.
-- `diffModuleChanges` compares `{ data, tombstones }` checksums, and `bumpModuleRevisions` advances a module revision only when that module changed. `serializeModularState` then omits unchanged module files, so a bookmark edit uploads `bookmarks.json` plus the two control files and leaves `extensions.json` and `tabs.json` byte-identical.
-- Gist commits and Drive revisions remain provider-native. The extension no longer creates application-managed archives for Drive or WebDAV; recognized legacy archives are cleaned after a successful sync.
+The runtime is statically composed by `background.ts`; there is no generic third-party plugin loader. Keep new behavior in its owning module and connect it through an existing interface where possible. The core sync rules should not import UI, provider SDKs, or browser-specific transport code.
 
-### Legacy migration
-
-A remote that still holds `current.json` (or the older `chromium-cloud-sync.json`) is detected by `parseModularFiles` and migrated in place:
-
-1. The legacy payload is validated and normalized through the schema boundary.
-2. `migrateLegacyToModular` splits it into module files, carrying the legacy revision forward so module revisions stay continuous.
-3. The migration is recorded in `meta.json` (`from`, `legacyRevision`, `legacyChecksum`, `migratedAt`) and in `manifest.json` (`legacyArchive`).
-4. The legacy file is **preserved** as a read-only archive. `writeRemoteModularState` explicitly removes `current.json` from the deletion set, so migration can never silently delete or reset cloud data.
-5. A mixed layout is resolved by revision and timestamp: if a pre-modular client later wrote a newer `current.json`, that payload wins and the migration record is re-created against it.
-6. An incomplete modular layout raises an explicit error rather than presenting a partial state as complete.
-
-Legacy encrypted payloads (`chromium-cloud-sync.encrypted.json`) are still cleaned up, but only when they are actually present in the prior file list.
-
-### Coherent state for the UI
-
-Because storage is split, the UI must not be asked to reason about individual files. `readRemoteModularState` always returns one combined `CloudState` plus the modular metadata, and `storageLayoutStatus()` reports the layout, per-module revisions, checksums, tombstone counts, and the legacy archive pointer as a single summary. Popup restore, tab management, and history therefore continue to observe one coherent overall synchronization state.
-
-## Package backup subsystem
-
-Third-party CRX/ZIP package backup is a separate subsystem from browser-state synchronization. It has its own backend selection, its own destination, and its own index, and choosing a package backend never changes the sync provider.
+## How synchronization works
 
 ```text
-extension-storage.ts (page context)
-     │
-     ├── GitHub Contents API transport
-     ├── WebDAV transport
-     └── Google Drive transport ──► gdrivePackageSession / describeDriveError
-                                        │
-                                        ▼
-                                 background worker (Drive session owner)
+Browser events / scheduled alarm / user action
+        ↓
+background.ts collects local state and selects a provider
+        ↓
+FileStore adapter reads remote files
+        ↓
+schema.ts validates and migrates external state
+        ↓
+sync-modules.ts combines module files; sync-core.ts merges snapshots
+        ↓
+background.ts writes changed modules and verifies the remote revision
+        ↓
+storage.ts and diagnostics.ts persist local state and outcome
 ```
 
-`package-index.ts` holds the pure index domain shared by all three backends: path construction, source derivation, record shape, duplicate-name resolution, index upsert, and listing reconciliation. It is a page-context script that publishes `window.CCSyncPackageIndex`, which keeps the rules testable without a DOM while remaining loadable by the options page.
+`background.ts` is the composition root: it reads settings, chooses an adapter, collects browser data, and coordinates the sync use case. `cloud-files.ts` defines the provider-neutral `FileStore` contract (`read`, `write`, `remove`, `list`, and optional history). Gist, Drive, and WebDAV implement that contract; they do not call each other.
 
-`extension-local-source.ts` supplies the package bytes. Chromium exposes another extension's metadata through `chrome.management` but never its files, so the user points the options page at a folder once: the browser user-data directory, a single `Extensions` directory, or an unpacked source tree. The module detects which of those it was given, plans a package per extension, writes the ZIP, and identifies uploaded archives. It is split the same way — pure planning and encoding, plus thin platform glue that uses only standard web APIs (the File System Access API, with a `webkitdirectory` input as the fallback) and never touches the DOM, so every string stays in `extension-storage.ts`.
+The synchronized state is split into extensions, bookmarks, and tabs. `sync-modules.ts` owns the file layout, per-module revisions, change detection, split/combine operations, and legacy conversion. `sync-core.ts` owns deterministic merge behavior, tombstones, conflicts, and checksums. `schema.ts` treats remote JSON as untrusted input, migrates supported older shapes forward, and rejects unsupported future versions.
 
-```text
-picked folder ─► scanDirectoryHandle / scanPickedFiles
-                     │
-                     ▼
-              readLocalManifests ─► planLocalPackages ─► buildLocalPackage (createZip)
-                     │                                        │
-                     ▼                                        ▼
-            extension-storage.ts preview dialog ──► putPackage (existing transports)
-```
+The remote write path uses optimistic concurrency: read, merge against the local base, write changed files, then read back and verify revision and checksum. A mismatch is handled as a remote change and merged again; a write is not considered successful solely because the provider accepted it. MV3 workers may stop while idle, so durable state belongs in extension storage rather than module globals. `storage.ts` serializes mutations to avoid overlapping read-modify-write operations.
 
-The Drive backend reuses the session the user already authorized for synchronization instead of introducing a second authentication mechanism. The page cannot import runtime modules, so the worker exposes exactly two messages: `gdrivePackageSession` (a short-lived access token plus the connected account) and `describeDriveError` (classification of a raw status and error body into `quota`, `rate-limit`, `auth`, `permission`, `not-found`, `too-large`, `server`, or `unknown`). The page performs the Drive requests itself, so large package bodies never travel through extension messaging.
+## Provider and data boundaries
 
-Separation guarantees:
+Provider adapters translate the common file protocol into provider-specific requests and history behavior. Provider authorization stays in its adapter and settings flow. The Gist token source is registered by the composition root; Drive uses browser-managed OAuth when available and has an explicit manual fallback; WebDAV uses configured origin credentials.
 
-- Packages live in the app-managed `Chromium Cloud Sync Packages` folder, distinct from the `Chromium Cloud Sync` synchronization folder.
-- `index.json`, `selection.json`, and per-package `metadata.json` sidecars live inside the package destination, never among the sync module files.
-- Uploads use the resumable protocol with `X-Upload-Content-Length` declared up front, which streams large binaries and makes quota exhaustion reportable before bytes move.
-- `resolveUniqueFileName` folds a checksum prefix into the file name when the same name and version already hold different bytes, so a duplicate never overwrites an unrelated backup; identical bytes resolve to the same name, so retries are idempotent.
-- `mergeIndexWithListing` reconciles the index against provider listings (GitHub Git tree, WebDAV `PROPFIND`, or Drive folder walk), reporting provider-only packages as unindexed and vanished files as missing instead of offering them as restorable.
-- The package index is not silently capped: dropping an index record while retaining its binary would create an undeletable cloud orphan. Re-uploading the same extension ID, version, and checksum reuses its existing path.
-- The saved `selection.json` is the cleanup boundary. Deselecting or uninstalling an extension never deletes cloud data implicitly. The options page offers a confirmed “Clean up unused backups” action that removes every validated package for IDs outside the saved selection, updates the index, and reconciles version metadata. Provider listings also expose unindexed files so cleanup can find interrupted uploads; missing files are removed from the inventory without attempting a destructive delete.
-- The extension can enumerate another extension’s metadata through `chrome.management`, but Chromium does not expose that extension’s installed/unpacked directory contents to it. Package bytes therefore come from the user: either a folder this extension packages locally, or an explicit CRX/ZIP file selection. Restore downloads the archive for the user to install through the browser.
-- Local matching is conservative. A directory named with a valid extension ID is trusted; anything else must match one installed extension by `manifest.json` name *and* version, uniquely. A wrong match would file a backup under the wrong extension ID, which is worse than reporting “not found”.
-- Locally built packages are deterministic: entries are sorted and the ZIP timestamp is fixed, so repackaging unchanged files produces identical bytes. The existing checksum identity in the index then re-uses the stored object instead of accumulating copies.
-- `parseCrxId` reads the ID a CRX carries (the `crx_id` in a CRX3 signed header, or the hash of the CRX2 public key) and converts it into Chromium’s a-p ID alphabet, so an uploaded archive is filed without the user renaming it. Archives that cannot be identified are reported rather than guessed.
-- A package built from unpacked files restores through “Load unpacked” and receives a new extension ID, because Chromium derives an unpacked ID from its path. Store reinstall remains the preferred path when the extension is still published.
+Credentials must not enter synchronized payloads. `cloud-files.ts` checks modular writes for credential-shaped keys, and schema validation runs before remote state reaches merge logic. Preserve those boundaries when adding fields or transport behavior. Keep unrelated package archives and their index in the package-backup destination, separate from sync module files.
 
-## Schema lifecycle
+## Common change recipes
 
-```text
-Remote JSON
-    │
-    ▼
-Parse
-    │
-    ▼
-Detect schema version
-    │
-    ├── current ───────────────┐
-    └── supported legacy ──► migrate
-                              │
-                              ▼
-                         Current shape
-                              │
-                              ▼
-                         Validate
-                              │
-                              ▼
-                         Sync domain
-```
+### Add a synchronized resource
 
-The current schema version is defined once by `SCHEMA_VERSION`. Migration code must always move forward to that version and must never mutate the remote Gist implicitly without an explicit sync write.
+1. Define its domain shape in `src/runtime/types.ts` and include it in the snapshot.
+2. Add validation and a forward migration in `schema.ts` where needed.
+3. Add its module ownership and split/combine behavior in `sync-modules.ts`.
+4. Implement collection and restore at the browser boundary in `background.ts` or a focused runtime module.
+5. Add merge/tombstone behavior in `sync-core.ts` only when the resource requires distinct semantics.
+6. Cover round-trip, migration, merge, and failure behavior with focused tests before exposing it in the UI.
 
-## Build model
+### Add a cloud provider
 
-The repository is TypeScript-only for executable source code. Generated JavaScript is never committed and only exists under ignored `dist/` output.
+Implement `FileStore` in a provider module. Keep authentication and request translation there, register the adapter in `background.ts`, and test the shared protocol against a recording in-memory store. Provider-specific history may implement the optional history contract. Do not duplicate modular layout, schema, or merge rules in the adapter.
 
-```text
-*.ts source
-   │
-   ▼
-TypeScript compiler
-   │
-   ▼
-dist/*.js
-   │
-   ├── load as unpacked extension
-   └── package into ZIP / CRX
-```
+### Change the UI
 
-The browser package therefore remains JavaScript-compatible while the editable source tree remains TypeScript-only.
+Keep rendering and user interaction in the matching `src/ui/` module. Use the existing runtime message boundary for worker operations, update both locale message files when adding visible text, and add or adjust the focused DOM-shim test when behavior is covered there. Avoid moving sync rules into page scripts.
 
-## Verification layers
+### Change package backup
 
-CI validates the project at eight distinct boundaries:
+Keep package records and path/index rules in `package-index.ts`; keep local folder scanning and archive creation in `extension-local-source.ts`; keep user interaction and transport selection in the feature/UI layer. Test identity, duplicate handling, provider listing reconciliation, and cleanup planning. Deleting cloud packages must remain an explicit user action.
 
-1. Source boundary: no tracked `.js` files and required TypeScript sources exist.
-2. Type boundary: strict type-checking covers the shared domain, schema, storage, modular storage domain, provider file protocol, capability, and diagnostics layer.
-3. Domain boundary: `test-sync-core.ts`, `test-sync-invariants.ts`, `test-schema.ts`, and `test-storage.ts` cover merge, tombstone, schema, and local storage queue behaviour.
-4. Modular storage boundary: `test-sync-modules.ts` covers split/combine round-trips, tombstone partitioning, legacy detection and migration, mixed-layout resolution, module-scoped change detection, per-module revisions, and module-scoped merge; `test-cloud-files.ts` drives the provider file protocol against a recording in-memory `FileStore` to prove which files are uploaded, which stay untouched, that a legacy archive survives migration, and that provider history can be read when exposed by the backend.
-5. Package-backup boundary: `test-package-index.ts` covers path construction and traversal safety, source derivation, record completeness, duplicate-name resolution, unselected-package cleanup planning, full-index retention, and provider-listing reconciliation. `test-extension-local-source.ts` covers ZIP writing and reading, CRX identity (both header versions and the a-p alphabet), folder-layout detection across user-data/Extensions/source directories, package planning including version mismatch and ambiguous matches, archive identification, and packaging failures. `test-extension-backup-ui.ts` drives the real options-page script through a DOM shim and an in-memory GitHub backend to verify opt-in selection, self-saving selection, the local-folder preview, upload placement, and idempotent re-runs.
-6. Drive authorization boundary: `test-gdrive-auth.ts` drives both authorization modes against a mocked Identity API and fetch.
-7. Artifact boundary: generated JS is syntactically valid, the production artifact has only approved files, and forbidden remote-code/runtime constructs are rejected.
-8. Browser boundary: real Chromium loads `dist/`, registers the MV3 service worker, opens the popup, and receives a runtime ping.
+### Change full extension backup
 
-This separation is intentional: a successful TypeScript build cannot prove that a generated MV3 extension actually registers and runs inside Chromium.
+Keep job parsing, checkpointing, transfer, and verification in `full-backup.ts`; keep provider-neutral cloud chunks in `full-backup-cloud.ts`; keep native connections, serialization, alarms, and recovery in `full-backup-runtime.ts`. Browser profile capture and restore live in the native companion. Preserve the versioned layout, verified chunk protocol, explicit confirmation, and rollback behavior; do not add implicit deletions or a shared third-party plugin registry.
 
-## Extension evolution rule
+## Tests and diagnosis
 
-New synchronized resources should be implemented in this order:
+Tests are executable TypeScript scripts under `scripts/`. Run the narrow test while iterating, then run `npm test` or `npm run validate` before delivery. Important suites include:
 
-```text
-Domain type
-   ↓
-Schema validation / migration
-   ↓
-Snapshot collection adapter
-   ↓
-Merge policy
-   ↓
-Persistence / tombstone behavior
-   ↓
-Tests
-   ↓
-UI
-```
+- `test-sync-core.ts`, `test-sync-invariants.ts`, `test-schema.ts`, and `test-storage.ts` for merge, invariants, migration, and local mutation ordering.
+- `test-sync-modules.ts` and `test-cloud-files.ts` for modular layout, legacy conversion, provider protocol, and changed-file behavior.
+- `test-gdrive-auth.ts` for Drive authorization paths.
+- Package tests (`test-package-index.ts`, `test-gdrive-packages.ts`, `test-extension-local-source.ts`, `test-extension-storage.ts`, `test-extension-backup-ui.ts`) for archive identity, transports, local packaging, and UI workflows.
+- Full-backup tests (`test-full-backup.ts` and `native/tests/*.test.mjs`) for job lifecycle, verified cloud transfer, and native helper behavior. Run them with `npm run test:full-backup`.
+- `npm run smoke` for loading the built extension in Chromium and checking its runtime connection.
 
-This prevents UI-first features from bypassing the sync protocol and creating resource-specific special cases in the background worker.
+For sync failures, inspect the popup status and the latest diagnostics before changing merge behavior. `diagnostics.ts` records the result category, revision context, changed counts, and failure details. Reproduce provider behavior with mocks or an in-memory `FileStore`; tests should not need a real account, token, or cloud write.
+
+## Native companion
+
+The native companion is optional and statically composed for full-extension-backup workflows. It captures selected profile categories, packages them, and hands verified chunks to the extension's portable job. See [`native/README.md`](../native/README.md) for setup and [`native/ARCHITECTURE.md`](../native/ARCHITECTURE.md) for versioned categories, cloud layout, process lifecycle, and restore/rollback boundaries. The normal synchronization features remain usable without it.
