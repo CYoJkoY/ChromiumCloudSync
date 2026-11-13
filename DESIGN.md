@@ -4,12 +4,12 @@ All five extension pages use the editorial surface from AzSkills Wabi-Press,
 reviewed at 52e51f3d99d4f1eb42ce72d41ae1efceb34c21f8.
 
 Repository artwork uses the same material. The extension icon and README
-hero, section icons, and support CTA use warm paper, ink, cinnabar and moss;
+hero, section icons, and support CTA use warm paper, ink, russet and moss;
 hero and CTA artwork provide dark variants.
 
-The shared tokens in src/ui/styles/ui.css define warm paper (#F5F3EC),
-ink (#1C1A17), cinnabar (#A6382A), and moss (#3B5848). Dark surfaces use
-#131416, #1B1C20 and #25272D with #EDEAE2 text. Headings use the system
+The shared tokens in src/ui/styles/ui.css define warm paper (#F3F1E9),
+ink (#1B1915), russet (#8A4E2E), and moss (#3C5847). Dark surfaces use
+#121316, #1A1B20 and #23252B with #ECE9E1 text. Headings use the system
 serif stack; body text uses sans serif; paths and IDs use monospace.
 
 Rules, generous vertical spacing, square geometry and restrained color establish

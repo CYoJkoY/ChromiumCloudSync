@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="overview-title overview-desc">
   <title id="overview-title">Overview</title>
-  <desc id="overview-desc">A compass mark with a cinnabar needle.</desc>
-  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <desc id="overview-desc">A compass mark with a russet needle.</desc>
+  <style>svg{color:#8A4E2E}@media (prefers-color-scheme:dark){svg{color:#C78E5C}}</style>
   <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="7.5"/>
     <path d="M9.8 14.2 11 10.1l4.1-1.2-1.2 4.1z"/>

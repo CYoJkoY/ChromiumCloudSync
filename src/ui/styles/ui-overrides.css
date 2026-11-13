@@ -427,7 +427,9 @@ body.popup-page .brand-mark img {
   height: 34px;
 }
 body.popup-page .brand-title {
-  font-size: 18px;
+  min-width: 0;
+  font-size: 17px;
+  letter-spacing: -0.015em;
 }
 body.popup-page .brand-sub {
   margin-top: 3px;
@@ -829,6 +831,40 @@ body.popup-page .backup-status.error-copy {
   transition: transform 0.18s ease;
 }
 
+body.popup-page .popup-cloud-disclosure-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+}
+
+body.popup-page .popup-cloud-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+body.popup-page .popup-cloud-disclosure-summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+body.popup-page .popup-cloud-disclosure-summary .section-label {
+  margin: 0;
+}
+
+body.popup-page
+  details[open]
+  > .popup-cloud-disclosure-summary
+  .cloud-disclosure-indicator {
+  transform: rotate(90deg);
+}
+
 details[open] > .cloud-disclosure-summary .cloud-disclosure-indicator {
   transform: rotate(90deg);
 }
@@ -870,6 +906,7 @@ details[open] > .cloud-disclosure-summary .cloud-disclosure-indicator {
 
 body.popup-page .popup-navigation {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin: 0 0 14px;
 }
@@ -984,8 +1021,8 @@ body.popup-page .popup-cloud-tab-url {
 }
 
 .cloud-state-meta-stale {
-  border-color: var(--warning, #b7791f);
-  color: var(--warning, #b7791f);
+  border-color: var(--warn);
+  color: var(--warn);
   font-weight: 600;
 }
 

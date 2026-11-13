@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="development-title development-desc">
   <title id="development-title">Development</title>
   <desc id="development-desc">Paired code brackets.</desc>
-  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <style>svg{color:#8A4E2E}@media (prefers-color-scheme:dark){svg{color:#C78E5C}}</style>
   <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 5.5l-3 13"/>
   </g>

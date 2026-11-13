@@ -1,7 +1,7 @@
 (function () {
   const STORAGE_KEY = "theme";
   const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-  const COLORS = { light: "#F5F3EC", dark: "#131416" };
+  const COLORS = { light: "#F3F1E9", dark: "#121316" };
   const ICONS = {
     light:
       '<svg aria-hidden="true" class="theme-art theme-art-light" viewBox="0 0 24 24" focusable="false"><circle class="theme-sun-core" cx="12" cy="12" r="4.15"></circle><path class="theme-sun-rays" d="M12 2.35v2.1M12 19.55v2.1M2.35 12h2.1M19.55 12h2.1M5.18 5.18l1.48 1.48M17.34 17.34l1.48 1.48M18.82 5.18l-1.48 1.48M6.66 17.34l-1.48 1.48"></path></svg>',

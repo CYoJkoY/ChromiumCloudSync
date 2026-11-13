@@ -1,12 +1,12 @@
 /* Wabi-Press editorial tokens, AzSkills 52e51f3. */
 :root {
  color-scheme: light;
- --bg: #F5F3EC; --surface: #FAF9F5; --surface-2: #ECE8DC; --surface-3: #E4EBED;
- --text: #1C1A17; --text-1: var(--text); --text-2: #524C44; --text-3: #6E675D;
- --line: rgba(40,36,32,.10); --line-strong: rgba(40,36,32,.25);
- --accent: #A6382A; --accent-hover: #855747; --accent-soft: #EEE2DA;
- --success: #3B5848; --success-soft: #E4EBED; --warn: #795B28; --warn-soft: #EFE7D5;
- --danger: #A6382A; --danger-soft: #EEE2DA; --focus-color: #405F73; --focus: none;
+ --bg: #F3F1E9; --surface: #FBF9F3; --surface-2: #EDE9DD; --surface-3: #E2E9E5;
+ --text: #1B1915; --text-1: var(--text); --text-2: #504A41; --text-3: #6B6459;
+ --line: rgba(30,27,23,.12); --line-strong: rgba(30,27,23,.26);
+ --accent: #8A4E2E; --accent-hover: #713F23; --accent-soft: #ECDFD1; --accent-contrast: #FBF9F3;
+ --success: #3C5847; --success-soft: #DFE9E2; --warn: #7A5C26; --warn-soft: #EEE5CD;
+ --danger: #93362A; --danger-soft: #EFDED9; --focus-color: #3E5C71; --focus: none;
  --shadow-1: 0 1px 2px rgba(40,36,32,.04); --shadow-2: var(--shadow-1);
  --radius-sm: 2px; --radius-md: 2px; --radius-lg: 2px;
  --control-h: 40px; --compact-h: 36px; --tile-h: 76px; --popup-w: 400px;
@@ -16,12 +16,12 @@
 }
 html[data-theme="dark"] {
  color-scheme: dark;
- --bg: #131416; --surface: #1B1C20; --surface-2: #25272D; --surface-3: #253039;
- --text: #EDEAE2; --text-2: #A39F95; --text-3: #AAA397;
- --line: rgba(240,235,225,.08); --line-strong: rgba(240,235,225,.18);
- --accent: #E18C7C; --accent-hover: #CEA38E; --accent-soft: #352A27;
- --success: #9AB49E; --success-soft: #253039; --warn: #D5B576; --warn-soft: #342F24;
- --danger: #E18C7C; --danger-soft: #352A27; --focus-color: #9EBBCB;
+ --bg: #121316; --surface: #1A1B20; --surface-2: #23252B; --surface-3: #232E31;
+ --text: #ECE9E1; --text-2: #A19D93; --text-3: #A6A096;
+ --line: rgba(236,233,225,.09); --line-strong: rgba(236,233,225,.20);
+ --accent: #C78E5C; --accent-hover: #D9A374; --accent-soft: #33271F; --accent-contrast: #121316;
+ --success: #8EA993; --success-soft: #24302F; --warn: #D3B67C; --warn-soft: #332E22;
+ --danger: #D68C72; --danger-soft: #3C2B26; --focus-color: #9FBAC8;
 }
 * {
   box-sizing: border-box;
@@ -313,7 +313,7 @@ textarea:focus-visible {
   min-height: 40px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: currentColor;
+  color: var(--accent-contrast);
   border-radius: 2px;
   padding: 8px 14px;
   font-weight: 760;
@@ -941,7 +941,7 @@ textarea.field {
   display: grid;
   place-items: center;
   background: var(--accent);
-  color: currentColor;
+  color: var(--accent-contrast);
   flex: none;
 }
 .update-copy {
