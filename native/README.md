@@ -24,9 +24,9 @@ XDG_STATE_HOME/ChromiumCloudSync on Linux (default ~/.local/state).
 CCSYNC_HOME is a test override. Profile discovery uses LOCALAPPDATA,
 Application Support, or XDG configuration roots independently.
 
-In the extension, open Settings > Extension packages and expand Advanced: full-file
-backup (native helper). Configure its cloud destination independently from browser
-sync and CRX / ZIP package backup. Choose Connect / refresh native helper, then
+In the extension, open Settings > Local and expand Open full-file backup (native
+helper). Configure its cloud destination independently from browser sync. Choose
+Connect / refresh native helper, then
 select a Profile, extension IDs and data categories. Choose Preview backup scope
 and review the result before choosing Schedule offline backup. Quit all Chromium
 browsers, including background processes. The detached worker waits up to 30

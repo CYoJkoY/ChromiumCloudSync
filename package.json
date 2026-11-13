@@ -1,6 +1,6 @@
 {
   "name": "chromium-cloud-sync",
-  "version": "1.14.6",
+  "version": "1.14.7",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "dev": "npm run build:extension",
     "version:sync": "tsx scripts/sync-package-version.ts",
     "typecheck": "tsc -p tsconfig.strict.json --noEmit",
-    "test": "tsx scripts/test-sync-core.ts && tsx scripts/test-sync-invariants.ts && tsx scripts/test-schema.ts && tsx scripts/test-storage.ts && tsx scripts/test-cloud-tab-state.ts && tsx scripts/test-sync-modules.ts && tsx scripts/test-cloud-files.ts && tsx scripts/test-gdrive-auth.ts && tsx scripts/test-package-index.ts && tsx scripts/test-gdrive-packages.ts && tsx scripts/test-extension-storage.ts && tsx scripts/test-extension-local-source.ts && tsx scripts/test-extension-backup-ui.ts && npm run test:full-backup",
+    "test": "tsx scripts/test-sync-core.ts && tsx scripts/test-sync-invariants.ts && tsx scripts/test-schema.ts && tsx scripts/test-storage.ts && tsx scripts/test-cloud-tab-state.ts && tsx scripts/test-sync-modules.ts && tsx scripts/test-cloud-files.ts && tsx scripts/test-gdrive-auth.ts && npm run test:full-backup",
     "test:full-backup": "tsx scripts/test-full-backup.ts && node --test native/tests/*.test.mjs",
     "build:extension": "tsx scripts/build.ts --prepare-only",
     "validate": "npm run version:sync && npm run typecheck && tsx scripts/check-undefined-refs.ts && npm test && npm run build:extension && tsx scripts/validate.ts && npm run audit",

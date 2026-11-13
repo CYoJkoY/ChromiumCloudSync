@@ -14,7 +14,7 @@ h1, .page-title { font-size: clamp(1.6rem, 3vw, 2.25rem); }
 .card-title { font-size: 1.4rem; }
 .brand-title { font-size: 1.25rem; }
 p, .note, .card-desc { line-height: 1.8; }
-code, pre, .mono, .ccsync-ext-meta, .ccsync-ext-cloud-meta { font-family: var(--font-code); overflow-wrap: anywhere; }
+code, pre, .mono { font-family: var(--font-code); overflow-wrap: anywhere; }
 .card, .settings-content .card, .settings-sidebar, .subcard {
  border-radius: 0; box-shadow: none; background: transparent;
 }
@@ -75,3 +75,4 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); inlin
 @media(prefers-reduced-motion: reduce) {
  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+.extension-github-link{display:flex;align-items:end;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.extension-github-link .field-label{flex:1 1 260px}.extension-github-link .field{margin-top:5px}.extension-github-link .muted{align-self:center}

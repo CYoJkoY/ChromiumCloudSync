@@ -145,9 +145,9 @@ function mount(): void {
     controls, transferStatus, pause, preview, element("h3", t("02 / 离线任务与回滚", "02 / Offline tasks and rollback")), jobs,
     element("h3", t("03 / 云端恢复", "03 / Cloud restore")), archiveControls, records);
   void chrome.management.getAll().then(async extensions => {
-    const saved = await chrome.storage.local.get(["extensionBackupSelectedIds", "fullBackupSelection"]);
+    const saved = await chrome.storage.local.get(["fullBackupSelection"]);
     const savedSelection = isObject(saved.fullBackupSelection) ? saved.fullBackupSelection : {};
-    const ids: unknown = Array.isArray(savedSelection.extensionIds) ? savedSelection.extensionIds : saved.extensionBackupSelectedIds;
+    const ids: unknown = Array.isArray(savedSelection.extensionIds) ? savedSelection.extensionIds : [];
     if (Array.isArray(savedSelection.categories)) for (const check of scopes.querySelectorAll<HTMLInputElement>("input")) check.checked = savedSelection.categories.includes(check.value);
     const persist = () => { void chrome.storage.local.set({ fullBackupSelection: { extensionIds: selected("backupExtension"), categories: selected("backupCategory") } }).catch(error => { status.textContent = String(error); }); };
     scopes.addEventListener("change", persist); selections.addEventListener("change", persist);

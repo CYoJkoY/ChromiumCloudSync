@@ -45,11 +45,6 @@ const runtimeArtifacts = [
   ["src/runtime/types.ts", "types.js"],
   ["src/runtime/cloud-gdrive.ts", "cloud-gdrive.js"],
   ["src/runtime/cloud-webdav.ts", "cloud-webdav.js"],
-  ["src/features/extension-storage-watch.ts", "extension-storage-watch.js"],
-  ["src/features/extension-local-source.ts", "extension-local-source.js"],
-  ["src/features/package-index.ts", "package-index.js"],
-  ["src/features/gdrive-packages.ts", "gdrive-packages.js"],
-  ["src/features/extension-storage.ts", "extension-storage.js"],
   ["src/features/update.ts", "update.js"],
   ["src/ui/extensions.ts", "extensions.js"],
   ["src/ui/guide.ts", "guide.js"],
@@ -74,7 +69,6 @@ const pageArtifacts = [
 ] as const;
 
 const styleArtifacts = [
-  ["src/ui/styles/extension-backup.css", "extension-backup.css"],
   ["src/ui/styles/ui.css", "ui.css"],
   ["src/ui/styles/ui-system.css", "ui-system.css"],
   ["src/ui/styles/ui-overrides.css", "ui-overrides.css"],

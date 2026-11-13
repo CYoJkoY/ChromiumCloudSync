@@ -8,7 +8,6 @@
     <link href="ui.css" rel="stylesheet" />
     <link href="ui-overrides.css" rel="stylesheet" />
     <link href="ui-system.css" rel="stylesheet" />
-    <link rel="stylesheet" href="extension-backup.css" />
   </head>
   <body>
     <div class="shell">
@@ -132,24 +131,7 @@
               <span aria-hidden="true" class="nav-tab-icon"><svg class="icon" viewbox="0 0 24 24"><rect x="4" y="4" width="16" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg></span>
               <span data-i18n="cloudTabs">Cloud tabs</span>
             </button>
-<button
-              aria-controls="panel-extension"
-              aria-selected="false"
-              class="nav-tab"
-              data-target="panel-extension"
-              role="tab"
-              type="button"
-            >
-              <span aria-hidden="true" class="nav-tab-icon"
-                ><svg class="icon" viewbox="0 0 24 24">
-                  <path
-                    d="M8 3h3v3h2V3h3v3.5a3.5 3.5 0 0 1 3.5 3.5H16v2h3v3h-3.5a3.5 3.5 0 0 1-3.5 3.5V15H10v3h-3v-3.5A3.5 3.5 0 0 1 3.5 11H8V9H5V6h3z"
-                  ></path></svg></span
-              ><span id="extensionStorageNavLabel"
-                >Extension packages</span
-              ></button
-            ><button
-              aria-controls="panel-local"
+            <button aria-controls="panel-local"
               aria-selected="false"
               class="nav-tab"
               data-target="panel-local"
@@ -302,23 +284,6 @@
     <div id="cloudTabsManager"></div>
   </section>
 </div>
-<div class="tab-panel hidden" id="panel-extension" role="tabpanel">
-              <section class="card extension-storage-panel">
-                <div class="card-title">
-                  <span id="extensionStoragePanelTitle"
-                    >Extension packages</span
-                  >
-                </div>
-                <p class="card-desc" id="extensionStoragePanelDescription">
-                  Back up CRX / ZIP extension packages to GitHub, WebDAV, or Google Drive and restore them here.
-                </p>
-                <div id="extensionStorageHost"></div>
-                <details class="advanced-backup">
-                  <summary data-i18n="legacyPackages">Advanced: full-file backup (native helper)</summary>
-                  <section class="full-backup" id="fullBackupHost" aria-label="Full extension backup"></section>
-                </details>
-              </section>
-            </div>
             <div class="tab-panel hidden" id="panel-local" role="tabpanel">
               <section class="card">
                 <div class="card-title">
@@ -348,6 +313,18 @@
                   <button class="secondary" id="refreshStorageLayout" data-i18n="refresh" type="button">Refresh</button>
                 </div>
               </section>
+              <section class="card full-backup-panel">
+                <div class="card-title">
+                  <span>Full extension data backup</span>
+                </div>
+                <p class="card-desc">
+                  Back up supported persistent data from a browser Profile. This workflow is independent from synchronization, uses its own cloud destination, and requires the optional native helper.
+                </p>
+                <details class="advanced-backup">
+                  <summary>Open full-file backup (native helper)</summary>
+                  <section class="full-backup" id="fullBackupHost" aria-label="Full extension backup"></section>
+                </details>
+              </section>
             </div>
           </main>
         </div>
@@ -356,10 +333,6 @@
     <script src="runtime.js"></script>
     <script src="theme.js"></script>
     <script src="i18n.js"></script>
-    <script src="package-index.js"></script>
-    <script src="gdrive-packages.js"></script>
-    <script src="extension-local-source.js"></script>
-    <script src="extension-storage.js"></script>
     <script src="options.js"></script>
     <script type="module" src="full-backup-ui.js"></script>
   </body>

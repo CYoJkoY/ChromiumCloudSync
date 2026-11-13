@@ -18,7 +18,7 @@ and reduced-motion support. Surfaces have no elevation, glow or hover movement.
 Theme illustrations use inline geometric sun and moon shapes.
 
 ui-system.css owns shared editorial components; ui-overrides.css retains page
-layout rules; extension-backup.css owns the existing package manager components.
+layout rules.
 Popup width is a definite 500px. Settings navigation stacks on narrow screens.
 
 DOM checks on local HTML fixtures covered popup, settings (all four panels),

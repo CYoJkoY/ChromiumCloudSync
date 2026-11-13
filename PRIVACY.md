@@ -27,7 +27,7 @@ The extension can read metadata for installed third-party extensions, including:
 - Homepage and update information.
 - Store links.
 
-This metadata is used for extension inventory, missing-extension detection, recovery assistance, and user-requested package backup.
+This metadata is used for extension inventory, missing-extension detection, and recovery assistance.
 
 The extension does not read another extension's private storage or private settings.
 
@@ -48,7 +48,7 @@ When Google Drive is connected, the extension may read the authorized account em
 
 ### User-selected extension package data
 
-When the optional package-backup feature is used, the extension can read CRX/ZIP files or files from a directory explicitly selected by the user and upload the selected package to the backup provider configured by the user.
+GitHub download URLs entered for missing extensions are stored locally by extension ID. They are not uploaded or checked automatically.
 
 ## 2. Why this data is processed
 
@@ -58,7 +58,7 @@ Chromium Cloud Sync processes the data above only to provide its disclosed funct
 - Browser-state restoration.
 - Tab-group and bookmark synchronization.
 - Installed-extension inventory and recovery.
-- User-requested extension package backup.
+- User-requested full extension data backup with the optional native helper.
 - Authentication with the cloud provider selected by the user.
 
 The extension does not use this data for advertising, behavioral profiling, credit assessment, loan decisions, data brokerage, or other purposes unrelated to these functions.
@@ -71,19 +71,15 @@ When synchronization or backup is enabled, data is transmitted to the provider e
 
 ### GitHub
 
-GitHub API and Gist services are used for synchronization and optional extension-package backup. New synchronization Gists created by the extension are private by default.
+GitHub API and Gist services are used for synchronization and, when configured by the user, optional full extension data backup. New synchronization Gists created by the extension are private by default.
 
 ### Google Drive
 
-Google Drive is used for synchronization and optional extension-package backup after the user authorizes access. The extension requests the drive.file scope for application-managed files.
+Google Drive is used for synchronization and, when configured by the user, optional full extension data backup after the user authorizes access. The extension requests the drive.file scope for application-managed files.
 
 ### WebDAV
 
-The extension can send synchronization or package-backup data to the WebDAV server URL and folder configured by the user. WebDAV access credentials are provided and controlled by the user.
-
-### GitHub repository package backup
-
-When selected by the user, extension packages can be uploaded to the GitHub repository configured for package backup.
+The extension can send synchronization data to the WebDAV server URL and folder configured by the user. WebDAV access credentials are provided and controlled by the user.
 
 ## 4. Local storage
 
@@ -109,7 +105,7 @@ The extension does not collect browsing activity for advertising, tracking, prof
 
 ## 7. User control
 
-The user decides whether to enable synchronization, which provider to use, whether to enable automatic synchronization, and whether to use extension-package backup.
+The user decides whether to enable synchronization, which provider to use, whether to enable automatic synchronization, and whether to use the optional native-helper full extension data backup.
 
 Users can disconnect configured providers and can delete provider-side synchronization or backup data using the controls provided by the selected provider.
 

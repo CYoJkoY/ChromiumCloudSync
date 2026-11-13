@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="backup-title backup-desc">
-  <title id="backup-title">Package backup</title>
-  <desc id="backup-desc">A package box with an upward transfer arrow.</desc>
-  <style>svg{color:#8A4E2E}@media (prefers-color-scheme:dark){svg{color:#C78E5C}}</style>
-  <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M4 9.5 12 5.5l8 4v9l-8 4-8-4z"/>
-    <path d="M4 9.5 12 13.5l8-4M12 13.5V22"/>
-  </g>
-</svg>
