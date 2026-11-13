@@ -44,8 +44,10 @@
     "src/ui/history.ts",
     "src/ui/i18n.ts",
     "src/ui/options.ts",
-    "src/ui/popup-fixes.ts",
+    "src/ui/popup-actions.ts",
+    "src/ui/popup-cloud-groups.ts",
     "src/ui/popup-i18n.ts",
+    "src/ui/popup-status.ts",
     "src/ui/popup.ts",
     "src/ui/runtime.ts",
     "src/ui/theme.ts"

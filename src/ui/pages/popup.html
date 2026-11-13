@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#F5F3EC" />
+    <meta name="theme-color" content="#F3F1E9" />
     <title>Chromium Cloud Sync</title>
     <link rel="stylesheet" href="ui.css" />
     <link rel="stylesheet" href="ui-overrides.css" />
@@ -288,19 +288,21 @@
             >
           </button>
         </div>
-        <div id="missing" class="missing-list"></div>
       </section>
 
-      <section class="card" id="cloudGroupsCard" hidden>
+      <details class="card" id="cloudGroupsCard">
+        <summary class="popup-cloud-disclosure-summary">
+          <span class="section-label" data-i18n="cloudGroups">Cloud tab groups</span>
+          <span class="cloud-disclosure-indicator" aria-hidden="true">›</span>
+        </summary>
         <div class="popup-cloud-groups-head">
-          <p class="section-label" data-i18n="cloudGroups">Cloud tab groups</p>
           <button type="button" class="secondary popup-cloud-refresh" id="refreshCloudGroups" data-i18n="refreshFromCloud">
             Refresh from cloud
           </button>
         </div>
         <div id="cloudGroupsMeta" class="cloud-state-meta" hidden></div>
         <div id="cloudGroups" class="cloud-group-list"></div>
-      </section>
+      </details>
 
       <footer class="split small muted popup-footer">
         <span id="revision">Revision 0</span>
@@ -310,8 +312,10 @@
     <script src="theme.js"></script>
     <script src="i18n.js"></script>
     <script src="popup-i18n.js"></script>
-    <script src="popup.js"></script>
     <script src="update.js"></script>
-    <script src="popup-fixes.js"></script>
+    <script src="popup-status.js"></script>
+    <script src="popup-cloud-groups.js"></script>
+    <script src="popup-actions.js"></script>
+    <script src="popup.js"></script>
   </body>
 </html>

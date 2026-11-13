@@ -64,7 +64,9 @@ const sourceFiles = [
   "src/ui/options.ts",
   "src/ui/popup.ts",
   "src/ui/popup-i18n.ts",
-  "src/ui/popup-fixes.ts",
+  "src/ui/popup-status.ts",
+  "src/ui/popup-cloud-groups.ts",
+  "src/ui/popup-actions.ts",
   "src/ui/runtime.ts",
   "src/ui/theme.ts",
 ];
@@ -86,7 +88,9 @@ const requiredRefs = {
     "popup-i18n.js",
     "popup.js",
     "update.js",
-    "popup-fixes.js",
+    "popup-status.js",
+    "popup-cloud-groups.js",
+    "popup-actions.js",
   ],
   "options.html": [
     "runtime.js",
@@ -128,7 +132,9 @@ const runtimeFiles = [
   "options.js",
   "popup.js",
   "popup-i18n.js",
-  "popup-fixes.js",
+  "popup-status.js",
+  "popup-cloud-groups.js",
+  "popup-actions.js",
   "runtime.js",
   "theme.js",
   "cloud-gdrive.js",
@@ -222,7 +228,7 @@ const scanFiles = [
   "src/runtime/background.ts",
   "src/runtime/sync-core.ts",
   "src/ui/popup.ts",
-  "src/ui/popup-fixes.ts",
+  "src/ui/popup-cloud-groups.ts",
   "src/ui/guide.ts",
   "README.md",
   "src/ui/extensions.ts",
@@ -838,18 +844,20 @@ if (/case "cloudTabState":[\s\S]{0,400}await pullState\(\)/.test(bg))
     "cloudTabState must read the canonical cloud-tab projection, not pullState()",
   );
 
-const popupSource = fs.readFileSync(
-  path.join(root, "src/ui/popup.ts"),
+const popupCloudGroupsSource = fs.readFileSync(
+  path.join(root, "src/ui/popup-cloud-groups.ts"),
   "utf8",
 );
 for (const required of [
   "renderCloudGroups",
   "cloudTabStateChanged",
-  "refreshCloudGroups",
   "forceRemote",
 ])
-  if (!popupSource.includes(required))
-    throw new Error("Popup is missing canonical cloud-tab support: " + required);
+  if (!popupCloudGroupsSource.includes(required))
+    throw new Error(
+      "Popup cloud-groups module is missing canonical cloud-tab support: " +
+        required,
+    );
 
 for (const required of [
   "refreshCloudTabs(true)",
@@ -1015,6 +1023,9 @@ if (!storageCompact.includes("String(a.davPass||'')===String(b.davPass||'')"))
   // `t`, so its keys must resolve against that file's `text` object.
   const consumers: Array<[string, Set<string>]> = [
     ["src/ui/popup.ts", sharedDict],
+    ["src/ui/popup-status.ts", sharedDict],
+    ["src/ui/popup-cloud-groups.ts", sharedDict],
+    ["src/ui/popup-actions.ts", sharedDict],
     ["src/ui/options.ts", sharedDict],
     ["src/ui/history.ts", sharedDict],
     ["src/ui/extensions.ts", extensionDict],
