@@ -34,9 +34,18 @@ const DICT = {
     recoveryTitle: "Extension Recovery Center",
     recoveryBody:
       "Use the Extension Recovery Center to review extensions that exist in the cloud inventory but are not installed locally. When a verified Chrome Web Store or Microsoft Edge Add-ons link is available, the page provides a direct installation link. Installation itself remains a manual browser action.",
-    packageTitle: "Extension packages and full-file backup",
+    packageTitle: "Extension packages",
     packageBody:
-      "Open Settings > Extension packages to back up or restore CRX / ZIP files. Choose a package backend independently from the sync provider, then upload packages from a folder you select or choose existing CRX / ZIP files. Full-file backup is a separate Advanced section on this page: configure its independent cloud destination, connect the optional native helper, select the matching Profile and extension IDs, and choose data categories. Preview the operation, schedule it, and quit all Chromium browsers. The helper archives Profile-relative paths; ready archives upload on next start. Downloads verify chunks and the archive before a separate restore confirmation. Close browsers before replacing selected scopes; originals remain available for rollback. Database restore requires the same OS, browser family, and major version. Passwords, cookies, Preferences, caches, temporary files, OPFS / storage buckets, and unknown database layouts are excluded. Restoring program files does not install an extension.",
+      "CRX / ZIP backups preserve extension program packages. They do not contain the extension's Profile data or install the extension when restored.",
+    packageStepsTitle: "Package backup and restore",
+    packageStepsBody:
+      "1. Open Settings > Extension packages. 2. Choose a package storage backend independently from browser sync. 3. Upload packages from a folder you select, or choose existing CRX / ZIP files. 4. Select a saved package to download or restore it. If a folder scan finds no files, select the user-data folder containing Extensions or the extension's source folder.",
+    fullBackupTitle: "Full extension data backup",
+    fullBackupBody:
+      "This advanced workflow backs up supported persistent data from a browser Profile. It is separate from sync and package backup, uses its own cloud destination, and requires building and registering the optional native helper (see native/README.md).",
+    fullBackupRestoreTitle: "Full data restore",
+    fullBackupRestoreBody:
+      "1. In Settings > Extension packages, expand Advanced: full-file backup (native helper). 2. Connect or refresh the helper, choose the matching Profile, extension IDs, and data categories, then preview the scope. 3. Schedule the offline backup and quit every Chromium browser; ready archives upload on next start, or use Upload ready backups. 4. To restore, list cloud backups, download, verify, and preview one, then confirm the restore task. Close browsers before replacing selected data; originals remain available for rollback. Database recovery requires the same OS, browser family, and major version. Passwords, cookies, Preferences, caches, temporary files, OPFS / storage buckets, and unknown database layouts are excluded. Restoring program files does not install an extension.",
     historyTitle: "History and rollback",
     historyBody:
       "History depends on the selected provider: GitHub Gist and Google Drive keep provider-native revisions. WebDAV stores current state only, and the extension does not create application-managed archives.",
@@ -88,9 +97,18 @@ const DICT = {
     recoveryTitle: "扩展恢复中心",
     recoveryBody:
       "打开“扩展恢复中心”，可以查看云端清单中存在但当前浏览器没有安装的扩展。如果能够确认 Chrome 网上应用店或 Microsoft Edge 加载项链接，页面会提供直接安装入口。扩展安装仍然由用户手动确认。",
-    packageTitle: "扩展包与完整文件备份",
+    packageTitle: "扩展程序包",
     packageBody:
-      "打开“设置 → 扩展包”可备份或恢复 CRX / ZIP 文件。选择独立于同步后端的扩展包存储，再从选定文件夹打包上传，或直接选择现有 CRX / ZIP 文件。“完整文件备份”位于同一页面的“高级”区域：配置独立云端存储，连接可选本机助手，选择对应 Profile、扩展 ID 和数据类别。预览后安排任务并退出所有 Chromium 浏览器。助手按 Profile 相对路径归档；准备好的归档会在下次启动后上传。下载会校验分块和完整归档，单独确认后才恢复。替换所选范围前请关闭浏览器；原数据会保留以便回滚。数据库恢复要求相同操作系统、浏览器系列和主版本。密码、Cookie、Preferences、缓存、临时数据、OPFS / Storage Buckets 和未知数据库格式不包含在内。恢复程序文件不等于安装扩展。",
+      "CRX / ZIP 备份保存扩展程序包，不包含扩展在浏览器 Profile 中的数据；恢复程序包也不会自动安装扩展。",
+    packageStepsTitle: "程序包备份与恢复",
+    packageStepsBody:
+      "1. 打开“设置 → 扩展包”。2. 选择独立于浏览器同步的程序包存储后端。3. 从你选择的文件夹上传程序包，或直接选择已有 CRX / ZIP 文件。4. 选择已保存的程序包进行下载或恢复。如果扫描文件夹没有找到文件，请选择包含 Extensions 的用户数据文件夹，或该扩展的源码文件夹。",
+    fullBackupTitle: "扩展完整数据备份",
+    fullBackupBody:
+      "此高级流程用于备份浏览器 Profile 中受支持的持久数据。它独立于同步和程序包备份，使用单独的云端存储，并需要构建、注册可选的本机助手（参见 native/README.md）。",
+    fullBackupRestoreTitle: "完整数据恢复",
+    fullBackupRestoreBody:
+      "1. 在“设置 → 扩展包”展开“高级：完整文件备份（本机助手）”。2. 连接或刷新助手，选择对应的 Profile、扩展 ID 和数据类别，然后预览范围。3. 安排离线备份并退出所有 Chromium 浏览器；就绪归档会在下次启动时上传，也可使用“上传就绪备份”。4. 恢复时先列出云端备份，再下载、校验并预览，然后确认恢复任务。替换数据前请关闭浏览器；原数据会保留以便回滚。数据库恢复要求相同操作系统、浏览器系列和主版本。密码、Cookie、Preferences、缓存、临时数据、OPFS / Storage Buckets 和未知数据库格式不包含在内。恢复程序文件不等于安装扩展。",
     historyTitle: "历史与回滚",
     historyBody:
       "历史记录取决于所选择的存储后端：GitHub Gist 和 Google Drive 使用服务商原生修订记录；WebDAV 只保存当前状态，扩展不再创建应用自管历史归档。",

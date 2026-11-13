@@ -13,8 +13,8 @@
   <path d="M864 228h206M864 270h156M864 312h180M864 354h124" stroke="#D3CDC0" stroke-width="6" stroke-linecap="round"/>
   <rect x="864" y="398" width="102" height="28" fill="#8A4E2E"/>
   <path d="M894 412h42M906 400l12 12-12 12" stroke="#F3F1E9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M1098 284h58" stroke="#8A4E2E" stroke-width="5" stroke-linecap="round"/>
-  <path d="m1147 268 16 16-16 16" stroke="#8A4E2E" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1098 284h35" stroke="#8A4E2E" stroke-width="5" stroke-linecap="round"/>
+  <path d="m1124 268 16 16-16 16" stroke="#8A4E2E" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
   <rect x="1156" y="168" width="220" height="230" rx="2" fill="#EDE9DD" stroke="#D3CDC0"/>
   <rect x="1184" y="200" width="164" height="8" fill="#D3CDC0"/>
   <rect x="1184" y="240" width="118" height="38" fill="#FBF9F3" stroke="#D3CDC0"/>
