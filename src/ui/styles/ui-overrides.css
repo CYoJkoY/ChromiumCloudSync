@@ -344,7 +344,7 @@ body {
   top: 13px;
   width: 17px;
   height: 17px;
-  border-radius: 50%;
+  border-radius: 1px;
   background: var(--text-3);
   box-shadow: none;
   transition:

@@ -40,18 +40,18 @@
   const zh = () => lang() === "zh-CN";
   const text = {
     title: () =>
-      zh() ? "扩展完整备份" : "Full extension backup",
+      zh() ? "扩展包备份" : "Extension package backup",
     desc: () =>
       zh()
         ? "扩展备份包使用独立云存储，不写入同步 Gist。"
         : "Extension backups use a separate cloud store and never enter the sync Gist.",
     panelTitle: () =>
-      zh() ? "扩展完整备份" : "Full extension backup",
+      zh() ? "扩展包备份" : "Extension packages",
     panelDesc: () =>
       zh()
-        ? "使用本机助手按 ID 备份程序与持久数据；下方保留旧版 CRX / ZIP 程序包与云端存储设置。"
-        : "Use the native helper to back up programs and persistent data by ID. Legacy CRX / ZIP packages and cloud destination settings remain below.",
-    nav: () => (zh() ? "扩展完整备份" : "Full extension backup"),
+        ? "将 CRX / ZIP 扩展包备份到 GitHub、WebDAV 或 Google Drive，并从此处下载恢复。"
+        : "Back up CRX / ZIP extension packages to GitHub, WebDAV, or Google Drive and restore them here.",
+    nav: () => (zh() ? "扩展包备份" : "Extension packages"),
     backend: () => (zh() ? "存储后端" : "Storage backend"),
     disabled: () => (zh() ? "关闭" : "Disabled"),
     github: () => (zh() ? "GitHub 私有仓库" : "GitHub private repository"),
@@ -1068,6 +1068,58 @@
         )
       : davGet(cfg, item.path);
   }
+  async function listRecoveryPackages() {
+    const cfg = await getCfg();
+    if (!cfg || cfg.backend === "disabled") return [];
+    const listed = await listBackups(cfg);
+    const latest = new Map();
+    for (const item of Array.isArray(listed.backups) ? listed.backups : []) {
+      if (!(
+        item.extensionId &&
+        PI().isPackagePath(item.path, item.extensionId, item.version, item.fileName) &&
+        !listed.missing?.includes(item.path) &&
+        item.present !== false
+      )) continue;
+      const current = latest.get(String(item.extensionId));
+      if (!current || LS().compareVersions(String(item.version || ""), String(current.version || "")) > 0)
+        latest.set(String(item.extensionId), item);
+    }
+    return [...latest.values()]
+      .map((item) => ({
+        extensionId: String(item.extensionId),
+        name: String(item.name || item.extensionId),
+        version: String(item.version || ""),
+        format: String(item.format || "crx"),
+        size: Number(item.size || 0),
+      }));
+  }
+  async function downloadRecoveryPackage(extensionId) {
+    const cfg = await getCfg();
+    if (!cfg || cfg.backend === "disabled") throw Error(t("noBackups"));
+    const listed = await listBackups(cfg);
+    const item = (Array.isArray(listed.backups) ? listed.backups : [])
+      .filter((entry) =>
+        String(entry.extensionId || "") === String(extensionId) &&
+        PI().isPackagePath(entry.path, entry.extensionId, entry.version, entry.fileName) &&
+        !listed.missing?.includes(entry.path) &&
+        entry.present !== false,
+      )
+      .sort((a, b) => LS().compareVersions(String(b.version || ""), String(a.version || "")))[0];
+    if (!item) throw Error(t("noBackups"));
+    const bytes = await getPackage(cfg, item);
+    const blob = new Blob([bytes], {
+      type: item.format === "zip" ? "application/zip" : "application/x-chrome-extension",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = seg(item.fileName || `${seg(item.name)}.${item.format || "crx"}`);
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return { version: String(item.version || ""), format: String(item.format || "crx") };
+  }
   async function removePackagePath(cfg, relative, message) {
     if (cfg.backend === "gdrive") return gdriveRemove(cfg, relative);
     if (cfg.backend === "github")
@@ -1349,10 +1401,10 @@
   }
   let refreshLanguage = () => {};
   async function initOptions() {
-    addStyles();
-    fileInput();
     const host = $("extensionStorageHost");
     if (!host || $("extensionStorageSettings")) return;
+    addStyles();
+    fileInput();
     try {
       await window.CCSyncI18n?.initI18n?.();
     } catch {}
@@ -2827,9 +2879,11 @@
     renderPopup: render,
     refresh: render,
     refreshLanguage: () => refreshLanguage(),
+    listRecoveryPackages,
+    downloadRecoveryPackage,
   };
   window.addEventListener(
-    "ccsync:language-changed",
+    "ccsync:languagechange",
     () => void refreshLanguage(),
   );
   if (document.readyState === "loading")

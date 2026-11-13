@@ -159,10 +159,9 @@
           Package recovery
         </div>
         <p class="card-desc" data-i18n="packageRecoveryBody">
-          For extensions that are not available from a browser store, use the
-          package-backup controls in Settings to download a stored CRX / ZIP
-          file.
+          Download a matching CRX / ZIP package directly from your configured private backup.
         </p>
+        <div id="packageRecoveryList"></div>
         <div class="btn-row primary-actions">
           <button
             type="button"
@@ -177,8 +176,12 @@
     </div>
 
     <script src="runtime.js"></script>
-    <script src="theme.js"></script>
     <script src="i18n.js"></script>
+    <script src="package-index.js"></script>
+    <script src="gdrive-packages.js"></script>
+    <script src="extension-local-source.js"></script>
+    <script src="extension-storage.js"></script>
+    <script src="theme.js"></script>
     <script src="extensions.js"></script>
   </body>
 </html>

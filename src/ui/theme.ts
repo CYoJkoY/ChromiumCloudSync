@@ -3,9 +3,8 @@
   const media = window.matchMedia?.("(prefers-color-scheme: dark)");
   const COLORS = { light: "#F3F1E9", dark: "#121316" };
   const ICONS = {
-    light:
-      '<svg aria-hidden="true" class="theme-art theme-art-light" viewBox="0 0 24 24" focusable="false"><circle class="theme-sun-core" cx="12" cy="12" r="4.15"></circle><path class="theme-sun-rays" d="M12 2.35v2.1M12 19.55v2.1M2.35 12h2.1M19.55 12h2.1M5.18 5.18l1.48 1.48M17.34 17.34l1.48 1.48M18.82 5.18l-1.48 1.48M6.66 17.34l-1.48 1.48"></path></svg>',
-    dark: '<svg aria-hidden="true" class="theme-art theme-art-dark" viewBox="0 0 24 24" focusable="false"><path class="theme-moon-shape" d="M19.7 14.65a7.85 7.85 0 1 1-10.35-10.35 7.95 7.95 0 0 0 10.35 10.35Z"></path></svg>',
+    light: '<svg aria-hidden="true" class="theme-art theme-art-light" viewBox="0 0 32 22" focusable="false"><circle class="theme-sun" cx="8.2" cy="8" r="3.55"></circle><path class="theme-sun-ray" d="M8.2 1.7v1.45M8.2 12.85v1.45M1.9 8h1.45M13.05 8h1.45M3.75 3.55l1.02 1.02M11.63 11.43l1.02 1.02M12.65 3.55l-1.02 1.02M4.77 11.43l-1.02 1.02"></path><path class="theme-cloud-light" d="M11.2 17.65h13.35a3.25 3.25 0 0 0 .2-6.47 4.95 4.95 0 0 0-8.62-1.23 4.25 4.25 0 0 0-4.93 7.7Z"></path><path class="theme-cloud-highlight" d="M13.1 15.55c.8-1.25 2.25-1.8 3.55-1.55.9-1.42 2.6-2.12 4.25-1.8"></path></svg>',
+    dark: '<svg aria-hidden="true" class="theme-art theme-art-dark" viewBox="0 0 32 22" focusable="false"><path class="theme-moon" d="M13.45 3.25a5.65 5.65 0 1 0 4.34 9.27 6.15 6.15 0 0 1-4.34-9.27Z"></path><path class="theme-star" d="M22 3.15l.62 1.32 1.44.2-1.03 1 .24 1.43L22 6.42l-1.27.68.24-1.43-1.03-1 1.44-.2.62-1.32Z"></path></svg>',
   };
 
   function normalize(v) {
@@ -72,6 +71,7 @@
   media?.addEventListener?.("change", async () => {
     if ((await getTheme()) === "system") applyTheme("system");
   });
+  document.addEventListener("ccsync:languagechange", normalizeControls);
 
   window.CCSyncTheme = {
     getTheme,
