@@ -43,11 +43,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); inlin
 .action-tile { text-align: start; border: 1px solid var(--line-strong); background: var(--surface); }
 .status-box, .note, .empty-state { background: var(--surface); border-radius: 2px; }
 .choice-switch-thumb { background: var(--accent-soft); box-shadow: none; border-radius: 1px; }
-.theme-switch { min-width: 80px; height: 38px; padding: 3px; }
-.theme-switch .choice-switch-option { height: 30px; padding: 0; color: var(--text-3); }
+.theme-switch { min-width: 80px; }
+.theme-switch .choice-switch-option { padding: 0; color: var(--text-3); }
 .theme-switch .choice-switch-option[aria-pressed="true"] { color: var(--accent); }
-.theme-art { width: 22px; height: 22px; display: block; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.theme-sun-rays { stroke-linecap: round; }
+.theme-art { width: 30px; height: 21px; display: block; }
 .full-backup { margin-block: 24px; padding-block: 24px; border-block: 1px solid var(--line-strong); }
 .full-backup h2 { margin: 0 0 8px; }
 .full-backup fieldset { border: 1px solid var(--line); margin: 16px 0; padding: 16px; }

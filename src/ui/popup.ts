@@ -43,7 +43,8 @@ function setupChoiceSwitch(root, initialValue, onChange) {
         s.language && s.language !== "auto" ? s.language : i.currentLanguage();
       setupChoiceSwitch(ui.lang, lv, async (v) => {
         await i.setLanguage(v);
-        await refresh();
+        await status.refresh();
+        CCSyncTheme.normalizeControls();
       });
     }
     await CCSyncTheme.initTheme();

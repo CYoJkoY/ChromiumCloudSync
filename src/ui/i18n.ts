@@ -1,7 +1,7 @@
 (function () {
   const DICT = {
     en: {
-      legacyPackages: "Cloud destination and legacy program-only packages",
+      legacyPackages: "Advanced: full-file backup (native helper)",
       extensionName: "Chromium Cloud Sync",
       auto: "Auto",
       autoSyncTitle: "Automatic sync",
@@ -364,7 +364,7 @@
   };
   DICT["zh-CN"] = {
     ...DICT["en"],
-    legacyPackages: "云端存储设置与旧版程序包备份",
+    legacyPackages: "高级选项：扩展完整备份（本机助手）",
     extensionName: "Chromium Cloud Sync",
     auto: "自动",
     autoSyncTitle: "自动同步",
