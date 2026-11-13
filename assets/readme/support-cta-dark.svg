@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 132" role="img" aria-label="Support Chromium Cloud Sync through the maintainer payment page">
+  <rect width="640" height="132" fill="#1B1C20"/>
+  <rect x="1" y="1" width="638" height="130" fill="none" stroke="#3A3B40"/>
+  <rect x="52" y="42" width="26" height="3" fill="#E18C7C"/>
+  <text x="52" y="68" font-family="ui-monospace, Consolas, monospace" font-size="11" letter-spacing="3" fill="#E18C7C">SUPPORT</text>
+  <text x="52" y="95" font-family="Georgia, 'Times New Roman', serif" font-size="21" fill="#EDEAE2">Keep Chromium Cloud Sync maintained</text>
+  <path d="M489 66h73M548 50l16 16-16 16" stroke="#E18C7C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

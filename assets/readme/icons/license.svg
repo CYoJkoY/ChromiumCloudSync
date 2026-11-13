@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="license-title license-desc">
+  <title id="license-title">License</title>
+  <desc id="license-desc">A document with a verification mark.</desc>
+  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 3.5h9l3 3v14H6z"/>
+    <path d="M15 3.5v3h3M9 13.5l2.2 2.2 4-4"/>
+  </g>
+</svg>

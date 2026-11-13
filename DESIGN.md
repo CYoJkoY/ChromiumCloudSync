@@ -3,6 +3,10 @@
 All five extension pages use the editorial surface from AzSkills Wabi-Press,
 reviewed at 52e51f3d99d4f1eb42ce72d41ae1efceb34c21f8.
 
+Repository artwork uses the same material. The extension icon and README
+hero, section icons, and support CTA use warm paper, ink, cinnabar and moss;
+hero and CTA artwork provide dark variants.
+
 The shared tokens in src/ui/styles/ui.css define warm paper (#F5F3EC),
 ink (#1C1A17), cinnabar (#A6382A), and moss (#3B5848). Dark surfaces use
 #131416, #1B1C20 and #25272D with #EDEAE2 text. Headings use the system
@@ -15,7 +19,7 @@ Theme illustrations use inline geometric sun and moon shapes.
 
 ui-system.css owns shared editorial components; ui-overrides.css retains page
 layout rules; extension-backup.css owns the existing package manager components.
-Popup width is capped by the viewport. Settings navigation stacks on narrow screens.
+Popup width is a definite 500px. Settings navigation stacks on narrow screens.
 
 DOM checks on local HTML fixtures covered popup, settings (all four panels),
 history, guide and extension recovery at 320x900 and 1440x900, both languages and

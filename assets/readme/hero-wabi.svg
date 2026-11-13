@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 560" role="img" aria-label="Chromium Cloud Sync synchronizes local browser state through selectable cloud providers">
+  <rect width="1440" height="560" fill="#F5F3EC"/>
+  <rect x="64" y="64" width="1312" height="432" fill="none" stroke="#D3CDC0"/>
+  <rect x="104" y="128" width="38" height="3" fill="#A6382A"/>
+  <text x="104" y="176" font-family="ui-monospace, Consolas, monospace" font-size="15" letter-spacing="5" fill="#A6382A">LOCAL-FIRST SYNC</text>
+  <text x="104" y="254" font-family="Georgia, 'Times New Roman', serif" font-size="62" fill="#1C1A17">Chromium Cloud Sync</text>
+  <text x="104" y="316" font-family="Georgia, 'Times New Roman', serif" font-size="34" fill="#524C44">Keep browser state close to the user.</text>
+  <text x="104" y="380" font-family="Inter, Segoe UI, sans-serif" font-size="19" fill="#6E675D">Selectable providers, controlled restore, and a quiet interface.</text>
+  <rect x="836" y="118" width="262" height="332" rx="2" fill="#FAF9F5" stroke="#D3CDC0"/>
+  <rect x="864" y="146" width="40" height="40" fill="#ECE8DC"/>
+  <rect x="920" y="152" width="116" height="8" fill="#ECE8DC"/>
+  <rect x="920" y="174" width="76" height="6" fill="#D3CDC0"/>
+  <path d="M864 228h206M864 270h156M864 312h180M864 354h124" stroke="#D3CDC0" stroke-width="6" stroke-linecap="round"/>
+  <rect x="864" y="398" width="102" height="28" fill="#A6382A"/>
+  <path d="M894 412h42M906 400l12 12-12 12" stroke="#F5F3EC" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1098 284h58" stroke="#A6382A" stroke-width="5" stroke-linecap="round"/>
+  <path d="m1147 268 16 16-16 16" stroke="#A6382A" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="1156" y="168" width="220" height="230" rx="2" fill="#ECE8DC" stroke="#D3CDC0"/>
+  <rect x="1184" y="200" width="164" height="8" fill="#D3CDC0"/>
+  <rect x="1184" y="240" width="118" height="38" fill="#FAF9F5" stroke="#D3CDC0"/>
+  <rect x="1198" y="254" width="90" height="8" fill="#3B5848"/>
+  <rect x="1184" y="296" width="118" height="38" fill="#FAF9F5" stroke="#D3CDC0"/>
+  <rect x="1198" y="310" width="72" height="8" fill="#D3CDC0"/>
+  <rect x="1184" y="352" width="118" height="8" fill="#D3CDC0"/>
+  <path d="M64 496h1312" stroke="#D3CDC0" stroke-width="2"/>
+</svg>
