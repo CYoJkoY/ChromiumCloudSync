@@ -1,58 +1,27 @@
+/* Wabi-Press editorial tokens, AzSkills 52e51f3. */
 :root {
-  color-scheme: light;
-  --bg: #f4f6f9;
-  --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --surface-3: #eef2f6;
-  --text: #182230;
-  --text-2: #475467;
-  --text-3: #667085;
-  --line: #dfe4ea;
-  --line-strong: #c8d0da;
-  --accent: #315efb;
-  --accent-hover: #244de0;
-  --accent-soft: #eaf0ff;
-  --success: #067647;
-  --success-soft: #eaf8f1;
-  --warn: #b54708;
-  --warn-soft: #fff4e8;
-  --danger: #b42318;
-  --danger-soft: #fff0ee;
-  --focus: 0 0 0 3px rgba(49, 94, 251, 0.2);
-  --shadow-1:
-    0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 14px rgba(16, 24, 40, 0.05);
-  --shadow-2: 0 10px 28px rgba(16, 24, 40, 0.1);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 14px;
-  --control-h: 40px;
-  --compact-h: 36px;
-  --tile-h: 76px;
-  --popup-w: 400px;
+ color-scheme: light;
+ --bg: #F5F3EC; --surface: #FAF9F5; --surface-2: #ECE8DC; --surface-3: #E4EBED;
+ --text: #1C1A17; --text-1: var(--text); --text-2: #524C44; --text-3: #6E675D;
+ --line: rgba(40,36,32,.10); --line-strong: rgba(40,36,32,.25);
+ --accent: #A6382A; --accent-hover: #855747; --accent-soft: #EEE2DA;
+ --success: #3B5848; --success-soft: #E4EBED; --warn: #795B28; --warn-soft: #EFE7D5;
+ --danger: #A6382A; --danger-soft: #EEE2DA; --focus-color: #405F73; --focus: none;
+ --shadow-1: 0 1px 2px rgba(40,36,32,.04); --shadow-2: var(--shadow-1);
+ --radius-sm: 2px; --radius-md: 2px; --radius-lg: 2px;
+ --control-h: 40px; --compact-h: 36px; --tile-h: 76px; --popup-w: 400px;
+ --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+ --font-heading: 'Iowan Old Style', 'Palatino Linotype', 'Noto Serif CJK SC', 'Songti SC', 'SimSun', Georgia, serif;
+ --font-code: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
 }
 html[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #0f1318;
-  --surface: #171c22;
-  --surface-2: #1d242d;
-  --surface-3: #252e39;
-  --text: #f1f5f9;
-  --text-2: #c4ced9;
-  --text-3: #96a2b0;
-  --line: #303a45;
-  --line-strong: #43505e;
-  --accent: #8ea7ff;
-  --accent-hover: #aec0ff;
-  --accent-soft: #222f50;
-  --success: #6fddb2;
-  --success-soft: #16382d;
-  --warn: #ffc56d;
-  --warn-soft: #3f2f1b;
-  --danger: #ff9b93;
-  --danger-soft: #422226;
-  --focus: 0 0 0 3px rgba(142, 167, 255, 0.27);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.34), 0 5px 16px rgba(0, 0, 0, 0.2);
-  --shadow-2: 0 12px 30px rgba(0, 0, 0, 0.35);
+ color-scheme: dark;
+ --bg: #131416; --surface: #1B1C20; --surface-2: #25272D; --surface-3: #253039;
+ --text: #EDEAE2; --text-2: #A39F95; --text-3: #AAA397;
+ --line: rgba(240,235,225,.08); --line-strong: rgba(240,235,225,.18);
+ --accent: #E18C7C; --accent-hover: #CEA38E; --accent-soft: #352A27;
+ --success: #9AB49E; --success-soft: #253039; --warn: #D5B576; --warn-soft: #342F24;
+ --danger: #E18C7C; --danger-soft: #352A27; --focus-color: #9EBBCB;
 }
 * {
   box-sizing: border-box;
@@ -68,14 +37,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font:
-    13px/1.5 Inter,
-    "Segoe UI",
-    "PingFang SC",
-    "Microsoft YaHei UI",
-    "Noto Sans SC",
-    system-ui,
-    sans-serif;
+  font: 14px/1.75 var(--font-body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -107,8 +69,9 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 0;
-  box-shadow: var(--focus);
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 ::selection {
   background: var(--accent-soft);
@@ -124,7 +87,7 @@ textarea:focus-visible {
 ::-webkit-scrollbar-thumb {
   background: var(--line-strong);
   border: 3px solid var(--bg);
-  border-radius: 999px;
+  border-radius: 2px;
 }
 .hidden {
   display: none !important;
@@ -175,10 +138,10 @@ textarea:focus-visible {
 .brand-mark {
   width: 42px;
   height: 42px;
-  border-radius: 12px;
+  border-radius: 2px;
   background: var(--surface);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-1);
+  box-shadow: none;
   display: grid;
   place-items: center;
   color: var(--accent);
@@ -230,7 +193,7 @@ textarea:focus-visible {
   height: 36px;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 2px;
   background: var(--surface);
   color: var(--text-2);
   display: grid;
@@ -245,7 +208,7 @@ textarea:focus-visible {
 .select {
   height: var(--compact-h);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 2px;
   background: var(--surface);
   color: var(--text);
   padding: 0 10px;
@@ -256,7 +219,7 @@ textarea:focus-visible {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-1);
+  box-shadow: none;
   padding: 16px;
   min-width: 0;
 }
@@ -295,7 +258,7 @@ textarea:focus-visible {
 .status-icon {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: 2px;
   background: var(--surface-2);
   display: grid;
   place-items: center;
@@ -350,19 +313,19 @@ textarea:focus-visible {
   min-height: 40px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #fff;
-  border-radius: 10px;
+  color: currentColor;
+  border-radius: 2px;
   padding: 8px 14px;
   font-weight: 760;
   cursor: pointer;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+  box-shadow: none;
   display: inline-flex;
   gap: 6px;
 }
 .primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  transform: translateY(-1px);
+  transform: none;
 }
 .primary:disabled {
   opacity: 0.58;
@@ -374,7 +337,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
-  border-radius: 10px;
+  border-radius: 2px;
   padding: 7px 12px;
   font-weight: 680;
   cursor: pointer;
@@ -408,7 +371,7 @@ textarea:focus-visible {
 .metric {
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 2px;
   background: var(--surface-2);
   min-width: 0;
 }
@@ -450,7 +413,7 @@ textarea:focus-visible {
   min-height: var(--tile-h);
   padding: 11px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 2px;
   background: var(--surface);
   text-align: left;
   color: var(--text);
@@ -461,12 +424,12 @@ textarea:focus-visible {
 .action-tile:hover {
   background: var(--surface-2);
   border-color: var(--line-strong);
-  transform: translateY(-1px);
+  transform: none;
 }
 .action-icon {
   width: 34px;
   height: 34px;
-  border-radius: 9px;
+  border-radius: 2px;
   background: var(--accent-soft);
   color: var(--accent);
   display: grid;
@@ -516,7 +479,7 @@ label.field-label {
   height: var(--control-h);
   margin-top: 6px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 2px;
   background: var(--surface);
   color: var(--text);
   padding: 0 11px;
@@ -532,7 +495,7 @@ label.field-label {
 }
 .field:focus {
   border-color: var(--accent);
-  box-shadow: var(--focus);
+  box-shadow: none;
 }
 textarea.field {
   height: auto;
@@ -552,7 +515,7 @@ textarea.field {
   gap: 6px;
   min-height: 138px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 2px;
   padding: 12px;
   background: var(--surface);
   cursor: pointer;
@@ -621,7 +584,7 @@ textarea.field {
   overflow-wrap: break-word;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 2px;
   padding: 11px;
   color: var(--text-2);
   font:
@@ -638,7 +601,7 @@ textarea.field {
   gap: 6px;
   min-height: 24px;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--surface-2);
   border: 1px solid var(--line);
   color: var(--text-2);
@@ -701,8 +664,8 @@ textarea.field {
   padding: 14px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--shadow-1);
+  border-radius: 2px;
+  box-shadow: none;
   min-width: 0;
 }
 .settings-sidebar-title {
@@ -743,7 +706,7 @@ textarea.field {
   padding: 9px 10px;
   margin: 0;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 2px;
   background: transparent;
   color: var(--text-2);
   font: inherit;
@@ -777,7 +740,7 @@ textarea.field {
   display: grid;
   place-items: center;
   flex: none;
-  border-radius: 8px;
+  border-radius: 2px;
   color: var(--text-3);
   background: var(--surface-2);
 }
@@ -856,9 +819,9 @@ textarea.field {
   min-width: 76px;
   padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--surface);
-  box-shadow: var(--shadow-1);
+  box-shadow: none;
 }
 .choice-switch-thumb {
   position: absolute;
@@ -867,7 +830,7 @@ textarea.field {
   left: 3px;
   width: calc(50% - 3px);
   height: 26px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--accent-soft);
   transition: transform 0.18s ease;
 }
@@ -885,7 +848,7 @@ textarea.field {
   display: grid;
   place-items: center;
   cursor: pointer;
-  border-radius: 999px;
+  border-radius: 2px;
   font-weight: 760;
 }
 .choice-switch-option[aria-pressed="true"] {
@@ -913,46 +876,46 @@ textarea.field {
   color: var(--text-2);
 }
 .theme-art-light .theme-sun {
-  fill: #f7c84b;
-  stroke: #d89f1b;
+  fill: currentColor;
+  stroke: currentColor;
   stroke-width: 0.7;
 }
 .theme-art-light .theme-sun-ray,
 .theme-art-light .theme-cloud-highlight {
   fill: none;
-  stroke: #d89f1b;
+  stroke: currentColor;
   stroke-width: 1;
   stroke-linecap: round;
 }
 .theme-art-light .theme-cloud-light {
-  fill: #ffffff;
-  stroke: #8b98a8;
+  fill: currentColor;
+  stroke: currentColor;
   stroke-width: 1;
 }
 .theme-art-dark {
-  color: #dce6ff;
+  color: currentColor;
 }
 .theme-art-dark .theme-moon {
-  fill: #e6eefc;
-  stroke: #aebbd3;
+  fill: currentColor;
+  stroke: currentColor;
   stroke-width: 0.7;
 }
 .theme-art-dark .theme-star {
-  fill: #f9df78;
-  stroke: #d7b53a;
+  fill: currentColor;
+  stroke: currentColor;
   stroke-width: 0.45;
 }
 .theme-art-dark .theme-star-small {
   opacity: 0.85;
 }
 .theme-art-dark .theme-cloud-dark {
-  fill: #131820;
-  stroke: #77869a;
+  fill: currentColor;
+  stroke: currentColor;
   stroke-width: 1;
 }
 .theme-art-dark .theme-cloud-highlight-dark {
   fill: none;
-  stroke: #526175;
+  stroke: currentColor;
   stroke-width: 1;
   stroke-linecap: round;
 }
@@ -974,11 +937,11 @@ textarea.field {
 .update-icon {
   width: 34px;
   height: 34px;
-  border-radius: 9px;
+  border-radius: 2px;
   display: grid;
   place-items: center;
   background: var(--accent);
-  color: #fff;
+  color: currentColor;
   flex: none;
 }
 .update-copy {

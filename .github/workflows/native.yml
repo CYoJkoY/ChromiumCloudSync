@@ -1,0 +1,33 @@
+name: Native helper
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep macOS coverage without depending on the capacity-constrained ARM pool.
+        os: [windows-latest, macos-15-intel, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Test registration in isolated directories
+        run: node --test native/tests/*.test.mjs
+      - name: Pin Rust toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal
+      - name: Test offline fixtures
+        run: cargo +1.90.0 test --manifest-path native/Cargo.toml --locked
+      - name: Build native helper
+        run: cargo +1.90.0 build --manifest-path native/Cargo.toml --release --locked
+      - name: Verify real native message framing
+        shell: bash
+        run: |
+          binary=native/target/release/ccsync-native
+          if [ "$RUNNER_OS" = Windows ]; then binary="$binary.exe"; fi
+          node native/tests/wire.mjs "$binary"

@@ -3,3 +3,4 @@ desktop.ini
 node_modules/
 .build/
 dist/
+native/target/
