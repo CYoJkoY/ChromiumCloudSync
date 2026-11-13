@@ -55,10 +55,10 @@ const dict = {
     recoveryPolicyBody:
       "Chromium Cloud Sync 只记录扩展元数据并负责发现缺失扩展。商店安装始终由用户确认；第三方 CRX / ZIP 文件则由单独配置的扩展包备份后端负责。",
     recoveryPolicyNote:
-      "恢复中心不会写入第三方扩展的内部存储，也不会同步第三方扩展设置。",
+      "此恢复中心处理扩展安装清单；受支持的持久数据请在“设置 → 扩展完整备份”中单独恢复。",
     packageRecoveryTitle: "扩展包恢复",
     packageRecoveryBody:
-      "对于无法从浏览器商店获取的扩展，可以在“设置”中的第三方扩展文件存储区域下载已经备份的 CRX / ZIP 文件。",
+      "对于无法从浏览器商店获取的扩展，可以在“设置”中的扩展完整备份区域下载已经备份的 CRX / ZIP 文件。",
     openSettings: "打开设置",
     noMissing: "没有缺失扩展。当前浏览器与云端扩展清单一致。",
     remoteUnavailable: "无法读取云端扩展清单。",

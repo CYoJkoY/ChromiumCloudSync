@@ -40,18 +40,18 @@
   const zh = () => lang() === "zh-CN";
   const text = {
     title: () =>
-      zh() ? "第三方扩展云存储" : "Third-party extension cloud storage",
+      zh() ? "扩展完整备份" : "Full extension backup",
     desc: () =>
       zh()
-        ? "第三方扩展包使用独立云存储，不写入同步 Gist。"
-        : "Third-party extension packages use a separate cloud store and never enter the sync Gist.",
+        ? "扩展备份包使用独立云存储，不写入同步 Gist。"
+        : "Extension backups use a separate cloud store and never enter the sync Gist.",
     panelTitle: () =>
-      zh() ? "第三方扩展包存储" : "Third-party extension file storage",
+      zh() ? "扩展完整备份" : "Full extension backup",
     panelDesc: () =>
       zh()
-        ? "单独备份和管理第三方 CRX / ZIP 扩展包，不写入同步数据库。"
-        : "Back up and manage third-party CRX / ZIP packages separately from the sync database.",
-    nav: () => (zh() ? "第三方扩展" : "Third-party extensions"),
+        ? "使用本机助手按 ID 备份程序与持久数据；下方保留旧版 CRX / ZIP 程序包与云端存储设置。"
+        : "Use the native helper to back up programs and persistent data by ID. Legacy CRX / ZIP packages and cloud destination settings remain below.",
+    nav: () => (zh() ? "扩展完整备份" : "Full extension backup"),
     backend: () => (zh() ? "存储后端" : "Storage backend"),
     disabled: () => (zh() ? "关闭" : "Disabled"),
     github: () => (zh() ? "GitHub 私有仓库" : "GitHub private repository"),
@@ -1231,14 +1231,7 @@
       ? String(value || "")
       : when.toLocaleString();
   }
-  function addStyles() {
-    if ($("ccsync-extension-storage-styles")) return;
-    const s = document.createElement("style");
-    s.id = "ccsync-extension-storage-styles";
-    s.textContent =
-      ".ccsync-ext-grid{display:grid;gap:10px}.ccsync-ext-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ccsync-ext-note{color:var(--text-2);font-size:12px;line-height:1.55;margin-top:8px}.ccsync-ext-selection,.ccsync-ext-cloud{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}.ccsync-ext-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.ccsync-ext-tools{display:flex;gap:6px;flex-wrap:wrap}.ccsync-ext-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-row:first-child{border-top:0}.ccsync-ext-name{font-size:13px;font-weight:600;overflow-wrap:anywhere}.ccsync-ext-meta{font-size:11px;color:var(--text-2);margin-top:2px;overflow-wrap:anywhere}.ccsync-ext-status{font-size:12px;line-height:1.55;margin-top:10px}.ccsync-ext-status.ok{color:var(--success)}.ccsync-ext-status.error{color:var(--danger)}.ccsync-ext-cloud-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-cloud-name{font-size:13px;font-weight:600}.ccsync-ext-cloud-meta{font-size:11px;color:var(--text-2);margin-top:2px}.ccsync-ext-token-help{font-size:12px;line-height:1.55;color:var(--text-2)}.ccsync-ext-hidden{display:none!important}.ccsync-ext-search{max-width:220px}.ccsync-ext-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.ccsync-ext-chip{display:inline-block;font-size:11px;line-height:1.6;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--text-2);white-space:nowrap}.ccsync-ext-chip.ok{color:var(--success);border-color:color-mix(in srgb,var(--success) 45%,var(--line))}.ccsync-ext-chip.warn{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,var(--line))}.ccsync-ext-row[hidden]{display:none!important}.ccsync-ext-drop{outline:2px dashed var(--accent,#315efb);outline-offset:6px;border-radius:8px}.ccsync-ext-modal{position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.55)}.ccsync-ext-modal[hidden]{display:none}.ccsync-ext-modal-card{display:flex;flex-direction:column;width:100%;max-width:760px;max-height:86vh;background:var(--surface,#fff);color:var(--text-1,#0f172a);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 60px rgba(15,23,42,.3)}.ccsync-ext-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}.ccsync-ext-modal-body{padding:6px 18px 12px;overflow:auto}.ccsync-ext-modal-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line)}.ccsync-ext-local-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.ccsync-ext-local-row:first-child{border-top:0}@media(max-width:600px){.ccsync-ext-row,.ccsync-ext-cloud-row,.ccsync-ext-local-row{grid-template-columns:1fr}.ccsync-ext-row input[type=checkbox]{justify-self:start}.ccsync-ext-row .secondary{justify-self:start}}";
-    document.head.appendChild(s);
-  }
+  function addStyles() { /* Styles are shared through extension-backup.css. */ }
   function setHidden(el, hidden) {
     if (!el) return;
     el.hidden = hidden;
@@ -1278,8 +1271,8 @@
         if (cfg.backend === "disabled") {
           alert(
             zh()
-              ? "请先保存并启用第三方扩展云存储。"
-              : "Save and enable third-party extension cloud storage first.",
+              ? "请先保存并启用扩展完整备份。"
+              : "Save and enable full extension backup first.",
           );
           return;
         }
@@ -2429,8 +2422,8 @@
         if (cfg.backend === "disabled") {
           alert(
             zh()
-              ? "请先保存并启用第三方扩展云存储。"
-              : "Save and enable third-party extension cloud storage first.",
+              ? "请先保存并启用扩展完整备份。"
+              : "Save and enable full extension backup first.",
           );
           return;
         }
@@ -2811,8 +2804,8 @@
         if (cfg.backend === "disabled") {
           alert(
             zh()
-              ? "请先保存并启用第三方扩展云存储。"
-              : "Save and enable third-party extension cloud storage first.",
+              ? "请先保存并启用扩展完整备份。"
+              : "Save and enable full extension backup first.",
           );
           return;
         }

@@ -12,7 +12,7 @@ const DICT = {
     storageBody:
       "The cloud snapshot contains browser-state data: open windows and HTTP(S) tabs, tab groups, bookmarks, and installed third-party extension metadata. Extension metadata is used to detect missing extensions; it does not contain third-party extension settings.",
     storageNote:
-      "Third-party extension settings are intentionally outside the synchronization scope. Chromium Cloud Sync cannot generically read or write another extension’s private storage.",
+      "Third-party extension settings are intentionally outside the synchronization scope. Supported persistent data uses the separate Full extension backup flow and optional native helper.",
     providerTitle: "Storage providers",
     providerBody:
       "GitHub Gist, Google Drive, and WebDAV are supported storage backends. The selected backend stores the synchronized browser-state snapshot; provider credentials remain local to the browser.",
@@ -34,9 +34,9 @@ const DICT = {
     recoveryTitle: "Extension Recovery Center",
     recoveryBody:
       "Use the Extension Recovery Center to review extensions that exist in the cloud inventory but are not installed locally. When a verified Chrome Web Store or Microsoft Edge Add-ons link is available, the page provides a direct installation link. Installation itself remains a manual browser action.",
-    packageTitle: "Third-party extension package backup",
+    packageTitle: "Full extension backup",
     packageBody:
-      "CRX and ZIP backups are separate from browser-state synchronization. Open Settings → Third-party extensions and configure a backend. The extension list is opt-in: check what you want to back up and the selection saves itself. To stop hunting for installers, use Back up from a local folder and point it at the browser user-data directory (the one containing Extensions), a single Extensions directory, or an unpacked extension’s source directory — the files found there are packaged into a ZIP per extension and uploaded under the extension’s own ID and version. Upload several CRX / ZIP…, or dropping files onto the list, still works for packages you already have, and each archive is matched to its extension by its own ID or manifest. Chromium does not let this extension read another extension’s installed directory by ID, so the folder or the file always comes from you; downloading a backup also does not bypass the browser’s install confirmation. Deselecting or uninstalling does not silently delete cloud files: use Clean up unused backups to review and permanently remove packages for unselected IDs, including older versions. The index keeps the full inventory so cleanup can find every recorded file.",
+      "Open Settings > Full extension backup. Save the independent cloud destination, connect the optional native helper, select the matching Profile and extension IDs, and choose the data categories. Preview, schedule, and quit all Chromium browsers. The helper resolves user roots at runtime and archives Profile-relative paths; ready archives upload on next start. Download verifies chunks and the archive before a separate restore confirmation. Close browsers to replace selected scopes; originals remain available for rollback. Database restore requires the same OS, browser family and major version. Passwords, cookies, Preferences, caches, temporary files, OPFS/storage buckets and unknown database layouts are excluded. Program files do not install an extension. The legacy CRX/ZIP workflow remains below the cloud destination settings.",
     historyTitle: "History and rollback",
     historyBody:
       "History depends on the selected provider: GitHub Gist and Google Drive keep provider-native revisions. WebDAV stores current state only, and the extension does not create application-managed archives.",
@@ -66,7 +66,7 @@ const DICT = {
     storageBody:
       "云端快照包含浏览器状态数据：打开的窗口和 HTTP(S) 标签页、标签组、书签，以及已安装第三方扩展的元数据。扩展元数据用于检测缺失扩展，不包含第三方扩展的内部设置。",
     storageNote:
-      "第三方扩展设置被明确排除在同步范围之外。Chromium Cloud Sync 无法通用地读取或修改其他扩展的私有存储。",
+      "第三方扩展设置被明确排除在同步范围之外。受支持的持久数据通过独立的“扩展完整备份”和可选本机助手处理。",
     providerTitle: "存储后端",
     providerBody:
       "当前支持 GitHub Gist、Google Drive 和 WebDAV。选中的后端负责保存同步的浏览器状态快照；后端凭据只保存在当前浏览器本地。",
@@ -88,9 +88,9 @@ const DICT = {
     recoveryTitle: "扩展恢复中心",
     recoveryBody:
       "打开“扩展恢复中心”，可以查看云端清单中存在但当前浏览器没有安装的扩展。如果能够确认 Chrome 网上应用店或 Microsoft Edge 加载项链接，页面会提供直接安装入口。扩展安装仍然由用户手动确认。",
-    packageTitle: "第三方扩展包备份",
+    packageTitle: "扩展完整备份",
     packageBody:
-      "CRX / ZIP 备份与浏览器状态同步完全分离。打开“设置 → 第三方扩展”配置后端。扩展列表默认不选：勾选需要备份的扩展，选择会自动保存。如果不想再逐个寻找安装包，点击“从本地文件夹备份”，选择浏览器的用户数据目录（包含 Extensions 文件夹的那个）、单个 Extensions 目录，或某个解包扩展的源码目录；扫描到的文件会按扩展 ID 和版本打成 ZIP 并上传。“上传多个 CRX / ZIP…”或把文件拖到列表上同样可用，每个安装包会按自身的 ID 或 manifest.json 自动对应到扩展。Chromium 不允许本扩展按 ID 读取其他扩展的安装目录，因此文件夹或文件始终由你提供；下载备份后也仍需由浏览器确认安装。取消选择或卸载不会静默删除云端文件：点击“清理未选扩展备份”即可检查并永久删除未选 ID 的所有扩展包（包括旧版本）。索引会保留完整清单，确保清理时能找到已上传的文件。",
+      "打开“设置 → 扩展完整备份”，先保存独立云端存储，连接可选本机助手，选择对应 Profile、扩展 ID 和数据类别。预览后安排任务并退出所有 Chromium 浏览器。助手运行时解析用户目录，归档只记录 Profile 相对路径，再次启动浏览器后上传。下载会校验分块和完整归档，确认恢复并关闭浏览器后才替换所选范围，原数据保留以便回滚。数据库恢复要求相同操作系统、浏览器系列和主版本。密码、Cookie、Preferences、缓存、临时数据、OPFS/Storage Buckets 和未知数据库格式不包含在内。程序文件恢复不代替浏览器安装确认。旧版 CRX/ZIP 流程保留在云端存储设置下方。",
     historyTitle: "历史与回滚",
     historyBody:
       "历史记录取决于所选择的存储后端：GitHub Gist 和 Google Drive 使用服务商原生修订记录；WebDAV 只保存当前状态，扩展不再创建应用自管历史归档。",

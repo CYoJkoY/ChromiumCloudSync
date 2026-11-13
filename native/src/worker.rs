@@ -349,7 +349,9 @@ mod tests {
     use super::*;
     #[test]
     fn restores_selected_scope_and_rolls_back() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = tempfile::Builder::new()
+            .tempdir_in(fs::canonicalize(std::env::temp_dir()).unwrap())
+            .unwrap();
         let p = Profile {
             id: "fixture".into(),
             browser: "chrome".into(),
@@ -401,7 +403,9 @@ mod tests {
     #[test]
     fn interrupted_restore_recovers_new_file_origin_and_original_data() {
         use std::cell::Cell;
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = tempfile::Builder::new()
+            .tempdir_in(fs::canonicalize(std::env::temp_dir()).unwrap())
+            .unwrap();
         let p = Profile {
             id: "fixture".into(),
             browser: "chrome".into(),

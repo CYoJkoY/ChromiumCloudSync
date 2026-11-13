@@ -1,6 +1,7 @@
 (function () {
   const DICT = {
     en: {
+      legacyPackages: "Cloud destination and legacy program-only packages",
       extensionName: "Chromium Cloud Sync",
       auto: "Auto",
       autoSyncTitle: "Automatic sync",
@@ -363,6 +364,7 @@
   };
   DICT["zh-CN"] = {
     ...DICT["en"],
+    legacyPackages: "云端存储设置与旧版程序包备份",
     extensionName: "Chromium Cloud Sync",
     auto: "自动",
     autoSyncTitle: "自动同步",
@@ -772,6 +774,7 @@
   }
   function applyI18n(root = document) {
     root.documentElement.lang = current;
+    document.dispatchEvent(new Event("ccsync:languagechange"));
     root
       .querySelectorAll("[data-i18n]")
       .forEach((e) => setTranslatedText(e, t(e.dataset.i18n)));

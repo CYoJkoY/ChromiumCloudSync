@@ -10,7 +10,8 @@
     "alarms",
     "bookmarks",
     "tabGroups",
-    "identity"
+    "identity",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "https://api.github.com/*",

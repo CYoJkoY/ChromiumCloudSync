@@ -5,7 +5,9 @@ const B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 #[test]
 fn pending_jobs_remain_visible_after_completed_history() {
     use serde_json::json;
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempfile::Builder::new()
+        .tempdir_in(fs::canonicalize(std::env::temp_dir()).unwrap())
+        .unwrap();
     for n in 0..60 {
         let job = Job {
             id: format!("1-1-{n}"),
@@ -43,7 +45,9 @@ fn pending_jobs_remain_visible_after_completed_history() {
 #[test]
 fn protocol_envelope_correlates_and_rejects_unknown_versions() {
     use serde_json::json;
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempfile::Builder::new()
+        .tempdir_in(fs::canonicalize(std::env::temp_dir()).unwrap())
+        .unwrap();
     let hello = protocol::envelope(
         tmp.path(),
         json!({"protocol":1,"requestId":"fixture-1","op":"hello"}),
@@ -62,7 +66,9 @@ fn protocol_envelope_correlates_and_rejects_unknown_versions() {
         .contains("Protocol v1"));
 }
 fn fixture() -> (tempfile::TempDir, Profile) {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempfile::Builder::new()
+        .tempdir_in(fs::canonicalize(std::env::temp_dir()).unwrap())
+        .unwrap();
     let p = Profile {
         id: "fixture".into(),
         browser: "chrome".into(),
@@ -185,7 +191,9 @@ fn logical_restore_preserves_other_origins() {
 fn chunks_are_ordered_and_retries_match() {
     use base64::{engine::general_purpose::STANDARD, Engine};
     use serde_json::json;
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempfile::Builder::new()
+        .tempdir_in(fs::canonicalize(std::env::temp_dir()).unwrap())
+        .unwrap();
     let root = tmp.path();
     let bytes = b"archive";
     let job = protocol::call(

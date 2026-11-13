@@ -27,6 +27,10 @@ if (
 const makeZip = process.argv.includes("--zip");
 
 const runtimeArtifacts = [
+  ["src/features/full-backup.ts", "full-backup.js"],
+  ["src/features/full-backup-cloud.ts", "full-backup-cloud.js"],
+  ["src/runtime/full-backup-runtime.ts", "full-backup-runtime.js"],
+  ["src/ui/full-backup.ts", "full-backup-ui.js"],
   ["src/runtime/background.ts", "background.js"],
   ["src/runtime/browser-capabilities.ts", "browser-capabilities.js"],
   ["src/runtime/cloud-files.ts", "cloud-files.js"],
@@ -68,6 +72,7 @@ const pageArtifacts = [
 ] as const;
 
 const styleArtifacts = [
+  ["src/ui/styles/extension-backup.css", "extension-backup.css"],
   ["src/ui/styles/ui.css", "ui.css"],
   ["src/ui/styles/ui-system.css", "ui-system.css"],
   ["src/ui/styles/ui-overrides.css", "ui-overrides.css"],
@@ -100,7 +105,7 @@ for (const [sourceFile, outputFile] of runtimeArtifacts) {
     throw new Error(
       `Missing compiled extension file: ${sourceFile} -> ${outputFile}`,
     );
-  fs.copyFileSync(compiled, path.join(dist, outputFile));
+  fs.writeFileSync(path.join(dist, outputFile), fs.readFileSync(compiled, "utf8").replaceAll('"../features/', '"./').replaceAll('"../runtime/', '"./'));
 }
 
 for (const [sourceFile, outputFile] of [...pageArtifacts, ...styleArtifacts]) {
