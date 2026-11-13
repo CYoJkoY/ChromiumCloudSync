@@ -6,7 +6,7 @@ and StatePort. Cloud adapters depend on that contract; the use case imports no
 browser APIs or provider SDK. The runtime is the composition root and owns native
 connections, serialization, startup/alarm upload and local checkpoints. The DOM
 adapter owns explicit Profile, extension-ID and category choices. No event bus is
-introduced. The existing sync-core, sync schema and package-index contracts have
+introduced. The existing sync-core and sync schema contracts have
 zero changes. Legacy extensionBackup configuration keys remain supported.
 
 Native modules separate Profile discovery, versioned category mapping, shared

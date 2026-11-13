@@ -830,8 +830,8 @@ export class DriveApiError extends Error {
 
 /**
  * Classify a Drive failure so callers can branch on the kind instead of parsing
- * message text. Exported for the package-backup UI, which must surface quota,
- * permission, and size-limit problems distinctly.
+ * message text. Callers can surface quota, permission, and size-limit problems
+ * distinctly without parsing provider-specific messages.
  */
 export function classifyDriveError(
   status: number,

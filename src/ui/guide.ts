@@ -51,7 +51,7 @@ const DICT = {
       "If synchronization fails, first open the popup and read the detailed status message. Then verify the GitHub Token and Gist binding in Settings. For package backups, verify the selected backend, its credentials, repository or WebDAV path, and the saved extension selection. The browser cannot expose another extension’s unpacked directory automatically, so package bytes come from a folder you pick or from CRX/ZIP files you select; if a folder scan finds nothing, pick the user-data directory that contains the Extensions folder, or the extension’s own source directory. An uploaded file that cannot be matched to an installed extension is reported instead of being stored — use the per-row Back up CRX / ZIP button for it. To clear backups for removed or deselected extensions, run Clean up unused backups; deletion is confirmed and permanent.",
     scopeTitle: "Synchronization scope",
     scopeBody:
-      "Chromium Cloud Sync synchronizes windows, HTTP(S) tabs, tab groups, bookmarks, and third-party extension metadata. It does not synchronize third-party extension settings or private extension storage. Extension package backup is handled separately through the package-backup and recovery workflow.",
+      "Chromium Cloud Sync synchronizes windows, HTTP(S) tabs, tab groups, bookmarks, and third-party extension metadata. It does not synchronize third-party extension settings or private extension storage. For missing extensions, you can save a GitHub download URL manually in the recovery workflow; the URL is remembered locally by extension ID.",
   },
   "zh-CN": {
     title: "用户指南",

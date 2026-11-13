@@ -13,13 +13,9 @@ const dict = {
       "These extensions exist in the cloud snapshot but are not installed on this browser.",
     recoveryPolicyTitle: "Recovery policy",
     recoveryPolicyBody:
-      "Chromium Cloud Sync records extension metadata and identifies missing extensions. Store installation stays a user action. Third-party CRX / ZIP packages are handled separately by the configured package-backup backend.",
+      "Chromium Cloud Sync records extension metadata and identifies missing extensions. Store installation stays a user action. You can save a GitHub download link for each extension on this device.",
     recoveryPolicyNote:
       "The recovery center never writes into third-party extension storage and never synchronizes third-party extension settings.",
-    packageRecoveryTitle: "Package recovery",
-    packageRecoveryBody:
-      "Download a matching CRX / ZIP package directly from your configured private backup.",
-    openSettings: "Open Settings",
     noMissing:
       "No missing extensions. This browser matches the cloud extension inventory.",
     remoteUnavailable: "Unable to read the cloud extension inventory.",
@@ -33,12 +29,12 @@ const dict = {
     id: "ID",
     version: "Cloud version",
     installType: "Cloud install type",
-    packageHint: "A private package backup may be available in Settings.",
-    downloadBackup: "Download backup",
-    noPackage: "No matching package in the configured backup.",
-    packageMeta: "Backup: v{version} {format} · {size}",
-    packageSetup: "Configure a private package backup in Settings to enable direct downloads.",
-    downloadFailed: "Download failed: {error}",
+    githubUrlLabel: "GitHub download URL",
+    githubUrlPlaceholder: "https://github.com/owner/repo/releases/...",
+    saveGithubUrl: "Save link",
+    githubUrlSaved: "Saved on this device",
+    openGithubUrl: "Open GitHub link",
+    invalidGithubUrl: "Enter an HTTPS link from github.com or githubusercontent.com.",
     sourceLabel: "Source",
     sourceChrome: "Chrome Web Store",
     sourceEdge: "Edge Add-ons",
@@ -58,13 +54,9 @@ const dict = {
     missingExtensionsDesc: "这些扩展存在于云端快照中，但当前浏览器尚未安装。",
     recoveryPolicyTitle: "恢复策略",
     recoveryPolicyBody:
-      "Chromium Cloud Sync 只记录扩展元数据并负责发现缺失扩展。商店安装始终由用户确认；第三方 CRX / ZIP 文件则由单独配置的扩展包备份后端负责。",
+      "Chromium Cloud Sync 只记录扩展元数据并负责发现缺失扩展。商店安装始终由用户确认；你也可以为每个扩展填写 GitHub 下载地址，并保存在本机。",
     recoveryPolicyNote:
-      "此恢复中心处理扩展安装清单；受支持的持久数据请在“设置 → 扩展完整备份”中单独恢复。",
-    packageRecoveryTitle: "扩展包恢复",
-    packageRecoveryBody:
-      "可从已配置的私有扩展包备份直接下载匹配的 CRX / ZIP 文件。",
-    openSettings: "打开设置",
+      "此恢复中心只处理扩展安装清单；不会写入或同步第三方扩展的数据。",
     noMissing: "没有缺失扩展。当前浏览器与云端扩展清单一致。",
     remoteUnavailable: "无法读取云端扩展清单。",
     count: "缺失 {count} 个扩展",
@@ -77,12 +69,12 @@ const dict = {
     id: "ID",
     version: "云端版本",
     installType: "云端安装类型",
-    packageHint: "可以在“设置”中检查是否存在私人扩展包备份。",
-    downloadBackup: "下载备份",
-    noPackage: "已配置的备份中没有匹配的扩展包。",
-    packageMeta: "备份：v{version} {format} · {size}",
-    packageSetup: "请在设置中配置私有扩展包备份，以启用直接下载。",
-    downloadFailed: "下载失败：{error}",
+    githubUrlLabel: "GitHub 下载地址",
+    githubUrlPlaceholder: "https://github.com/owner/repo/releases/...",
+    saveGithubUrl: "保存地址",
+    githubUrlSaved: "已保存在本机",
+    openGithubUrl: "打开 GitHub 地址",
+    invalidGithubUrl: "请输入来自 github.com 或 githubusercontent.com 的 HTTPS 地址。",
     sourceLabel: "来源",
     sourceChrome: "Chrome 网上应用店",
     sourceEdge: "Edge 加载项",
@@ -181,7 +173,6 @@ function render(data) {
     : t("noMissing");
 
   if (!missing.length) return;
-  void renderRecoveryPackages(missing);
 
   for (const ext of missing) {
     const row = document.createElement("div");
@@ -250,72 +241,51 @@ function render(data) {
       actions.append(note);
     }
 
-    row.append(main, actions);
+    const githubInput = document.createElement("input");
+    githubInput.type = "url";
+    githubInput.className = "field";
+    githubInput.placeholder = t("githubUrlPlaceholder");
+    githubInput.setAttribute("aria-label", t("githubUrlLabel"));
+    const githubSave = document.createElement("button");
+    githubSave.type = "button";
+    githubSave.className = "secondary";
+    githubSave.textContent = t("saveGithubUrl");
+    const githubStatus = document.createElement("span");
+    githubStatus.className = "muted small";
+    const githubOpen = document.createElement("a");
+    githubOpen.className = "secondary";
+    githubOpen.target = "_blank";
+    githubOpen.rel = "noreferrer noopener";
+    githubOpen.textContent = t("openGithubUrl");
+    githubOpen.hidden = true;
+    void chrome.storage.local.get({ extensionGithubDownloadUrls: {} }).then(({ extensionGithubDownloadUrls = {} }) => {
+      const saved = extensionGithubDownloadUrls[ext.id];
+      if (saved) { githubInput.value = saved; githubOpen.href = saved; githubOpen.hidden = false; githubStatus.textContent = t("githubUrlSaved"); }
+    });
+    githubSave.addEventListener("click", async () => {
+      let url;
+      try { url = new URL(githubInput.value.trim()); } catch { githubStatus.textContent = t("invalidGithubUrl"); return; }
+      const allowedHost = url.hostname === "github.com" || url.hostname === "githubusercontent.com" || url.hostname.endsWith(".githubusercontent.com");
+      if (url.protocol !== "https:" || !allowedHost) { githubStatus.textContent = t("invalidGithubUrl"); return; }
+      const { extensionGithubDownloadUrls = {} } = await chrome.storage.local.get({ extensionGithubDownloadUrls: {} });
+      extensionGithubDownloadUrls[ext.id] = url.href;
+      await chrome.storage.local.set({ extensionGithubDownloadUrls });
+      githubOpen.href = url.href;
+      githubOpen.hidden = false;
+      githubStatus.textContent = t("githubUrlSaved");
+    });
+    const githubTools = document.createElement("div");
+    githubTools.className = "extension-github-link";
+    const githubLabel = document.createElement("label");
+    githubLabel.className = "field-label";
+    githubLabel.textContent = t("githubUrlLabel");
+    githubLabel.append(githubInput);
+    githubTools.append(githubLabel, githubSave, githubStatus, githubOpen);
+    row.append(main, actions, githubTools);
     list.append(row);
   }
 
-  const note = document.createElement("p");
-  note.className = "extension-recovery-note muted small";
-  note.textContent = t("packageHint");
-  list.append(note);
-}
-
-function formatPackageSize(bytes) {
-  const value = Number(bytes || 0);
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-async function renderRecoveryPackages(missing) {
-  const host = $("packageRecoveryList");
-  const storage = window.CCSyncExtensionStorage;
-  if (!host) return;
-  host.replaceChildren();
-  if (!storage?.listRecoveryPackages || !storage?.downloadRecoveryPackage) {
-    host.textContent = t("packageSetup");
-    return;
-  }
-  try {
-    const packages = await storage.listRecoveryPackages();
-    let matches = 0;
-    for (const ext of missing) {
-      const item = packages
-        .filter((entry) => entry.extensionId === ext.id)
-        .sort((a, b) => String(b.version).localeCompare(String(a.version), undefined, { numeric: true }))[0];
-      if (!item) continue;
-      matches += 1;
-      const row = document.createElement("div");
-      row.className = "history-row extension-recovery-row";
-      const details = document.createElement("div");
-      details.className = "history-main";
-      const name = document.createElement("div");
-      name.className = "history-title";
-      name.textContent = item.name || ext.name || ext.id;
-      const meta = document.createElement("div");
-      meta.className = "history-meta";
-      meta.textContent = t("packageMeta", { version: item.version || "?", format: item.format.toUpperCase(), size: formatPackageSize(item.size) });
-      details.append(name, meta);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "secondary";
-      button.textContent = t("downloadBackup");
-      const status = document.createElement("span");
-      status.className = "muted small";
-      status.setAttribute("aria-live", "polite");
-      button.addEventListener("click", async () => {
-        setBusy(button, true);
-        status.textContent = "";
-        try { await storage.downloadRecoveryPackage(ext.id); }
-        catch (error) { status.textContent = t("downloadFailed", { error: error?.message || String(error) }); }
-        finally { setBusy(button, false); }
-      });
-      row.append(details, button, status);
-      host.append(row);
-    }
-    if (!matches) host.textContent = t(packages.length ? "noPackage" : "packageSetup");
-  } catch (error) {
-    host.textContent = error?.message || t("packageSetup");
-  }
+  // Per-extension GitHub URLs are stored locally and never synced.
 }
 
 async function refresh() {
@@ -364,8 +334,6 @@ function applyText() {
     if (dict[currentLanguage]?.[key])
       node.textContent = dict[currentLanguage][key];
   });
-  const recoveryBody = document.querySelector('[data-i18n="packageRecoveryBody"]');
-  if (recoveryBody) recoveryBody.textContent = t("packageRecoveryBody");
   $("refresh")?.setAttribute("aria-label", t("refresh"));
 }
 
@@ -430,9 +398,6 @@ async function syncLanguageFromStorage() {
 
     applyText();
     $("refresh")?.addEventListener("click", () => void refresh());
-    $("openSettings")?.addEventListener("click", () =>
-      chrome.runtime.openOptionsPage(),
-    );
     await refresh();
   } catch (error) {
     render({

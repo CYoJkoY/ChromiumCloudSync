@@ -128,52 +128,6 @@ Legacy encrypted payloads (`chromium-cloud-sync.encrypted.json`) are still clean
 
 Because storage is split, the UI must not be asked to reason about individual files. `readRemoteModularState` always returns one combined `CloudState` plus the modular metadata, and `storageLayoutStatus()` reports the layout, per-module revisions, checksums, tombstone counts, and the legacy archive pointer as a single summary. Popup restore, tab management, and history therefore continue to observe one coherent overall synchronization state.
 
-## Package backup subsystem
-
-Third-party CRX/ZIP package backup is a separate subsystem from browser-state synchronization. It has its own backend selection, its own destination, and its own index, and choosing a package backend never changes the sync provider.
-
-```text
-extension-storage.ts (page context)
-     │
-     ├── GitHub Contents API transport
-     ├── WebDAV transport
-     └── Google Drive transport ──► gdrivePackageSession / describeDriveError
-                                        │
-                                        ▼
-                                 background worker (Drive session owner)
-```
-
-`package-index.ts` holds the pure index domain shared by all three backends: path construction, source derivation, record shape, duplicate-name resolution, index upsert, and listing reconciliation. It is a page-context script that publishes `window.CCSyncPackageIndex`, which keeps the rules testable without a DOM while remaining loadable by the options page.
-
-`extension-local-source.ts` supplies the package bytes. Chromium exposes another extension's metadata through `chrome.management` but never its files, so the user points the options page at a folder once: the browser user-data directory, a single `Extensions` directory, or an unpacked source tree. The module detects which of those it was given, plans a package per extension, writes the ZIP, and identifies uploaded archives. It is split the same way — pure planning and encoding, plus thin platform glue that uses only standard web APIs (the File System Access API, with a `webkitdirectory` input as the fallback) and never touches the DOM, so every string stays in `extension-storage.ts`.
-
-```text
-picked folder ─► scanDirectoryHandle / scanPickedFiles
-                     │
-                     ▼
-              readLocalManifests ─► planLocalPackages ─► buildLocalPackage (createZip)
-                     │                                        │
-                     ▼                                        ▼
-            extension-storage.ts preview dialog ──► putPackage (existing transports)
-```
-
-The Drive backend reuses the session the user already authorized for synchronization instead of introducing a second authentication mechanism. The page cannot import runtime modules, so the worker exposes exactly two messages: `gdrivePackageSession` (a short-lived access token plus the connected account) and `describeDriveError` (classification of a raw status and error body into `quota`, `rate-limit`, `auth`, `permission`, `not-found`, `too-large`, `server`, or `unknown`). The page performs the Drive requests itself, so large package bodies never travel through extension messaging.
-
-Separation guarantees:
-
-- Packages live in the app-managed `Chromium Cloud Sync Packages` folder, distinct from the `Chromium Cloud Sync` synchronization folder.
-- `index.json`, `selection.json`, and per-package `metadata.json` sidecars live inside the package destination, never among the sync module files.
-- Uploads use the resumable protocol with `X-Upload-Content-Length` declared up front, which streams large binaries and makes quota exhaustion reportable before bytes move.
-- `resolveUniqueFileName` folds a checksum prefix into the file name when the same name and version already hold different bytes, so a duplicate never overwrites an unrelated backup; identical bytes resolve to the same name, so retries are idempotent.
-- `mergeIndexWithListing` reconciles the index against provider listings (GitHub Git tree, WebDAV `PROPFIND`, or Drive folder walk), reporting provider-only packages as unindexed and vanished files as missing instead of offering them as restorable.
-- The package index is not silently capped: dropping an index record while retaining its binary would create an undeletable cloud orphan. Re-uploading the same extension ID, version, and checksum reuses its existing path.
-- The saved `selection.json` is the cleanup boundary. Deselecting or uninstalling an extension never deletes cloud data implicitly. The options page offers a confirmed “Clean up unused backups” action that removes every validated package for IDs outside the saved selection, updates the index, and reconciles version metadata. Provider listings also expose unindexed files so cleanup can find interrupted uploads; missing files are removed from the inventory without attempting a destructive delete.
-- The extension can enumerate another extension’s metadata through `chrome.management`, but Chromium does not expose that extension’s installed/unpacked directory contents to it. Package bytes therefore come from the user: either a folder this extension packages locally, or an explicit CRX/ZIP file selection. Restore downloads the archive for the user to install through the browser.
-- Local matching is conservative. A directory named with a valid extension ID is trusted; anything else must match one installed extension by `manifest.json` name *and* version, uniquely. A wrong match would file a backup under the wrong extension ID, which is worse than reporting “not found”.
-- Locally built packages are deterministic: entries are sorted and the ZIP timestamp is fixed, so repackaging unchanged files produces identical bytes. The existing checksum identity in the index then re-uses the stored object instead of accumulating copies.
-- `parseCrxId` reads the ID a CRX carries (the `crx_id` in a CRX3 signed header, or the hash of the CRX2 public key) and converts it into Chromium’s a-p ID alphabet, so an uploaded archive is filed without the user renaming it. Archives that cannot be identified are reported rather than guessed.
-- A package built from unpacked files restores through “Load unpacked” and receives a new extension ID, because Chromium derives an unpacked ID from its path. Store reinstall remains the preferred path when the extension is still published.
-
 ## Schema lifecycle
 
 ```text
@@ -227,7 +181,6 @@ CI validates the project at eight distinct boundaries:
 2. Type boundary: strict type-checking covers the shared domain, schema, storage, modular storage domain, provider file protocol, capability, and diagnostics layer.
 3. Domain boundary: `test-sync-core.ts`, `test-sync-invariants.ts`, `test-schema.ts`, and `test-storage.ts` cover merge, tombstone, schema, and local storage queue behaviour.
 4. Modular storage boundary: `test-sync-modules.ts` covers split/combine round-trips, tombstone partitioning, legacy detection and migration, mixed-layout resolution, module-scoped change detection, per-module revisions, and module-scoped merge; `test-cloud-files.ts` drives the provider file protocol against a recording in-memory `FileStore` to prove which files are uploaded, which stay untouched, that a legacy archive survives migration, and that provider history can be read when exposed by the backend.
-5. Package-backup boundary: `test-package-index.ts` covers path construction and traversal safety, source derivation, record completeness, duplicate-name resolution, unselected-package cleanup planning, full-index retention, and provider-listing reconciliation. `test-extension-local-source.ts` covers ZIP writing and reading, CRX identity (both header versions and the a-p alphabet), folder-layout detection across user-data/Extensions/source directories, package planning including version mismatch and ambiguous matches, archive identification, and packaging failures. `test-extension-backup-ui.ts` drives the real options-page script through a DOM shim and an in-memory GitHub backend to verify opt-in selection, self-saving selection, the local-folder preview, upload placement, and idempotent re-runs.
 6. Drive authorization boundary: `test-gdrive-auth.ts` drives both authorization modes against a mocked Identity API and fetch.
 7. Artifact boundary: generated JS is syntactically valid, the production artifact has only approved files, and forbidden remote-code/runtime constructs are rejected.
 8. Browser boundary: real Chromium loads `dist/`, registers the MV3 service worker, opens the popup, and receives a runtime ping.

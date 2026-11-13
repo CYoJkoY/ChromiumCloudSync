@@ -584,62 +584,6 @@ body.popup-page .update-help:not([hidden]) {
 body.popup-page .update-actions {
   align-self: end;
 }
-body.popup-page .extension-backup-card {
-  padding-bottom: 13px;
-}
-body.popup-page .extension-backup-card .card-title {
-  font-size: 14px;
-}
-body.popup-page .extension-backup-card .card-desc {
-  margin-top: 5px;
-  line-height: 1.55;
-}
-body.popup-page .extension-backup-list {
-  display: grid;
-  gap: 7px;
-  margin-top: 10px;
-}
-body.popup-page .extension-backup-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--surface-2);
-}
-body.popup-page .extension-backup-main {
-  min-width: 0;
-}
-body.popup-page .extension-backup-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 650;
-}
-body.popup-page .extension-backup-meta {
-  margin-top: 2px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-  color: var(--text-2);
-  line-height: 1.45;
-}
-body.popup-page .extension-backup-button {
-  flex: none;
-  min-height: 30px;
-  padding: 6px 9px;
-  font-size: 10px;
-  white-space: nowrap;
-}
-body.popup-page .extension-backup-cloud-label {
-  margin-top: 4px;
-}
 body.popup-page .backup-status {
   margin-top: 8px;
   padding: 8px 9px;

@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="ui.css" />
     <link rel="stylesheet" href="ui-overrides.css" />
     <link rel="stylesheet" href="ui-system.css" />
-    <link rel="stylesheet" href="extension-backup.css" />
   </head>
   <body>
     <div class="shell aux-shell extension-recovery-shell">
@@ -144,8 +143,7 @@
           <p data-i18n="recoveryPolicyBody">
             Chromium Cloud Sync records extension metadata and identifies
             missing extensions. Store installation stays a user action.
-            Third-party CRX / ZIP packages are handled separately by the
-            configured package-backup backend.
+            You can save a GitHub download link for each extension on this device.
           </p>
           <p data-i18n="recoveryPolicyNote">
             The recovery center never writes into third-party extension storage
@@ -154,33 +152,10 @@
         </div>
       </section>
 
-      <section class="card">
-        <div class="card-title" data-i18n="packageRecoveryTitle">
-          Package recovery
-        </div>
-        <p class="card-desc" data-i18n="packageRecoveryBody">
-          Download a matching CRX / ZIP package directly from your configured private backup.
-        </p>
-        <div id="packageRecoveryList"></div>
-        <div class="btn-row primary-actions">
-          <button
-            type="button"
-            id="openSettings"
-            class="primary"
-            data-i18n="openSettings"
-          >
-            Open Settings
-          </button>
-        </div>
-      </section>
     </div>
 
     <script src="runtime.js"></script>
     <script src="i18n.js"></script>
-    <script src="package-index.js"></script>
-    <script src="gdrive-packages.js"></script>
-    <script src="extension-local-source.js"></script>
-    <script src="extension-storage.js"></script>
     <script src="theme.js"></script>
     <script src="extensions.js"></script>
   </body>

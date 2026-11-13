@@ -51,11 +51,6 @@ const sourceFiles = [
   "src/runtime/background.ts",
   "src/runtime/cloud-gdrive.ts",
   "src/runtime/cloud-webdav.ts",
-  "src/features/extension-storage.ts",
-  "src/features/extension-storage-watch.ts",
-  "src/features/extension-local-source.ts",
-  "src/features/package-index.ts",
-  "src/features/gdrive-packages.ts",
   "src/features/update.ts",
   "src/ui/extensions.ts",
   "src/ui/guide.ts",
@@ -96,10 +91,6 @@ const requiredRefs = {
     "runtime.js",
     "theme.js",
     "i18n.js",
-    "package-index.js",
-    "gdrive-packages.js",
-    "extension-local-source.js",
-    "extension-storage.js",
     "options.js",
   ],
   "history.html": ["runtime.js", "theme.js", "i18n.js", "history.js"],
@@ -119,11 +110,6 @@ const runtimeFiles = [
   "storage.js",
   "sync-core.js",
   "types.js",
-  "extension-storage.js",
-  "extension-storage-watch.js",
-  "extension-local-source.js",
-  "package-index.js",
-  "gdrive-packages.js",
   "update.js",
   "extensions.js",
   "guide.js",
@@ -510,208 +496,6 @@ for (const forbidden of [
     throw new Error("Build must not inject a Web application Client ID into manifest.oauth2: " + forbidden);
 }
 
-/* ---------------------------------------------------------------------------
- * Issue #23: Google Drive as a package-backup backend
- * ------------------------------------------------------------------------- */
-const packageIndex = fs.readFileSync(
-  path.join(root, "src/features/package-index.ts"),
-  "utf8",
-);
-for (const required of [
-  "window.CCSyncPackageIndex",
-  "PACKAGE_INDEX_SCHEMA",
-  "packageFolder",
-  "packagePath",
-  "resolveUniqueFileName",
-  "derivePackageSource",
-  "buildPackageRecord",
-  "packageMetadata",
-  "upsertIndexEntry",
-  "isPackagePath",
-  "findUnusedPackages",
-  "removeIndexEntries",
-  "takenNamesInFolder",
-  "mergeIndexWithListing",
-  "normalizeIndex",
-])
-  if (!packageIndex.includes(required))
-    throw new Error("Package index domain is missing " + required);
-
-const localSource = fs.readFileSync(
-  path.join(root, "src/features/extension-local-source.ts"),
-  "utf8",
-);
-for (const required of [
-  "window.CCSyncExtensionLocalSource",
-  "createZip",
-  "crc32",
-  "packageFileName",
-  "buildLocalPackage",
-  "readZipEntry",
-  "readZipManifestInfo",
-  "parseCrxId",
-  // A folder can be a user-data directory, one Extensions directory, or an
-  // unpacked source tree; all three have to be recognized.
-  "detectLocalLayout",
-  "planLocalPackages",
-  "identifyUploadedPackage",
-  "scanDirectoryHandle",
-  "scanPickedFiles",
-  "readLocalManifests",
-  // Extension IDs use Chromium's a-p alphabet, so a hash read out of a CRX
-  // header has to be converted before it can be matched.
-  "hexToExtensionId",
-  // A stable timestamp keeps a re-packaged archive byte-identical, which is
-  // what lets the index reuse the existing cloud object.
-  "ZIP_DOS_DATE",
-])
-  if (!localSource.includes(required))
-    throw new Error("Local extension source module is missing " + required);
-// Comments legitimately mention chrome.management when explaining why the
-// module exists, so strip them before looking for real API usage.
-const stripComments = (code: string): string =>
-  code
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-const localSourceCode = stripComments(localSource);
-// The local-source module must not become a second translation surface: the
-// options page owns every user-facing string.
-if (/\bt\(\s*["'][A-Za-z0-9_]+["']/.test(localSourceCode))
-  throw new Error(
-    "extension-local-source.ts must not translate its own strings; pass them in from extension-storage.ts",
-  );
-if (/chrome\.(tabs|bookmarks|management|identity|storage|runtime)\b/.test(localSourceCode))
-  throw new Error(
-    "extension-local-source.ts must stay a page-context helper and not call privileged extension APIs",
-  );
-
-const gdrivePackages = fs.readFileSync(
-  path.join(root, "src/features/gdrive-packages.ts"),
-  "utf8",
-);
-for (const required of [
-  "window.CCSyncGdrivePackages",
-  "createGdrivePackages",
-  // App-managed destination, deliberately not the synchronization folder.
-  'const GDRIVE_PACKAGES_ROOT = "Chromium Cloud Sync Packages"',
-  "destination",
-  // Packages are large binaries: resumable upload, streamed download.
-  "uploadType=resumable",
-  "X-Upload-Content-Length",
-  "X-Upload-Content-Type",
-  "download",
-  "remove",
-  // Listing reconciles the provider with the index.
-  "listPackages",
-  "GDRIVE_LIST_DEPTH",
-  // The session is reused from the sync provider, never re-authorized here.
-  'request("gdrivePackageSession")',
-  // Drive limits/quota/permission errors are classified, not bare statuses.
-  'request("describeDriveError"',
-  "DRIVE_ERROR_MESSAGE_KEYS",
-  "quota",
-  "too-large",
-  "permission",
-])
-  if (!gdrivePackages.includes(required))
-    throw new Error("Drive package transport is missing " + required);
-
-// The package transport must not grow its own Google authorization flow.
-for (const forbidden of [
-  "chrome.identity.getAuthToken",
-  "launchWebAuthFlow",
-  "accounts.google.com/o/oauth2",
-])
-  if (gdrivePackages.includes(forbidden))
-    throw new Error(
-      "Package backup must reuse the authorized Drive session, not authorize again: " +
-        forbidden,
-    );
-
-const extStorage = fs.readFileSync(
-  path.join(root, "src/features/extension-storage.ts"),
-  "utf8",
-);
-for (const required of [
-  // Google Drive is a selectable package-backup backend.
-  '<option value="gdrive">',
-  'gdriveFolder: "extensionBackupGdriveFolder"',
-  'if (cfg.backend === "gdrive")',
-  // The transport is injected, so it stays testable outside a page.
-  "window.CCSyncGdrivePackages.createGdrivePackages",
-  "gdriveDestination",
-  "gdriveDownload",
-  "gdriveRemove",
-  "gdriveListPackages",
-  "githubListPackageFiles",
-  "davListPackageFiles",
-  "parseWebdavListing",
-  "PROPFIND",
-  "cleanupUnusedBackups",
-  "githubDelete",
-  "davDelete",
-  // Index and selection stay separate from the browser-state sync payload.
-  'gdriveReadJson(cfg, "index.json"',
-  'gdriveUpload(cfg, "selection.json"',
-  // Duplicate names/versions must not silently overwrite unrelated backups.
-  "resolveUniqueFileName",
-  "takenNamesInFolder",
-  "upsertIndexEntry",
-  // Backing up from a local folder replaces the per-extension picker.
-  "window.CCSyncExtensionLocalSource",
-  "localBackupFlow",
-  "uploadPackageFiles",
-  "scanDirectoryHandle",
-  "identifyUploadedPackage",
-  // Required metadata fields.
-  "buildPackageRecord",
-  "packageMetadata",
-  // Drive failures reach the UI as classified, localized messages.
-  "driveQuota",
-  "driveTooLarge",
-  "drivePermission",
-])
-  if (!extStorage.includes(required))
-    throw new Error("Drive package backup is missing " + required);
-
-// The package backup reuses the sync Drive session instead of adding a second
-// authorization mechanism.
-if (!extStorage.includes("gdrive.session()"))
-  throw new Error(
-    "Drive package backup must reuse the authorized sync session",
-  );
-for (const forbidden of [
-  "chrome.identity.getAuthToken",
-  "launchWebAuthFlow",
-  "oauth2.googleapis.com/token",
-  "accounts.google.com",
-])
-  if (extStorage.includes(forbidden))
-    throw new Error(
-      "Package backup must not implement its own Google authorization flow: " +
-        forbidden,
-    );
-
-// The package-backup backend is independently selectable from the sync provider.
-if (/"syncProvider"/.test(extStorage))
-  throw new Error(
-    "Package backup must not read or change the browser-state sync provider",
-  );
-
-// Package data must never be written into the browser-state sync payload.
-if (/writeRemoteModularState|readRemoteModularState/.test(extStorage))
-  throw new Error(
-    "Package backup must stay separate from the modular sync file protocol",
-  );
-
-for (const required of [
-  'case "gdrivePackageSession":',
-  'case "describeDriveError":',
-  "describeDriveErrorMessage",
-])
-  if (!bg.includes(required))
-    throw new Error("Background worker is missing package-backup support " + required);
-
 const optionsHtml = fs.readFileSync(
   path.join(root, "src/ui/pages/options.html"),
   "utf8",
@@ -748,38 +532,9 @@ for (const required of [
       "Browser-managed connection must be the primary control and the manual OAuth client must stay inside the advanced fallback section",
     );
 }
-// extension-storage.js resolves both globals at load time, so a page that loads
-// it without the domain module and Drive transport throws during evaluation and
-// silently loses the whole package-backup UI. Check every page, not one page, so
-// a new host page cannot reintroduce that failure.
-let packageUiPages = 0;
-for (const file of htmlFiles) {
-  const html = fs.readFileSync(path.join(root, "src/ui/pages", file), "utf8");
-  const storageTag = html.indexOf('<script src="extension-storage.js">');
-  if (storageTag < 0) continue;
-  packageUiPages++;
-  const packageIndexTag = html.indexOf('<script src="package-index.js">');
-  const gdriveTag = html.indexOf('<script src="gdrive-packages.js">');
-  if (packageIndexTag < 0 || gdriveTag < 0)
-    throw new Error(
-      `${file} loads extension-storage.js but must also load package-index.js and gdrive-packages.js`,
-    );
-  if (!(packageIndexTag < gdriveTag && gdriveTag < storageTag))
-    throw new Error(
-      `${file} must load package-index.js and gdrive-packages.js before extension-storage.js`,
-    );
-}
-if (packageUiPages < 1)
-  throw new Error("No page hosts the package backup UI");
-if (optionsHtml.includes("extension-storage-layout.js"))
-  throw new Error("Obsolete extension storage layout shim is still loaded");
-for (const required of [
-  'id="extensionStorageNavLabel"',
-  'id="extensionStoragePanelTitle"',
-  'id="extensionStoragePanelDescription"',
-])
-  if (!optionsHtml.includes(required))
-    throw new Error("Missing extension storage anchor " + required);
+for (const forbidden of ["extension-storage.js", "extension-backup.css"])
+  if (htmlFiles.some((file) => fs.readFileSync(path.join(root, "src/ui/pages", file), "utf8").includes(forbidden)))
+    throw new Error("Built pages must not reference removed extension package backup assets: " + forbidden);
 
 const optionsSource = fs.readFileSync(
   path.join(root, "src/ui/options.ts"),
@@ -898,64 +653,9 @@ for (const required of [
     throw new Error(
       "Incremental tab sync is not wired into buildLocalState: " + required,
     );
-const storage = fs.readFileSync(
-  path.join(root, "src/features/extension-storage.ts"),
-  "utf8",
-);
-const storageCompact = compactSource(storage);
-for (const required of [
-  "extensionBackupGithubToken",
-  "extensionBackupSelectedIds",
-  "githubInfo",
-  "selection.json",
-  "ccsyncExtensionPackageInput",
-  "sameStorageConfig",
-  "ccsync-ext-hidden",
-  "refreshLanguage",
-])
-  if (!storageCompact.includes(required))
-    throw new Error(`Extension storage is missing ${required}`);
-if (!storageCompact.includes("setHidden(el,!gh)"))
-  throw new Error(
-    "GitHub extension-backup fields do not use explicit dynamic visibility",
-  );
-if (!storageCompact.includes("setHidden(el,!dv)"))
-  throw new Error(
-    "WebDAV extension-backup fields do not use explicit dynamic visibility",
-  );
-if (!storageCompact.includes("if(!d.private)throwError(t('privateRepo'))"))
-  throw new Error(
-    "GitHub extension-backup storage does not enforce private repositories",
-  );
-if (
-  !storageCompact.includes(
-    "if(d.permissions&&!d.permissions.push)throwError(t('notWritable'))",
-  )
-)
-  throw new Error(
-    "GitHub extension-backup storage does not enforce write access",
-  );
-if (
-  !storageCompact.includes(
-    "String(a.token||'').trim()===String(b.token||'').trim()",
-  )
-)
-  throw new Error(
-    "GitHub extension-backup selection matching does not include the Token",
-  );
-if (!storageCompact.includes("String(a.davPass||'')===String(b.davPass||'')"))
-  throw new Error(
-    "WebDAV extension-backup selection matching does not include the password",
-  );
-
-// ---------------------------------------------------------------------------
 // Translation key completeness.
 //
-// Three separate translation mechanisms coexist here: the shared DICT in
-// ui/i18n.ts (reached through CCSyncI18n.t), a file-local `dict` in
-// ui/extensions.ts, and a file-local `text` object of bilingual closures in
-// features/extension-storage.ts whose `t` is injected into gdrive-packages.ts.
-//
+// Translation keys are checked against the shared UI table or the extensions table.
 // Referencing a key that its own file's table does not define is not an error at
 // runtime — every one of the three lookups ends in `?? key`, so the UI silently
 // renders the raw identifier ("searchCrxsoso") instead of a sentence. That is
@@ -1010,27 +710,11 @@ if (!storageCompact.includes("String(a.davPass||'')===String(b.davPass||'')"))
     "the local dict.en block in src/ui/extensions.ts",
   );
 
-  const storageLines = readLines("src/features/extension-storage.ts");
-  const storageText = keysUntil(
-    storageLines,
-    storageLines.findIndex((line) => /^\s*const text = \{/.test(line)),
-    (line) => line.includes("const t = (k) =>"),
-    closureKey,
-    "the local text block in src/features/extension-storage.ts",
-  );
-
-  // gdrive-packages.ts has no table of its own: extension-storage.ts injects its
-  // `t`, so its keys must resolve against that file's `text` object.
   const consumers: Array<[string, Set<string>]> = [
-    ["src/ui/popup.ts", sharedDict],
-    ["src/ui/popup-status.ts", sharedDict],
-    ["src/ui/popup-cloud-groups.ts", sharedDict],
-    ["src/ui/popup-actions.ts", sharedDict],
-    ["src/ui/options.ts", sharedDict],
-    ["src/ui/history.ts", sharedDict],
+    ["src/ui/popup.ts", sharedDict], ["src/ui/popup-status.ts", sharedDict],
+    ["src/ui/popup-cloud-groups.ts", sharedDict], ["src/ui/popup-actions.ts", sharedDict],
+    ["src/ui/options.ts", sharedDict], ["src/ui/history.ts", sharedDict],
     ["src/ui/extensions.ts", extensionDict],
-    ["src/features/extension-storage.ts", storageText],
-    ["src/features/gdrive-packages.ts", storageText],
   ];
 
   const reference = /\bt\(\s*"([A-Za-z0-9_]+)"/g;

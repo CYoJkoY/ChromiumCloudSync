@@ -48,7 +48,7 @@ When Google Drive is connected, the extension may read the authorized account em
 
 ### User-selected extension package data
 
-When the optional package-backup feature is used, the extension can read CRX/ZIP files or files from a directory explicitly selected by the user and upload the selected package to the backup provider configured by the user.
+GitHub download URLs entered for missing extensions are stored locally by extension ID. They are not uploaded or checked automatically.
 
 ## 2. Why this data is processed
 
@@ -79,7 +79,7 @@ Google Drive is used for synchronization and optional extension-package backup a
 
 ### WebDAV
 
-The extension can send synchronization or package-backup data to the WebDAV server URL and folder configured by the user. WebDAV access credentials are provided and controlled by the user.
+The extension can send synchronization data to the WebDAV server URL and folder configured by the user. WebDAV access credentials are provided and controlled by the user.
 
 ### GitHub repository package backup
 

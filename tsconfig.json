@@ -12,7 +12,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": false,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "files": [
     "src/features/full-backup.ts",
@@ -33,11 +35,6 @@
     "src/runtime/types.ts",
     "src/runtime/cloud-gdrive.ts",
     "src/runtime/cloud-webdav.ts",
-    "src/features/extension-storage-watch.ts",
-    "src/features/extension-local-source.ts",
-    "src/features/extension-storage.ts",
-    "src/features/package-index.ts",
-    "src/features/gdrive-packages.ts",
     "src/features/update.ts",
     "src/ui/extensions.ts",
     "src/ui/guide.ts",
