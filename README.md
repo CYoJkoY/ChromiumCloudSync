@@ -1,11 +1,12 @@
 <div align="center">
 
 <picture>
-  <img src="assets/readme/hero-v2.svg" alt="Chromium Cloud Sync — synchronize Chromium browser state across devices with selectable cloud providers" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-wabi-dark.svg">
+  <img src="assets/readme/hero-wabi.svg" alt="Chromium Cloud Sync — synchronize Chromium browser state across devices with selectable cloud providers" width="100%">
 </picture>
 
 <p>
-  <img src="https://img.shields.io/badge/Manifest-V3-315EFB?style=flat-square" alt="Manifest V3">
+  <img src="https://img.shields.io/badge/Manifest-V3-A6382A?style=flat-square" alt="Manifest V3">
   <img src="https://img.shields.io/github/v/release/CYoJkoY/ChromiumCloudSync?style=flat-square&label=release" alt="Latest release">
   <img src="https://img.shields.io/github/license/CYoJkoY/ChromiumCloudSync?style=flat-square" alt="MIT license">
   <img src="https://img.shields.io/github/actions/workflow/status/CYoJkoY/ChromiumCloudSync/release.yml?style=flat-square&label=release" alt="Release workflow status">
@@ -68,7 +69,7 @@ The current implementation synchronizes tab groups and their HTTP(S) member tabs
 
 <a name="readme-providers"></a>
 
-## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Cloud providers
+## <img src="assets/readme/icons/providers.svg" width="24" height="24" alt=""> Cloud providers
 
 The synchronization engine is separated from the storage backend. Choose the provider that fits the environment:
 
@@ -133,7 +134,7 @@ Popup restore, cloud tab management, and history keep reading one coherent overa
 
 <a name="readme-sync-model"></a>
 
-## <img src="assets/readme/icons/architecture.svg" width="24" height="24" alt=""> Sync model
+## <img src="assets/readme/icons/sync-model.svg" width="24" height="24" alt=""> Sync model
 
 Chromium Cloud Sync uses a **local-first three-way merge** rather than a simple latest-device-wins strategy.
 
@@ -162,7 +163,7 @@ The current cloud schema is **v11**, with migration support for schemas **7, 8, 
 
 <a name="readme-data-scope"></a>
 
-## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Data scope
+## <img src="assets/readme/icons/data-scope.svg" width="24" height="24" alt=""> Data scope
 
 ### Synchronized
 
@@ -186,7 +187,7 @@ Third-party extension settings are intentionally excluded because a generic Chro
 
 <a name="readme-extension-recovery"></a>
 
-## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Extension recovery
+## <img src="assets/readme/icons/recovery.svg" width="24" height="24" alt=""> Extension recovery
 
 The extension inventory stores enough metadata to identify missing third-party extensions. The **Extension Recovery Center** can show extensions present in the cloud inventory but absent locally and provide direct store links when available.
 
@@ -194,7 +195,7 @@ When an official store link is unavailable or unsuitable for the current browser
 
 <a name="readme-package-backup"></a>
 
-## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Third-party extension package backup
+## <img src="assets/readme/icons/package-backup.svg" width="24" height="24" alt=""> Third-party extension package backup
 
 Package backup is deliberately separated from browser-state synchronization, and its backend is chosen independently of the sync provider.
 
@@ -240,7 +241,7 @@ Chromium exposes extension IDs and metadata through `chrome.management`, and the
 
 <a name="readme-security"></a>
 
-## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Privacy & security
+## <img src="assets/readme/icons/security.svg" width="24" height="24" alt=""> Privacy & security
 
 New GitHub synchronization Gists are created as **private Gists**. The current synchronization payload is stored as normal JSON and is **not end-to-end encrypted**. Access to a configured sync backend can therefore expose the synchronized browser state.
 
@@ -278,7 +279,7 @@ Open **Settings** and configure the provider you want to use:
 
 <a name="readme-usage"></a>
 
-## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Usage
+## <img src="assets/readme/icons/usage.svg" width="24" height="24" alt=""> Usage
 
 The popup provides the operational status of the connection and synchronization state, including provider binding, last sync time, revision, conflict count, and automatic-sync state.
 
@@ -286,7 +287,7 @@ Automatic synchronization is **off by default** and uses **5 minutes** as its de
 
 <a name="readme-history"></a>
 
-## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> History & rollback
+## <img src="assets/readme/icons/history.svg" width="24" height="24" alt=""> History & rollback
 
 - GitHub Gist retains its provider-native revision/commit history.
 - Google Drive and WebDAV no longer create application-managed cloud snapshots or a `history/index.json` archive during normal sync.
@@ -398,7 +399,7 @@ The release workflow reports a specific decoding or key-validation error if the 
 
 <a name="readme-status"></a>
 
-## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Project status & roadmap
+## <img src="assets/readme/icons/roadmap.svg" width="24" height="24" alt=""> Project status & roadmap
 
 The current core is browser-state synchronization, extension inventory/recovery, and separate package backup through a pluggable cloud-provider layer.
 
@@ -408,13 +409,18 @@ Future work is expected to expand browser-state coverage carefully. **Extension 
 
 <a name="readme-support"></a>
 
-## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Support
+## <img src="assets/readme/icons/support.svg" width="24" height="24" alt=""> Support
 
 Support helps fund compatibility testing, synchronization reliability work, documentation, and continued maintenance.
 
 [Open the Chromium Cloud Sync support page](https://cyojkoy.github.io/Payment/)
 
-<a href="https://cyojkoy.github.io/Payment/"><img src="assets/readme/support-cta.svg" alt="Support Chromium Cloud Sync through the maintainer's Payment page" width="100%"></a>
+<a href="https://cyojkoy.github.io/Payment/">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/support-cta-dark.svg">
+    <img src="assets/readme/support-cta.svg" alt="Support Chromium Cloud Sync through the maintainer's Payment page" width="100%">
+  </picture>
+</a>
 
 Use [GitHub Issues](https://github.com/CYoJkoY/ChromiumCloudSync/issues) for bugs, compatibility problems, synchronization conflicts, schema issues, and feature requests.
 
@@ -422,7 +428,7 @@ Never include GitHub Tokens, private credentials, or sensitive Gist contents in 
 
 <a name="readme-license"></a>
 
-## <img src="assets/readme/icons/development.svg" width="24" height="24" alt=""> License
+## <img src="assets/readme/icons/license.svg" width="24" height="24" alt=""> License
 
 Chromium Cloud Sync is released under the **MIT License**. See [`LICENSE`](LICENSE) for the full license text.
 

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="sync-title sync-desc">
+  <title id="sync-title">Sync model</title>
+  <desc id="sync-desc">Two balanced exchange arrows.</desc>
+  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9h12l-3-3M20 15H8l3 3"/>
+  </g>
+</svg>

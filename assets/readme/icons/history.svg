@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="history-title history-desc">
+  <title id="history-title">History and rollback</title>
+  <desc id="history-desc">A clock with a returning hand.</desc>
+  <style>svg{color:#A6382A}@media (prefers-color-scheme:dark){svg{color:#E18C7C}}</style>
+  <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="7.5"/>
+    <path d="M12 7.5V12l3 2"/>
+  </g>
+</svg>

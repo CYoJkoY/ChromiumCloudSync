@@ -376,9 +376,9 @@ body {
 }
 
 body.popup-page {
-  width: min(var(--ccs-popup-width), 100vw) !important;
+  width: var(--ccs-popup-width) !important;
   min-width: 0 !important;
-  max-width: 100vw !important;
+  max-width: 100% !important;
   min-height: 0;
   margin: 0 !important;
   padding: 0 !important;
@@ -387,9 +387,9 @@ body.popup-page {
 }
 body.popup-page .popup-shell {
   display: block;
-  width: min(var(--ccs-popup-width), 100vw) !important;
+  width: var(--ccs-popup-width) !important;
   min-width: 0 !important;
-  max-width: 100vw !important;
+  max-width: 100% !important;
   margin: 0 !important;
   padding: 14px !important;
 }
@@ -716,14 +716,14 @@ body.popup-page .backup-status.error-copy {
     white-space: normal;
   }
   body.popup-page {
-    width: min(var(--ccs-popup-width), 100vw) !important;
+    width: var(--ccs-popup-width) !important;
     min-width: 0 !important;
-    max-width: 100vw !important;
+    max-width: 100% !important;
   }
   body.popup-page .popup-shell {
-    width: min(var(--ccs-popup-width), 100vw) !important;
+    width: var(--ccs-popup-width) !important;
     min-width: 0 !important;
-    max-width: 100vw !important;
+    max-width: 100% !important;
     padding: 12px !important;
   }
   body.popup-page .page-header {

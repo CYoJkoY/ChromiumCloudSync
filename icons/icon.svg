@@ -1,7 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="56" fill="#315EFB"/>
-  <path d="M74 87.5A39.5 39.5 0 0 1 113.5 48H182v32h-68.5a7.5 7.5 0 0 0-7.5 7.5v7a7.5 7.5 0 0 0 7.5 7.5H171A35 35 0 0 1 206 137v4.5a39.5 39.5 0 0 1-39.5 39.5H92v-32h74.5a7.5 7.5 0 0 0 7.5-7.5v-4.5a3 3 0 0 0-3-3h-53.5A43.5 43.5 0 0 1 74 97.5z" fill="#fff"/>
-  <path d="M112 72h33M112 166h33" stroke="#AFC0FF" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="69" cy="72" r="14" fill="#AFC0FF"/>
-  <circle cx="187" cy="166" r="14" fill="#AFC0FF"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="icon-title icon-desc">
+  <title id="icon-title">Chromium Cloud Sync</title>
+  <desc id="icon-desc">A cinnabar browser seal with a paper synchronization path.</desc>
+  <rect width="512" height="512" rx="76" fill="#F5F3EC"/>
+  <rect x="34" y="34" width="444" height="444" rx="56" fill="none" stroke="#A6382A" stroke-width="24"/>
+  <path d="M112 174h288" stroke="#1C1A17" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="153" cy="138" r="15" fill="#3B5848"/>
+  <path d="M173 236h166" stroke="#1C1A17" stroke-width="20" stroke-linecap="round"/>
+  <path d="M212 317h127" stroke="#1C1A17" stroke-width="20" stroke-linecap="round"/>
+  <path d="M173 367h80" stroke="#A6382A" stroke-width="22" stroke-linecap="round"/>
+  <path d="M173 317v100" stroke="#1C1A17" stroke-width="20" stroke-linecap="round"/>
 </svg>

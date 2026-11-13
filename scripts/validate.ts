@@ -148,6 +148,20 @@ for (const file of [
 ])
   if (!fs.existsSync(path.join(root, file)))
     throw new Error(`Missing CSS source ${file}`);
+const popupCss = fs.readFileSync(
+  path.join(root, "src/ui/styles/ui-overrides.css"),
+  "utf8",
+);
+if (!popupCss.includes("--ccs-popup-width: 500px;"))
+  throw new Error("Popup CSS is missing the definite --ccs-popup-width token");
+if (popupCss.includes("min(var(--ccs-popup-width), 100vw)"))
+  throw new Error(
+    "Popup width must not resolve through 100vw; action popups size the viewport from content and the constraint collapses",
+  );
+for (const popupBlock of popupCss.split("body.popup-page").slice(1)) {
+  if (popupBlock.split("}")[0].includes("max-width: 100vw"))
+    throw new Error("Popup layout must use a definite width instead of 100vw");
+}
 if (!fs.existsSync(path.join(root, "tsconfig.strict.json")))
   throw new Error("Missing strict TypeScript configuration.");
 
