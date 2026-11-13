@@ -1,4 +1,3 @@
-import { handleFullBackup, startFullBackup } from "./full-backup-runtime.js";
 import {
   mergeSnapshots,
   mergeDeviceStates,
@@ -1719,9 +1718,6 @@ function debounceAutoSync() {
 chrome.runtime.onMessage.addListener((m, _s, send) => {
   (async () => {
     switch (m.type) {
-      case "fullBackup":
-        if (_s.id !== chrome.runtime.id || !_s.url?.startsWith(chrome.runtime.getURL(""))) throw Error("Backup requests must come from an extension page");
-        return handleFullBackup(m, gdriveAccessToken);
       case "ping":
         return {
           ok: true,
@@ -2317,4 +2313,3 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
     .catch((e) => send({ error: e.message }));
   return true;
 });
-startFullBackup(gdriveAccessToken);

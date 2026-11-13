@@ -15,9 +15,9 @@ The build writes the unpacked extension to `dist/`. In Chromium, open `chrome://
 
 Useful checks: `npm run typecheck` for the strict TypeScript project, `npm test` for the unit and contract tests, `npm run validate` for the complete source/build/package validation, and `npm run smoke` for a real Chromium load and runtime ping. The smoke test needs Playwright Chromium; install it with `npx playwright install chromium`.
 
-## First use: sync and backups
+## First use: sync
 
-These are two separate features with separate destinations and purposes. Browser-state sync stores bookmarks, tab-group data and third-party extension inventory metadata. It does not copy another extension's private settings or files. Full extension backup captures selected local extension data and requires the optional native helper.
+Browser-state sync stores bookmarks, tab-group data and third-party extension inventory metadata. It does not copy another extension's private settings or files.
 
 ### Synchronize browser state
 
@@ -27,24 +27,13 @@ These are two separate features with separate destinations and purposes. Browser
 
 The first sync merges browser state according to the sync rules; it is not a full profile clone. Standalone tabs and whole-window layouts are not synchronized.
 
-### Back up and restore full extension data
-
-This advanced workflow is under **Settings → Local → Open full-file backup (native helper)**. It is independent from browser-state sync. The helper must be built and registered for the current extension ID and OS; follow [`native/README.md`](../native/README.md). Registration changes the current user's Native Messaging configuration. Configure a private GitHub, WebDAV, or Google Drive destination in the full-backup settings, then:
-
-1. Choose **Connect / refresh native helper**, select or register the target browser profile, select extension IDs and data categories, and choose **Preview backup scope**. Review the preview before scheduling.
-2. Choose **Schedule offline backup**. Exit every Chromium browser, including background processes, and leave them closed while the helper works. Ready jobs upload after the next extension start; **Upload ready backups** is also available. Check the task list for completion or errors.
-3. For restore, list cloud backups and choose **Download, verify and preview restore**. Review the task preview, then explicitly confirm replacement of the selected extensions and categories. Close all Chromium browsers for the restore to run. The completed task offers rollback; close all browsers again before rolling back.
-
-Restoration replaces data within the selected scope, including removing selected files that are absent from the snapshot. Database restoration requires the same OS, browser family, and major version. The helper does not install extensions; restore program files separately through the browser. Browser account sync may later replace `storage.sync` data. Unsupported or excluded data categories and other limits are documented in [`native/README.md`](../native/README.md). These cloud backups are not end-to-end encrypted and selected extension data can contain sensitive information; use a private destination with least-privilege credentials.
-
 ## Find the right place
 
 ```text
 src/
 ├── runtime/     Sync orchestration, domain rules, storage, schema, providers
-├── features/    Full extension backup and update capabilities
+├── features/    Update capabilities
 └── ui/          Popup, options, history, guide, extension recovery pages
-native/          Optional native companion for local full-backup workflows
 scripts/         Build, validation, smoke test, and focused test runners
 docs/            Contributor and architecture notes
 ```
@@ -58,9 +47,7 @@ docs/            Contributor and architecture notes
 | Provider-independent remote protocol | `src/runtime/cloud-files.ts` | `FileStore` protocol and modular read/write |
 | Provider transport or authorization | `src/runtime/cloud-gist.ts`, `cloud-gdrive.ts`, `cloud-webdav.ts` | One provider adapter |
 | Browser API collection and orchestration | `src/runtime/background.ts` | MV3 composition root and message/alarm handling |
-| Full extension backup job, chunks, or native protocol | `src/features/full-backup.ts`, `full-backup-cloud.ts`, `src/runtime/full-backup-runtime.ts` | Portable use case, provider-neutral cloud adapter, and MV3 composition root |
 | Screen behavior or wording | Matching `src/ui/` module and page | Presentation, user actions, localization |
-| Native companion behavior | `native/src/` | Native host implementation and protocol |
 
 The runtime is statically composed by `background.ts`; there is no generic third-party plugin loader. Keep new behavior in its owning module and connect it through an existing interface where possible. The core sync rules should not import UI, provider SDKs, or browser-specific transport code.
 
@@ -92,7 +79,7 @@ The remote write path uses optimistic concurrency: read, merge against the local
 
 Provider adapters translate the common file protocol into provider-specific requests and history behavior. Provider authorization stays in its adapter and settings flow. The Gist token source is registered by the composition root; Drive uses browser-managed OAuth when available and has an explicit manual fallback; WebDAV uses configured origin credentials.
 
-Credentials must not enter synchronized payloads. `cloud-files.ts` checks modular writes for credential-shaped keys, and schema validation runs before remote state reaches merge logic. Preserve those boundaries when adding fields or transport behavior. Full-backup chunks stay in their separately configured destination, separate from sync module files.
+Credentials must not enter synchronized payloads. `cloud-files.ts` checks modular writes for credential-shaped keys, and schema validation runs before remote state reaches merge logic. Preserve those boundaries when adding fields or transport behavior.
 
 ## Common change recipes
 
@@ -113,10 +100,6 @@ Implement `FileStore` in a provider module. Keep authentication and request tran
 
 Keep rendering and user interaction in the matching `src/ui/` module. Use the existing runtime message boundary for worker operations, update both locale message files when adding visible text, and add or adjust the focused DOM-shim test when behavior is covered there. Avoid moving sync rules into page scripts.
 
-### Change full extension backup
-
-Keep job parsing, checkpointing, transfer, and verification in `full-backup.ts`; keep provider-neutral cloud chunks in `full-backup-cloud.ts`; keep native connections, serialization, alarms, and recovery in `full-backup-runtime.ts`. Browser profile capture and restore live in the native companion. Preserve the versioned layout, verified chunk protocol, explicit confirmation, and rollback behavior; do not add implicit deletions or a shared third-party plugin registry.
-
 ## Tests and diagnosis
 
 Tests are executable TypeScript scripts under `scripts/`. Run the narrow test while iterating, then run `npm test` or `npm run validate` before delivery. Important suites include:
@@ -124,11 +107,6 @@ Tests are executable TypeScript scripts under `scripts/`. Run the narrow test wh
 - `test-sync-core.ts`, `test-sync-invariants.ts`, `test-schema.ts`, and `test-storage.ts` for merge, invariants, migration, and local mutation ordering.
 - `test-sync-modules.ts` and `test-cloud-files.ts` for modular layout, legacy conversion, provider protocol, and changed-file behavior.
 - `test-gdrive-auth.ts` for Drive authorization paths.
-- Full-backup tests (`test-full-backup.ts` and `native/tests/*.test.mjs`) for job lifecycle, verified cloud transfer, and native helper behavior. Run them with `npm run test:full-backup`.
 - `npm run smoke` for loading the built extension in Chromium and checking its runtime connection.
 
 For sync failures, inspect the popup status and the latest diagnostics before changing merge behavior. `diagnostics.ts` records the result category, revision context, changed counts, and failure details. Reproduce provider behavior with mocks or an in-memory `FileStore`; tests should not need a real account, token, or cloud write.
-
-## Native companion
-
-The native companion is optional and statically composed for full-extension-backup workflows. It captures selected profile categories, packages them, and hands verified chunks to the extension's portable job. See [`native/README.md`](../native/README.md) for setup and [`native/ARCHITECTURE.md`](../native/ARCHITECTURE.md) for versioned categories, cloud layout, process lifecycle, and restore/rollback boundaries. The normal synchronization features remain usable without it.

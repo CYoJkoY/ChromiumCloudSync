@@ -47,25 +47,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); inlin
 .theme-switch .choice-switch-option { padding: 0; color: var(--text-3); }
 .theme-switch .choice-switch-option[aria-pressed="true"] { color: var(--accent); }
 .theme-art { width: 30px; height: 21px; display: block; }
-.full-backup { margin-block: 24px; padding-block: 24px; border-block: 1px solid var(--line-strong); }
-.full-backup h2 { margin: 0 0 8px; }
-.full-backup fieldset { border: 1px solid var(--line); margin: 16px 0; padding: 16px; }
-.full-backup label { display: flex; align-items: start; gap: 10px; padding-block: 7px; overflow-wrap: anywhere; }
-.full-backup label > span { flex: 1; }
-.full-backup select, .full-backup input[type="text"] { width: 100%; }
-.full-backup .backup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 16px; }
-.full-backup output { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
-.full-backup .backup-record { padding-block: 16px; border-block-start: 1px solid var(--line); }
-.full-backup details { padding-block: 12px; }
-.full-backup small { display: block; color: var(--text-2); }
-.full-backup-job { padding-block: 16px; border-block-start: 1px solid var(--line); }
-.full-backup-extensions { max-height: 320px; overflow: auto; margin-block: 16px; }
-.full-backup input:not([type="checkbox"]), .full-backup select { padding: 8px; border: 1px solid var(--line-strong); border-radius: 2px; width: 100%; }
-.full-backup pre { max-height: 360px; overflow: auto; white-space: pre-wrap; }
-.full-backup h3 { margin-block: 24px 12px; }
-.full-backup-preview table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.full-backup-preview th, .full-backup-preview td { text-align: start; vertical-align: top; padding: 10px 6px; border-block-end: 1px solid var(--line); overflow-wrap: anywhere; }
-.full-backup-preview th { font-weight: 600; }
 @media(max-width: 640px) {
  .settings-sidebar { border-inline-end: 0; border-block-end: 1px solid var(--line); padding: 0 0 16px; }
  .page-header { gap: 12px; }

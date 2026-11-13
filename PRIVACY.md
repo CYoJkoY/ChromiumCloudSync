@@ -58,7 +58,6 @@ Chromium Cloud Sync processes the data above only to provide its disclosed funct
 - Browser-state restoration.
 - Tab-group and bookmark synchronization.
 - Installed-extension inventory and recovery.
-- User-requested full extension data backup with the optional native helper.
 - Authentication with the cloud provider selected by the user.
 
 The extension does not use this data for advertising, behavioral profiling, credit assessment, loan decisions, data brokerage, or other purposes unrelated to these functions.
@@ -67,15 +66,15 @@ The extension does not use this data for advertising, behavioral profiling, cred
 
 Chromium Cloud Sync does not operate a separate Yoko/CYoJkoY analytics or user-data collection server.
 
-When synchronization or backup is enabled, data is transmitted to the provider explicitly selected and configured by the user:
+When synchronization is enabled, data is transmitted to the provider explicitly selected and configured by the user:
 
 ### GitHub
 
-GitHub API and Gist services are used for synchronization and, when configured by the user, optional full extension data backup. New synchronization Gists created by the extension are private by default.
+GitHub API and Gist services are used for synchronization. New synchronization Gists created by the extension are private by default.
 
 ### Google Drive
 
-Google Drive is used for synchronization and, when configured by the user, optional full extension data backup after the user authorizes access. The extension requests the drive.file scope for application-managed files.
+Google Drive is used for synchronization after the user authorizes access. The extension requests the drive.file scope for application-managed files.
 
 ### WebDAV
 
@@ -105,9 +104,9 @@ The extension does not collect browsing activity for advertising, tracking, prof
 
 ## 7. User control
 
-The user decides whether to enable synchronization, which provider to use, whether to enable automatic synchronization, and whether to use the optional native-helper full extension data backup.
+The user decides whether to enable synchronization, which provider to use, and whether to enable automatic synchronization.
 
-Users can disconnect configured providers and can delete provider-side synchronization or backup data using the controls provided by the selected provider.
+Users can disconnect configured providers and can delete provider-side synchronization data using the controls provided by the selected provider.
 
 Data stored with a third-party provider is also subject to that provider's own terms, security practices, and retention policies.
 

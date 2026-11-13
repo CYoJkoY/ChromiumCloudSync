@@ -55,7 +55,6 @@ for (const file of htmlFiles) {
 }
 
 const allowedPermissions = new Set([
-  "nativeMessaging",
   "tabs",
   "management",
   "storage",

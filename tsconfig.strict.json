@@ -10,10 +10,6 @@
     "types": ["node", "chrome"]
   },
   "files": [
-    "src/features/full-backup.ts",
-    "src/features/full-backup-cloud.ts",
-    "src/runtime/full-backup-runtime.ts",
-    "src/ui/full-backup.ts",
     "src/runtime/types.ts",
     "src/runtime/sync-core.ts",
     "src/runtime/schema.ts",

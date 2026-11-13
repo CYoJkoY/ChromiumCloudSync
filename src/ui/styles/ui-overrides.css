@@ -590,24 +590,6 @@ body.popup-page .update-help:not([hidden]) {
 body.popup-page .update-actions {
   align-self: end;
 }
-body.popup-page .backup-status {
-  margin-top: 8px;
-  padding: 8px 9px;
-  border-radius: 2px;
-  border: 1px solid var(--line);
-  font-size: 11px;
-  line-height: 1.45;
-}
-body.popup-page .backup-status.ok {
-  background: var(--success-soft);
-  color: var(--success);
-  border-color: transparent;
-}
-body.popup-page .backup-status.error-copy {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-color: transparent;
-}
 @media (max-width: 1200px) {
   .shell:not(.popup-shell),
   .aux-shell {
