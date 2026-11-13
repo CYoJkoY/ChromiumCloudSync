@@ -1,12 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="icon-title icon-desc">
   <title id="icon-title">Chromium Cloud Sync</title>
-  <desc id="icon-desc">A russet browser seal with a paper synchronization path.</desc>
-  <rect width="512" height="512" rx="76" fill="#F3F1E9"/>
-  <rect x="34" y="34" width="444" height="444" rx="56" fill="none" stroke="#8A4E2E" stroke-width="24"/>
-  <path d="M112 174h288" stroke="#1B1915" stroke-width="20" stroke-linecap="round"/>
-  <circle cx="153" cy="138" r="15" fill="#3C5847"/>
-  <path d="M173 236h166" stroke="#1B1915" stroke-width="20" stroke-linecap="round"/>
-  <path d="M212 317h127" stroke="#1B1915" stroke-width="20" stroke-linecap="round"/>
-  <path d="M173 367h80" stroke="#8A4E2E" stroke-width="22" stroke-linecap="round"/>
-  <path d="M173 317v100" stroke="#1B1915" stroke-width="20" stroke-linecap="round"/>
+  <desc id="icon-desc">An ink cloud above a russet browser window, joined by two transfer arrows.</desc>
+  <rect width="512" height="512" rx="96" fill="#F3F1E9"/>
+  <g fill="#1B1915">
+    <circle cx="180" cy="156" r="56"/>
+    <circle cx="256" cy="134" r="74"/>
+    <circle cx="334" cy="156" r="52"/>
+    <rect x="152" y="148" width="236" height="62" rx="30"/>
+  </g>
+  <rect x="88" y="344" width="336" height="116" rx="22" fill="#F3F1E9" stroke="#8A4E2E" stroke-width="40"/>
+  <path d="M88 380H424" stroke="#8A4E2E" stroke-width="28"/>
+  <g stroke="#1B1915" stroke-width="30" stroke-linecap="round">
+    <path d="M190 220V296"/>
+    <path d="M322 340V264"/>
+  </g>
+  <g fill="#1B1915">
+    <path d="M190 338L144 290H236Z"/>
+    <path d="M322 220L276 268H368Z"/>
+  </g>
 </svg>
