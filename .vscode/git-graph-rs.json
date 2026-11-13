@@ -1,4 +1,5 @@
 {
+    "includeCommitsMentionedByReflogs": false,
     "issueLinkingConfig": {
         "issue": "#(\\d+)",
         "url": "https://github.com/CYoJkoY/ChromiumCloudSync/issues/$1"
@@ -18,5 +19,5 @@
         "destBranch": "main",
         "custom": null
     },
-    "exportedAt": 1790699928527
+    "exportedAt": 1794585835984
 }
