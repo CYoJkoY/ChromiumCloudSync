@@ -56,7 +56,6 @@ function setupChoiceSwitch(root, initialValue, onChange) {
           : document.documentElement.dataset.theme || "light";
       setupChoiceSwitch(ui.theme, tv, async (v) => CCSyncTheme.setTheme(v));
     }
-    await refresh();
   } catch (error) {
     status.setError(error);
   }
