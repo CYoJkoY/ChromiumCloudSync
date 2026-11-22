@@ -21,6 +21,11 @@ const sources = [
   "src/runtime/sync-core.ts",
   "src/runtime/types.ts",
 ];
+const uiDirectory = path.join(root, "src/ui");
+for (const entry of fs.readdirSync(uiDirectory).sort()) {
+  if (!entry.endsWith(".ts")) continue;
+  sources.push(`src/ui/${entry}`);
+}
 
 const builtins = new Set([
   "parseInt",
@@ -79,6 +84,18 @@ for (const file of sources) {
   );
   const declared = new Set();
   const called = [];
+  // Binding patterns (`const { request } = CCSyncRuntime`) declare names too, so
+  // nested identifiers must be registered to avoid false positives.
+  const addBindingNames = (name) => {
+    if (!name) return;
+    if (ts.isIdentifier(name)) {
+      declared.add(name.text);
+      return;
+    }
+    if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name))
+      for (const element of name.elements)
+        if (ts.isBindingElement(element)) addBindingNames(element.name);
+  };
   const visit = (node) => {
     if (
       (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) &&
@@ -86,12 +103,10 @@ for (const file of sources) {
     )
       declared.add(node.name.text);
     if (ts.isClassDeclaration(node) && node.name) declared.add(node.name.text);
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name))
-      declared.add(node.name.text);
+    if (ts.isVariableDeclaration(node)) addBindingNames(node.name);
     if (ts.isImportClause(node) && node.name) declared.add(node.name.text);
     if (ts.isImportSpecifier(node)) declared.add(node.name.text);
-    if (ts.isParameter(node) && ts.isIdentifier(node.name))
-      declared.add(node.name.text);
+    if (ts.isParameter(node)) addBindingNames(node.name);
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const name = node.expression.text;
       const line =
