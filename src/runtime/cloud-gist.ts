@@ -206,9 +206,69 @@ export interface GistCommit {
  * unlikely, but the transport still resolves it so a large `tabs.json` can never
  * be read back as a partial document.
  */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch the bytes of a truncated Gist file.
+ *
+ * `raw_url` lives on `gist.githubusercontent.com`, which enforces the same
+ * authentication as the API: for a private Gist an anonymous request returns
+ * 404, so the token must travel with the request. Both token schemes are tried
+ * because the raw host has historically accepted `token` while the REST API
+ * prefers `Bearer`; the anonymous attempt is the last fallback for public Gists.
+ * Transient failures are retried; a terminal failure is surfaced with the
+ * filename and status instead of being read back as missing.
+ */
+async function fetchTruncatedGistFile(
+  name: string,
+  rawUrl: string,
+  token: string,
+): Promise<string> {
+  const authModes: Array<Record<string, string>> = token
+    ? [
+        { Authorization: `token ${token}` },
+        { Authorization: `Bearer ${token}` },
+        {},
+      ]
+    : [{}];
+  let lastStatus = 0;
+  let lastError: unknown = null;
+  for (const headers of authModes) {
+    for (let attempt = 0; attempt <= GITHUB_API_RETRIES; attempt += 1) {
+      let response: Response;
+      try {
+        response = await fetch(rawUrl, { headers });
+      } catch (error) {
+        lastError = error;
+        lastStatus = 0;
+        if (attempt === GITHUB_API_RETRIES) break;
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      if (response.ok) return response.text();
+      lastStatus = response.status;
+      const retryable = [408, 429, 500, 502, 503, 504].includes(response.status);
+      if (!retryable || attempt === GITHUB_API_RETRIES) break;
+      await sleep(500 * (attempt + 1));
+    }
+  }
+  const status = lastStatus ? `（HTTP ${lastStatus}）` : "";
+  const reason =
+    lastError && !lastStatus
+      ? `：${(lastError as Error)?.message || String(lastError)}`
+      : "";
+  throw Error(
+    `读取 Gist 文件 ${name} 失败${status}；` +
+      `该文件超出 GitHub 内联大小上限，且 raw 地址拉取失败${reason}`,
+  );
+}
+
 async function materializeFiles(
   files: Record<string, GistFile | null> | undefined,
   wanted: string[],
+  token = "",
 ): Promise<Record<string, string | null>> {
   const out: Record<string, string | null> = {};
   await Promise.all(
@@ -218,15 +278,13 @@ async function materializeFiles(
         out[name] = null;
         return;
       }
-      if (entry.truncated && entry.raw_url) {
-        try {
-          const response = await fetch(entry.raw_url);
-          out[name] = response.ok ? await response.text() : null;
-          return;
-        } catch {
-          out[name] = null;
-          return;
-        }
+      if (entry.truncated) {
+        if (!entry.raw_url)
+          throw Error(
+            `读取 Gist 文件 ${name} 失败：GitHub 截断了内容但未提供 raw 地址`,
+          );
+        out[name] = await fetchTruncatedGistFile(name, entry.raw_url, token);
+        return;
       }
       out[name] = typeof entry.content === "string" ? entry.content : null;
     }),
@@ -362,8 +420,9 @@ export function createGistFileStore(gistId: string): GistFileStore {
   const read = async (names: string[]): Promise<FileStoreReadResult> => {
     if (!id) throw Error("尚未绑定 GitHub Gist");
     const wanted = [...new Set([...names, LEGACY_ENCRYPTED_FILE])];
-    const raw = await readGistRaw(id);
-    const files = await materializeFiles(raw.files, wanted);
+    const token = (await resolveToken()).trim();
+    const raw = await readGistRaw(id, token);
+    const files = await materializeFiles(raw.files, wanted, token);
 
     let legacyEncrypted = false;
     const encrypted = files[LEGACY_ENCRYPTED_FILE];
@@ -451,8 +510,11 @@ export function createGistFileStore(gistId: string): GistFileStore {
       },
       async read(entryId) {
         if (!id) throw Error("尚未绑定 GitHub Gist");
+        const token = (await resolveToken()).trim();
         const result = await githubRequest(
           `/gists/${encodeURIComponent(id)}/${encodeURIComponent(entryId)}`,
+          {},
+          token,
         );
         const revision = (result.data as unknown as RawGist) || {};
         const names = [
@@ -463,7 +525,7 @@ export function createGistFileStore(gistId: string): GistFileStore {
           LEGACY_ALT_FILE,
           LEGACY_ENCRYPTED_FILE,
         ];
-        const files = await materializeFiles(revision.files, names);
+        const files = await materializeFiles(revision.files, names, token);
         let legacyEncrypted = false;
         if (!files[LEGACY_MONOLITHIC_FILE] && files[LEGACY_ENCRYPTED_FILE]) {
           let manifest: unknown = null;
