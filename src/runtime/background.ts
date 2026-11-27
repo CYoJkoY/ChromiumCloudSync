@@ -1817,7 +1817,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
           await setSettings({
             [KEYS.GITHUB_TOKEN]: token,
             [KEYS.GIST_ID]: m.gistId,
-            [KEYS.ETAG]: r.headers.get("ETag") || "",
+            [KEYS.ETAG]: r.etag || "",
           });
           await invalidateCloudTabCache();
           return { gistId: m.gistId };
