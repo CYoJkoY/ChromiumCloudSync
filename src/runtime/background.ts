@@ -15,9 +15,14 @@ import { detectBrowserCapabilities } from "./browser-capabilities.js";
 import {
   CLOUD_TAB_STATE_CACHE_KEY,
   CLOUD_TAB_STATE_VERSION,
+  applyCloudGroupPatch,
   buildCanonicalCloudTabState,
+  insertCloudGroup,
   isCacheUsable,
   isCanonicalCloudTabState,
+  moveCloudTabToGroup,
+  nextCloudGroupIndex,
+  normalizeTabGroupColor,
 } from "./cloud-tab-state.js";
 import {
   classifySyncError,
@@ -2130,6 +2135,53 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             return true;
           },
         );
+      case "createCloudGroup": {
+        const syncId = `group-${crypto.randomUUID()}`;
+        const title = String(m.title ?? "").trim();
+        const color = normalizeTabGroupColor(m.color);
+        const result = await updateManagedCloudState(
+          (state, revision, now) => {
+            const groups = Array.isArray(state.snapshot.groups)
+              ? state.snapshot.groups
+              : (state.snapshot.groups = []);
+            insertCloudGroup(state.snapshot, {
+              syncId,
+              title,
+              color,
+              collapsed: false,
+              index: nextCloudGroupIndex(groups),
+              updatedAt: now,
+              tabs: [],
+            });
+            state.tombstones = (state.tombstones || []).filter(
+              (t) =>
+                !(t.collection === "groups" && t.syncId === syncId),
+            );
+            return true;
+          },
+        );
+        return { ...result, syncId };
+      }
+      case "updateCloudGroup":
+        return updateManagedCloudState((state, revision, now) =>
+          applyCloudGroupPatch(state.snapshot, {
+            syncId: String(m.syncId || ""),
+            title: typeof m.title === "string" ? m.title : undefined,
+            color: typeof m.color === "string" ? m.color : undefined,
+            collapsed:
+              typeof m.collapsed === "boolean" ? m.collapsed : undefined,
+            updatedAt: now,
+          }),
+        );
+      case "moveCloudTabToGroup":
+        return updateManagedCloudState((state, revision, now) =>
+          moveCloudTabToGroup(
+            state.snapshot,
+            String(m.syncId || ""),
+            String(m.groupSyncId || ""),
+            now,
+          ),
+        );
       case "moveCloudTab":
         return updateManagedCloudState(
           (state) => {
@@ -2205,7 +2257,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             if (
               index < 0 ||
               target < 0 ||
-              target >= groupOrder.length
+              target >= orderedGroups.length
             )
               return false;
 

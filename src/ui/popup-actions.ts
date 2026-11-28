@@ -70,6 +70,24 @@
         status.setStatus("ok", i.t("cloudRefreshDone"), i.t("cloudStateSourceRemote"), "");
       }),
     );
+
+    bindAction("createCloudGroupPopup", async (_event, button) => {
+      const title = prompt(i.t("createGroupPrompt"), "");
+      if (title === null) return;
+      await status.withButton(button, async () => {
+        await request("createCloudGroup", {
+          title: title.trim(),
+          color: "grey",
+        });
+        await cloud.renderCloudGroups(true);
+        status.setStatus(
+          "ok",
+          i.t("groupCreated"),
+          title.trim() || i.t("unnamedGroup"),
+          "",
+        );
+      });
+    });
   }
 
   window.CCSyncPopupActions = { mount };

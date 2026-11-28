@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import {
   CLOUD_TAB_STATE_CACHE_TTL_MS,
   CLOUD_TAB_STATE_VERSION,
+  applyCloudGroupPatch,
   buildCanonicalCloudTabState,
   cacheAgeMs,
+  insertCloudGroup,
   isCacheUsable,
   isCanonicalCloudTabState,
+  moveCloudTabToGroup,
+  nextCloudGroupIndex,
+  normalizeTabGroupColor,
 } from "../src/runtime/cloud-tab-state.ts";
 import { SCHEMA_VERSION } from "../src/runtime/sync-core.ts";
 import { validateCloudState } from "../src/runtime/schema.ts";
@@ -462,6 +467,176 @@ function state(overrides: Partial<CloudState> = {}): CloudState {
   assert.deepEqual(canonical.groups, []);
   assert.equal(typeof canonical.checksum, "string");
   assert.ok(canonical.checksum.length > 0);
+}
+
+/* --------------------------------------------------------------------------
+ * Cloud tab-group CRUD helpers used by the background message handlers.
+ * ------------------------------------------------------------------------ */
+{
+  // Colour normalization accepts the nine Chrome tab-group colours and falls
+  // back to grey for anything else (unknown strings, empty input, non-strings).
+  assert.equal(normalizeTabGroupColor("BLUE"), "blue");
+  assert.equal(normalizeTabGroupColor("  Cyan  "), "cyan");
+  assert.equal(normalizeTabGroupColor("chartreuse"), "grey");
+  assert.equal(normalizeTabGroupColor(""), "grey");
+  assert.equal(normalizeTabGroupColor(undefined), "grey");
+  assert.equal(normalizeTabGroupColor(42), "grey");
+
+  // nextCloudGroupIndex appends after the highest existing index and starts at
+  // zero for an empty or index-less collection.
+  assert.equal(nextCloudGroupIndex([]), 0);
+  assert.equal(
+    nextCloudGroupIndex([{ index: 4 }, { index: 2 }, {}] as never),
+    5,
+  );
+  assert.equal(nextCloudGroupIndex([{}] as never), 0);
+
+  // insertCloudGroup appends a group and tolerates a snapshot with no groups.
+  const insertSnapshot = state().snapshot;
+  delete insertSnapshot.groups;
+  insertCloudGroup(insertSnapshot, {
+    syncId: "group-new",
+    title: "New",
+    color: "blue",
+    collapsed: false,
+  });
+  assert.equal(insertSnapshot.groups?.length, 1);
+  assert.equal(insertSnapshot.groups?.[0]?.syncId, "group-new");
+
+  // applyCloudGroupPatch renames / recolors / collapses and reports whether a
+  // stored field changed.
+  const patchSnapshot = state({
+    snapshot: {
+      schemaVersion: SCHEMA_VERSION,
+      extensions: [],
+      windows: [],
+      bookmarks: [],
+      groups: [
+        {
+          syncId: "group-a",
+          title: "Old",
+          color: "grey",
+          collapsed: false,
+          updatedAt: "2026-09-20T00:00:00.000Z",
+        },
+      ],
+    },
+  }).snapshot;
+  assert.equal(
+    applyCloudGroupPatch(patchSnapshot, {
+      syncId: "group-a",
+      title: "Renamed",
+      color: "red",
+      collapsed: true,
+      updatedAt: "2026-09-21T00:00:00.000Z",
+    }),
+    true,
+  );
+  assert.equal(patchSnapshot.groups?.[0]?.title, "Renamed");
+  assert.equal(patchSnapshot.groups?.[0]?.color, "red");
+  assert.equal(patchSnapshot.groups?.[0]?.collapsed, true);
+  assert.equal(
+    patchSnapshot.groups?.[0]?.updatedAt,
+    "2026-09-21T00:00:00.000Z",
+  );
+
+  // Re-applying the same values is a no-op; an unknown group reports false.
+  assert.equal(
+    applyCloudGroupPatch(patchSnapshot, {
+      syncId: "group-a",
+      title: "Renamed",
+      color: "red",
+      collapsed: true,
+    }),
+    false,
+  );
+  assert.equal(
+    applyCloudGroupPatch(patchSnapshot, { syncId: "missing", title: "x" }),
+    false,
+  );
+
+  // moveCloudTabToGroup lifts a tab out of a window into a cloud group, keeps
+  // a single copy, renumbers indexes, and rewrites the group reference.
+  const moveSnapshot = state({
+    snapshot: {
+      schemaVersion: SCHEMA_VERSION,
+      extensions: [],
+      bookmarks: [],
+      windows: [
+        {
+          syncId: "window-1",
+          state: "normal",
+          focused: true,
+          tabs: [
+            {
+              syncId: "tab-1",
+              url: "https://example.com/1",
+              title: "One",
+              pinned: false,
+              active: true,
+              index: 0,
+            },
+          ],
+        },
+      ],
+      groups: [
+        {
+          syncId: "group-a",
+          title: "A",
+          color: "blue",
+          collapsed: false,
+          tabs: [
+            {
+              syncId: "tab-2",
+              url: "https://example.com/2",
+              title: "Two",
+              pinned: false,
+              active: false,
+              index: 0,
+              group: {
+                syncId: "group-a",
+                title: "A",
+                color: "blue",
+                collapsed: false,
+              },
+            },
+          ],
+        },
+      ],
+    },
+  }).snapshot;
+
+  assert.equal(
+    moveCloudTabToGroup(
+      moveSnapshot,
+      "tab-1",
+      "group-a",
+      "2026-09-22T00:00:00.000Z",
+    ),
+    true,
+  );
+  assert.equal(moveSnapshot.windows?.[0]?.tabs.length, 0, "removed from window");
+  assert.equal(moveSnapshot.groups?.[0]?.tabs?.length, 2, "appended to group");
+  assert.deepEqual(
+    moveSnapshot.groups?.[0]?.tabs?.map((tab) => tab.syncId),
+    ["tab-2", "tab-1"],
+  );
+  assert.deepEqual(
+    moveSnapshot.groups?.[0]?.tabs?.map((tab) => tab.index),
+    [0, 1],
+    "indexes renumbered",
+  );
+  assert.equal(moveSnapshot.groups?.[0]?.tabs?.[1]?.group?.syncId, "group-a");
+  assert.equal(
+    moveSnapshot.groups?.[0]?.updatedAt,
+    "2026-09-22T00:00:00.000Z",
+  );
+
+  // Moving a tab already inside the target group, or an unknown tab/group, is
+  // rejected without mutating the snapshot.
+  assert.equal(moveCloudTabToGroup(moveSnapshot, "tab-1", "group-a"), false);
+  assert.equal(moveCloudTabToGroup(moveSnapshot, "tab-1", "missing"), false);
+  assert.equal(moveCloudTabToGroup(moveSnapshot, "missing", "group-a"), false);
 }
 
 console.log("cloud-tab-state tests: OK");

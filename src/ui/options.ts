@@ -763,7 +763,73 @@ function makeCloudTabActionButton(label, action) {
   return button;
 }
 
-function createCloudTabRow(tab, localTabIds, containerType, containerSyncId) {
+const CLOUD_GROUP_COLORS = [
+  "grey",
+  "blue",
+  "red",
+  "yellow",
+  "green",
+  "pink",
+  "purple",
+  "cyan",
+  "orange",
+];
+
+function groupColorLabel(color) {
+  return i.t(`groupColor_${color}`) || color;
+}
+
+function createCloudTabMoveSelect(tab, currentGroupSyncId, groups) {
+  const options = (Array.isArray(groups) ? groups : []).filter(
+    (group) => group && group.syncId && group.syncId !== currentGroupSyncId,
+  );
+  if (!options.length) return null;
+
+  const select = document.createElement("select");
+  select.className = "field cloud-tab-move";
+  select.setAttribute("aria-label", i.t("moveToGroup"));
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = i.t("moveToGroup");
+  placeholder.selected = true;
+  select.append(placeholder);
+
+  for (const group of options) {
+    const option = document.createElement("option");
+    option.value = group.syncId;
+    option.textContent = group.title || i.t("unnamedGroup");
+    select.append(option);
+  }
+
+  select.addEventListener("change", () => {
+    const target = select.value;
+    if (!target) return;
+    void (async () => {
+      select.disabled = true;
+      try {
+        await request("moveCloudTabToGroup", {
+          syncId: tab.syncId,
+          groupSyncId: target,
+        });
+        await refreshCloudTabs();
+      } catch (e) {
+        showError(e);
+        select.disabled = false;
+      }
+    })();
+  });
+
+  return select;
+}
+
+function createCloudTabRow(
+  tab,
+  localTabIds,
+  containerType,
+  containerSyncId,
+  groups,
+) {
   const row = document.createElement("div");
   row.className = "history-row";
 
@@ -784,6 +850,13 @@ function createCloudTabRow(tab, localTabIds, containerType, containerSyncId) {
 
   const actions = document.createElement("div");
   actions.className = "btn-row cloud-tab-actions";
+
+  const moveSelect = createCloudTabMoveSelect(
+    tab,
+    containerType === "group" ? containerSyncId : "",
+    groups,
+  );
+  if (moveSelect) actions.append(moveSelect);
 
   actions.append(
     makeCloudTabActionButton(i.t("restore"), async () => {
@@ -845,7 +918,7 @@ function createCloudDisclosureSummary(titleText, metaText) {
   return summary;
 }
 
-function createCloudGroupSection(group, tabs, localTabIds) {
+function createCloudGroupSection(group, tabs, localTabIds, groups) {
   const section = document.createElement("details");
   section.className = "cloud-group-section";
   section.open = false;
@@ -859,6 +932,36 @@ function createCloudGroupSection(group, tabs, localTabIds) {
 
   const actions = document.createElement("div");
   actions.className = "btn-row cloud-scope-actions";
+
+  const colorSelect = document.createElement("select");
+  colorSelect.className = "field cloud-group-color";
+  colorSelect.setAttribute("aria-label", i.t("groupColor"));
+  const currentColor = group.color || "grey";
+  for (const color of CLOUD_GROUP_COLORS) {
+    const option = document.createElement("option");
+    option.value = color;
+    option.textContent = groupColorLabel(color);
+    if (color === currentColor) option.selected = true;
+    colorSelect.append(option);
+  }
+  colorSelect.addEventListener("change", () => {
+    const color = colorSelect.value;
+    void (async () => {
+      colorSelect.disabled = true;
+      try {
+        await request("updateCloudGroup", { syncId: group.syncId, color });
+        showFeedback(
+          "success",
+          i.t("groupUpdated"),
+          group.title || i.t("unnamedGroup"),
+        );
+        await refreshCloudTabs();
+      } catch (e) {
+        showError(e);
+        colorSelect.disabled = false;
+      }
+    })();
+  });
 
   actions.append(
     makeCloudTabActionButton(i.t("restoreGroup"), async () => {
@@ -874,6 +977,21 @@ function createCloudGroupSection(group, tabs, localTabIds) {
         }),
       );
     }),
+    makeCloudTabActionButton(i.t("renameGroup"), async () => {
+      const next = prompt(i.t("renameGroupPrompt"), group.title || "");
+      if (next === null) return;
+      await request("updateCloudGroup", {
+        syncId: group.syncId,
+        title: next.trim(),
+      });
+      showFeedback(
+        "success",
+        i.t("groupUpdated"),
+        next.trim() || i.t("unnamedGroup"),
+      );
+      await refreshCloudTabs();
+    }),
+    colorSelect,
     makeCloudTabActionButton(i.t("moveUp"), async () => {
       await request("moveCloudGroup", {
         syncId: group.syncId,
@@ -900,7 +1018,9 @@ function createCloudGroupSection(group, tabs, localTabIds) {
   const list = document.createElement("div");
   list.className = "section-stack cloud-tab-list";
   for (const tab of tabs)
-    list.append(createCloudTabRow(tab, localTabIds, "group", group.syncId));
+    list.append(
+      createCloudTabRow(tab, localTabIds, "group", group.syncId, groups),
+    );
 
   section.append(actions, list);
   return section;
@@ -1049,7 +1169,12 @@ async function refreshCloudTabs(forceRemote = false) {
 
     for (const group of groups)
       cloudTabsManager.append(
-        createCloudGroupSection(group, group.tabs || [], localTabIds),
+        createCloudGroupSection(
+          group,
+          group.tabs || [],
+          localTabIds,
+          groups,
+        ),
       );
     return true;
   } catch (e) {
@@ -1071,6 +1196,28 @@ bindAction("addCurrentTabsToCloud", async (_e, b) => {
   try {
     await request("addCurrentTabsToCloud");
     showFeedback("success", i.t("tabsAddedToCloud"), "");
+    await refreshCloudTabs();
+  } finally {
+    b.disabled = false;
+    b.textContent = old;
+  }
+});
+bindAction("createCloudGroup", async (_e, b) => {
+  const title = prompt(i.t("createGroupPrompt"), "");
+  if (title === null) return;
+  const old = b.textContent;
+  b.disabled = true;
+  b.textContent = i.t("processing");
+  try {
+    await request("createCloudGroup", {
+      title: title.trim(),
+      color: "grey",
+    });
+    showFeedback(
+      "success",
+      i.t("groupCreated"),
+      title.trim() || i.t("unnamedGroup"),
+    );
     await refreshCloudTabs();
   } finally {
     b.disabled = false;
