@@ -161,9 +161,53 @@
         const content = document.createElement("div");
         content.className = "popup-cloud-group-content";
 
+        const rename = document.createElement("button");
+        rename.type = "button";
+        rename.className = "secondary";
+        rename.textContent = i.t("renameGroup");
+        rename.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const next = prompt(i.t("renameGroupPrompt"), g.title || "");
+          if (next === null) return;
+          void status.withButton(rename, async () => {
+            await request("updateCloudGroup", {
+              syncId: g.syncId,
+              title: next.trim(),
+            });
+            await renderCloudGroups(true);
+            status.setStatus(
+              "ok",
+              i.t("groupUpdated"),
+              next.trim() || i.t("unnamedGroup"),
+              "",
+            );
+          });
+        });
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "secondary";
+        remove.textContent = i.t("delete");
+        remove.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!confirm(i.t("deleteCloudGroupConfirm"))) return;
+          void status.withButton(remove, async () => {
+            await request("deleteCloudGroup", { syncId: g.syncId });
+            await renderCloudGroups(true);
+            status.setStatus(
+              "ok",
+              i.t("groupDeleted"),
+              g.title || i.t("unnamedGroup"),
+              "",
+            );
+          });
+        });
+
         const actions = document.createElement("div");
         actions.className = "popup-cloud-group-actions";
-        actions.append(restore);
+        actions.append(rename, restore, remove);
 
         if (!tabs.length) {
           const empty = document.createElement("div");

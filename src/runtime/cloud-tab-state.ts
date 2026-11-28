@@ -506,3 +506,165 @@ export function cacheAgeMs(
   const fetched = Date.parse(cache.fetchedAt);
   return Number.isFinite(fetched) ? now - fetched : Number.POSITIVE_INFINITY;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Cloud tab-group CRUD mutations                                              */
+/*                                                                             */
+/* These pure helpers own the add / edit / reorder / membership rules so the    */
+/* background handlers stay thin and the behaviour is covered by the unit       */
+/* tests instead of only by the live extension.                                */
+/* -------------------------------------------------------------------------- */
+
+export const TAB_GROUP_COLORS = [
+  "grey",
+  "blue",
+  "red",
+  "yellow",
+  "green",
+  "pink",
+  "purple",
+  "cyan",
+  "orange",
+] as const;
+
+export function normalizeTabGroupColor(value: unknown): string {
+  const color = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return (TAB_GROUP_COLORS as readonly string[]).includes(color)
+    ? color
+    : "grey";
+}
+
+export function nextCloudGroupIndex(groups: TabGroupRecord[]): number {
+  let max = -1;
+  for (const group of groups) {
+    if (typeof group.index === "number" && Number.isFinite(group.index))
+      max = Math.max(max, group.index);
+  }
+  return max + 1;
+}
+
+export function insertCloudGroup(
+  snapshot: Snapshot,
+  group: TabGroupRecord,
+): void {
+  const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
+  groups.push(group);
+  snapshot.groups = groups;
+}
+
+export interface CloudGroupPatch {
+  syncId: string;
+  title?: string;
+  color?: string;
+  collapsed?: boolean;
+  updatedAt?: string;
+}
+
+/**
+ * Apply a rename / recolor / collapse patch to a cloud group.
+ * Returns true only when a stored field actually changed.
+ */
+export function applyCloudGroupPatch(
+  snapshot: Snapshot,
+  patch: CloudGroupPatch,
+): boolean {
+  const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
+  const group = groups.find((entry) => syncIdOf(entry, "") === patch.syncId);
+  if (!group) return false;
+
+  let changed = false;
+  if (typeof patch.title === "string" && patch.title !== group.title) {
+    group.title = patch.title;
+    changed = true;
+  }
+  if (typeof patch.color === "string" && patch.color) {
+    const color = normalizeTabGroupColor(patch.color);
+    if (color !== group.color) {
+      group.color = color;
+      changed = true;
+    }
+  }
+  if (
+    typeof patch.collapsed === "boolean" &&
+    patch.collapsed !== group.collapsed
+  ) {
+    group.collapsed = patch.collapsed;
+    changed = true;
+  }
+
+  if (!changed) return false;
+  if (typeof patch.updatedAt === "string" && patch.updatedAt)
+    group.updatedAt = patch.updatedAt;
+  return true;
+}
+
+function findSnapshotTab(
+  snapshot: Snapshot,
+  tabSyncId: string,
+): { tab: TabRecord; groupSyncId: string | null } | null {
+  for (const window of snapshot.windows ?? []) {
+    const tab = (window.tabs ?? []).find(
+      (entry) => syncIdOf(entry, "") === tabSyncId,
+    );
+    if (tab)
+      return {
+        tab,
+        groupSyncId: tab.group ? syncIdOf(tab.group, "") : null,
+      };
+  }
+  for (const group of snapshot.groups ?? []) {
+    const tab = (group.tabs ?? []).find(
+      (entry) => syncIdOf(entry, "") === tabSyncId,
+    );
+    if (tab) return { tab, groupSyncId: syncIdOf(group, "") };
+  }
+  return null;
+}
+
+/**
+ * Move a tab into another cloud group. The tab is removed from every window
+ * and group first, so a tab reachable from both projections ends up stored
+ * exactly once under its new group.
+ */
+export function moveCloudTabToGroup(
+  snapshot: Snapshot,
+  tabSyncId: string,
+  groupSyncId: string,
+  updatedAt?: string,
+): boolean {
+  const target = (snapshot.groups ?? []).find(
+    (group) => syncIdOf(group, "") === groupSyncId,
+  );
+  if (!target) return false;
+
+  const source = findSnapshotTab(snapshot, tabSyncId);
+  if (!source) return false;
+  if (source.groupSyncId === groupSyncId) return false;
+
+  for (const window of snapshot.windows ?? [])
+    window.tabs = (window.tabs ?? []).filter(
+      (tab) => syncIdOf(tab, "") !== tabSyncId,
+    );
+  for (const group of snapshot.groups ?? [])
+    group.tabs = (group.tabs ?? []).filter(
+      (tab) => syncIdOf(tab, "") !== tabSyncId,
+    );
+
+  const tabs = Array.isArray(target.tabs) ? target.tabs : [];
+  target.tabs = tabs;
+  tabs.push({
+    ...source.tab,
+    index: tabs.length,
+    group: {
+      syncId: target.syncId,
+      title: target.title,
+      color: target.color,
+      collapsed: target.collapsed,
+    },
+  });
+  tabs.forEach((tab, index) => {
+    tab.index = index;
+  });
+  if (typeof updatedAt === "string" && updatedAt) target.updatedAt = updatedAt;
+  return true;
+}

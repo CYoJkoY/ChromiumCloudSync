@@ -15,9 +15,14 @@ import { detectBrowserCapabilities } from "./browser-capabilities.js";
 import {
   CLOUD_TAB_STATE_CACHE_KEY,
   CLOUD_TAB_STATE_VERSION,
+  applyCloudGroupPatch,
   buildCanonicalCloudTabState,
+  insertCloudGroup,
   isCacheUsable,
   isCanonicalCloudTabState,
+  moveCloudTabToGroup,
+  nextCloudGroupIndex,
+  normalizeTabGroupColor,
 } from "./cloud-tab-state.js";
 import {
   classifySyncError,
@@ -1217,9 +1222,18 @@ async function restoreBookmarks(nodes) {
       collect(n.children);
     }
   })(tree);
-  const roots = new Map([
-    ["root-bookmarks", tree.find((n) => n.id === "0") || tree[0]],
-  ]);
+  const rootNode = tree.find((n) => n.id === "0") || tree[0];
+  const rootChildren = Array.isArray(rootNode?.children)
+    ? rootNode.children
+    : [];
+  // The invisible root ("0") and its permanent children ("1" Bookmarks bar,
+  // "2" Other bookmarks, "3" Mobile bookmarks when present) reject every
+  // create/update/move with "Can't modify the root bookmark folders." Guard
+  // them explicitly instead of issuing mutating calls.
+  const protectedIds = new Set(
+    [rootNode?.id, ...rootChildren.map((child) => child.id)].filter(Boolean),
+  );
+  const roots = new Map([["root-bookmarks", rootNode]]);
   let added = 0,
     moved = 0,
     updated = 0;
@@ -1228,6 +1242,30 @@ async function restoreBookmarks(nodes) {
     created.get(n.parentSyncId)?.id ||
     bySync.get(n.parentSyncId)?.id ||
     roots.get(n.parentSyncId)?.id;
+
+  // Cloud root-level nodes (the permanent bookmark folders) cannot be created
+  // locally. Bind their cloud syncIds onto the local permanent folders by
+  // position so the restore converges on the existing roots instead of trying
+  // to recreate them under the invisible root.
+  for (const n of incoming) {
+    if (
+      !n ||
+      n.syncId === "root-bookmarks" ||
+      n.parentSyncId !== "root-bookmarks" ||
+      bySync.has(n.syncId)
+    )
+      continue;
+    const position = Number(n.index);
+    const local =
+      Number.isInteger(position) && position >= 0
+        ? rootChildren[position]
+        : undefined;
+    if (local) {
+      map[String(local.id)] = n.syncId;
+      bySync.set(n.syncId, local);
+    }
+  }
+
   const pending = incoming
     .filter((n) => n.syncId !== "root-bookmarks")
     .slice()
@@ -1235,8 +1273,15 @@ async function restoreBookmarks(nodes) {
   for (let pass = 0; pending.length && pass < incoming.length + 1; pass++) {
     let progress = false;
     for (let i = pending.length - 1; i >= 0; i--) {
-      const n = pending[i],
-        pid = parentId(n);
+      const n = pending[i];
+      // Root-level nodes resolve to the invisible root ("0") through
+      // `parentId`, which Chrome rejects for every create/move. Anchor them to
+      // a real permanent folder instead (Other bookmarks, else the first
+      // root) so both creation and the convergence move stay mutable.
+      const pid =
+        n.parentSyncId === "root-bookmarks"
+          ? (rootChildren[1] || rootChildren[0])?.id
+          : parentId(n);
       if (!pid) continue;
       let ex = bySync.get(n.syncId);
       if (!ex) {
@@ -1249,6 +1294,9 @@ async function restoreBookmarks(nodes) {
         bySync.set(n.syncId, ex);
         created.set(n.syncId, ex);
         added++;
+      } else if (protectedIds.has(ex.id)) {
+        // Permanent root folders are fixed. Keep the syncId binding but never
+        // rename, re-URL, or move them, which Chrome rejects.
       } else {
         if (ex.title !== n.title || (ex.url || "") !== (n.url || "")) {
           await chrome.bookmarks.update(ex.id, {
@@ -2087,6 +2135,53 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             return true;
           },
         );
+      case "createCloudGroup": {
+        const syncId = `group-${crypto.randomUUID()}`;
+        const title = String(m.title ?? "").trim();
+        const color = normalizeTabGroupColor(m.color);
+        const result = await updateManagedCloudState(
+          (state, revision, now) => {
+            const groups = Array.isArray(state.snapshot.groups)
+              ? state.snapshot.groups
+              : (state.snapshot.groups = []);
+            insertCloudGroup(state.snapshot, {
+              syncId,
+              title,
+              color,
+              collapsed: false,
+              index: nextCloudGroupIndex(groups),
+              updatedAt: now,
+              tabs: [],
+            });
+            state.tombstones = (state.tombstones || []).filter(
+              (t) =>
+                !(t.collection === "groups" && t.syncId === syncId),
+            );
+            return true;
+          },
+        );
+        return { ...result, syncId };
+      }
+      case "updateCloudGroup":
+        return updateManagedCloudState((state, revision, now) =>
+          applyCloudGroupPatch(state.snapshot, {
+            syncId: String(m.syncId || ""),
+            title: typeof m.title === "string" ? m.title : undefined,
+            color: typeof m.color === "string" ? m.color : undefined,
+            collapsed:
+              typeof m.collapsed === "boolean" ? m.collapsed : undefined,
+            updatedAt: now,
+          }),
+        );
+      case "moveCloudTabToGroup":
+        return updateManagedCloudState((state, revision, now) =>
+          moveCloudTabToGroup(
+            state.snapshot,
+            String(m.syncId || ""),
+            String(m.groupSyncId || ""),
+            now,
+          ),
+        );
       case "moveCloudTab":
         return updateManagedCloudState(
           (state) => {
@@ -2162,7 +2257,7 @@ chrome.runtime.onMessage.addListener((m, _s, send) => {
             if (
               index < 0 ||
               target < 0 ||
-              target >= groupOrder.length
+              target >= orderedGroups.length
             )
               return false;
 
